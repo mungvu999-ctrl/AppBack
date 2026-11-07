@@ -6,8 +6,10 @@ lượt `queued|running` khác thành `superseded` → ghi `snapshot.json` vào 
 `uq_model_exports_fingerprint` cho một lượt thắng; lượt thua xoá object của mình và trả dòng thắng.
 """
 
+import hashlib
 import json
 from collections import Counter
+from pathlib import Path
 from typing import Any, Final
 
 from sqlalchemy import Row, text
@@ -24,7 +26,7 @@ from packages.core.clock import Clock
 from packages.core.ids import is_id, new_id
 from packages.db.hooks import on_after_commit
 from packages.domain.model_export.snapshot import canonical_json
-from packages.domain.model_export.version import compiler_version
+from packages.domain.model_export.version import compiler_version, normalized_bytes
 from packages.messaging import send_task
 from packages.messaging.payloads.model_export import (
     MODEL_EXPORT_FILES,
@@ -81,8 +83,15 @@ def _wire(row: Row[tuple[object, ...]], current: str) -> ModelExport:
 
 
 def _compiler(settings: ModelExportSettings) -> str:
-    """Phiên bản bộ biên dịch: ghim tay qua cấu hình, không thì suy từ mã (đổi mã → cache cũ hết hiệu lực)."""
-    return settings.model_export_compiler_version or compiler_version()
+    """Phiên bản bộ biên dịch: ghim tay qua cấu hình, không thì suy từ mã (đổi mã → cache cũ hết hiệu lực).
+
+    Mã đọc ảnh chụp (`snapshot_source.py`) cũng quyết định đầu ra, nên băm cả nó vào: lỗi đọc document trên f14
+    (07/11) từng để lại một lượt sai mà cache trả lại mãi vì dấu vân không đổi.
+    """
+    if settings.model_export_compiler_version:
+        return settings.model_export_compiler_version
+    reader = hashlib.sha256(normalized_bytes(Path(snapshot_source.__file__))).hexdigest()[:8]
+    return f"{compiler_version()}.{reader}"
 
 
 def _versions(settings: ModelExportSettings) -> dict[str, Any]:

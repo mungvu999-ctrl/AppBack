@@ -56,11 +56,16 @@ _INSERT: Final = text(
 _FILE: Final = text("SELECT status, quality FROM model_exports WHERE id = :id AND project_id = :p")
 
 
+_ISSUE_RANK: Final = {"critical": 0, "major": 1, "minor": 2}
+"""Mức được trả ra `issues` (HOP-DONG-MOI §13); `info` là ghi chú, không phải thiếu sót, chỉ nằm trong `counts`."""
+
+
 def _issues(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
-    """Gom `records` của `report_summary` theo (mức, lý do), đếm số bản ghi."""
+    """Gom thiếu sót (`minor|major|critical`) của `report_summary` theo (mức, lý do), nặng trước, nhiều trước."""
     records = (summary or {}).get("records", [])
-    grouped = Counter((r.get("severity", ""), r.get("reason", "")) for r in records)
-    return [{"severity": s, "reason": r, "count": n} for (s, r), n in grouped.items()]
+    grouped = Counter((r.get("severity", ""), r.get("reason", "")) for r in records if r.get("severity") in _ISSUE_RANK)
+    ordered = sorted(grouped.items(), key=lambda item: (_ISSUE_RANK[item[0][0]], -item[1], item[0][1]))
+    return [{"severity": s, "reason": r, "count": n} for (s, r), n in ordered]
 
 
 def _wire(row: Row[tuple[object, ...]], current: str) -> ModelExport:

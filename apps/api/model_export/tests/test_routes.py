@@ -293,3 +293,35 @@ async def test_model_export_start_export__layer_from_document(
     assert len(floors[0]["layer"]["walls"]) == len(layer.walls) > 0
     assert len(floors[0]["layer"]["openings"]) == len(layer.openings)
     assert {"axes", "dimensions"}.isdisjoint(floors[0]["layer"])
+
+
+async def test_model_export_read_latest__issues_skip_info(db_session: AsyncSession, api_client: AsyncClient) -> None:
+    """`info` không vào `issues` (FE strict chỉ nhận minor|major|critical — lỗi CONTRACT_VALIDATION đo qua UI 07/11).
+
+    Thiếu sót sắp nặng trước, cùng mức thì nhiều trước.
+    """
+    owner, project, _ = await _project(db_session)
+    summary = {
+        "counts": {"style:built": 1},
+        "records": [
+            {"severity": "info", "reason": "dùng phong cách mặc định am-ap (dự án chưa chọn phong cách)"},
+            {"severity": "minor", "reason": "cửa xếp dựng như 2 tấm"},
+            {"severity": "major", "reason": "tường trùng"},
+            {"severity": "critical", "reason": "tầng không có tường"},
+            {"severity": "major", "reason": "mẫu chưa có trong gói xuất"},
+            {"severity": "major", "reason": "mẫu chưa có trong gói xuất"},
+        ],
+    }
+    await make_model_export(
+        db_session, project_id=project.id, status="done", quality="blocked", report_summary=summary, glb_bytes=None
+    )
+
+    response = await api_client.get(_path(project.id, "/latest"), headers=headers_of(owner))
+
+    assert response.status_code == 200, response.text
+    assert response.json()["issues"] == [
+        {"severity": "critical", "reason": "tầng không có tường", "count": 1},
+        {"severity": "major", "reason": "mẫu chưa có trong gói xuất", "count": 2},
+        {"severity": "major", "reason": "tường trùng", "count": 1},
+        {"severity": "minor", "reason": "cửa xếp dựng như 2 tấm", "count": 1},
+    ]

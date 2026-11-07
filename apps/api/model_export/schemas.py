@@ -19,7 +19,7 @@ class SnapshotRevision(WireModel):
 class ExportIssue(WireModel):
     """Thiếu sót gom theo (mức, lý do) từ `report_summary.records`."""
 
-    severity: str
+    severity: Literal["minor", "major", "critical"]
     reason: str
     count: int
 

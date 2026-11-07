@@ -7,11 +7,13 @@ không đi qua phép kiểm của thân) vẫn ghi được khi không ai chạm
 from typing import Any
 
 import httpx
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.spatial_read.tests._helpers import Scene, make_scene
 from apps.api.spatial_write.tests._helpers import RecordingMerge, make_wall, write
 from apps.api.spatial_write.tests._route_helpers import make_furniture, put_layer, wire, write_body
+from packages.core.errors import AppError
 from packages.domain.spatial import Opening, SpatialLayer, Wall
 from packages.testing.fixtures.clock import FakeClock
 
@@ -133,3 +135,26 @@ async def test_spatial_write_layer__stair_variant(api_client: httpx.AsyncClient,
     response = await put_layer(*path_args, payload)
     assert response.status_code == 422
     assert response.json()["field"] == "body.layer.furniture.0.variant"
+
+
+
+async def test_write_layer__opening_span_only_on_user_route(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Không bật `check_spans` (khôi phục phiên bản ghi lại tài liệu cũ) → cửa vượt vẫn ghi; bật → 422."""
+    scene = await make_scene(db_session)
+    layer = _layer(scene.floors[0].level_id, offset=200)
+
+    restored = await write(db_session, floor=scene.floors[0], actor=scene.owner, clock=fake_clock, layer=layer)
+    moved = layer.model_copy(update={"openings": (layer.openings[0].model_copy(update={"offset_mm": 250}),)})
+    with pytest.raises(AppError) as caught:
+        await write(
+            db_session,
+            floor=scene.floors[0],
+            actor=scene.owner,
+            clock=fake_clock,
+            base_revision=1,
+            layer=moved,
+            check_spans=True,
+        )
+
+    assert restored.revision == 1
+    assert (caught.value.code.code, caught.value.params.get("field")) == ("VALIDATION", FIELD)

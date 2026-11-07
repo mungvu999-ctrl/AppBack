@@ -166,6 +166,7 @@ class _Request:
     scale_source: ScaleWriter
     page_key: str | None
     may_approve: bool
+    check_spans: bool
     project_id: str
     level_id: str
 
@@ -247,12 +248,16 @@ async def write_layer(
     scale_source: ScaleWriter = "human",
     page_key: str | None = None,
     may_approve: bool = False,
+    check_spans: bool = False,
 ) -> WriteResult:
     """Ghi lớp (và/hoặc tỉ lệ) của một tầng trong giao dịch của người gọi; **không** `commit`.
 
     `may_approve`: người ghi có `qc.approve` (NFR-02). Thiếu mà lượt ghi làm một thực thể hay
     kích thước **mới** mang `reviewed=True` (tức là duyệt) → `FORBIDDEN`. Mặc định `False` (đóng):
     pipeline không bao giờ duyệt, route của người truyền `can(role, "qc.approve")`.
+
+    `check_spans`: kiểm H4 ô mở trong tường chủ (`_check_opening_spans`) — chỉ lượt sửa của người (route N16).
+    Khôi phục phiên bản ghi lại đúng tài liệu đã lưu, kể cả ô mở cũ đã vượt; pipeline đi `merge`, không qua đây.
 
     Ném `NOT_FOUND` (`resource="floor"`), `FORBIDDEN`, `VALIDATION`, `REVIEW_BY_AI_FORBIDDEN`,
     `LAYER_LEVEL_MISMATCH`, `LAYER_INTEGRITY_BROKEN`, `VersionConflictError` (W20), hay
@@ -278,6 +283,7 @@ async def write_layer(
         scale_source=scale_source,
         page_key=page_key,
         may_approve=may_approve,
+        check_spans=check_spans,
         project_id=floor.project_id,
         level_id=floor.level_id,
     )
@@ -401,7 +407,7 @@ async def _attempt(db: AsyncSession, request: _Request) -> WriteResult | None:
     settled = await _settle_base(db, request, current)
     if isinstance(settled, WriteResult):
         return settled
-    if request.body.layer is not None:
+    if request.check_spans and request.body.layer is not None:
         _check_opening_spans(request.body.layer, current.layer)
     scale = await _target_scale(db, request, current)
     nxt = _next_layer(request, current, scale)

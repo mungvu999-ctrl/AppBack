@@ -4,6 +4,7 @@ Postgres, kho local và broker thật (K23).
 """
 
 import asyncio
+import json
 from decimal import Decimal
 
 import pytest
@@ -14,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.lighting_bake.tests._helpers import bake_broker as bake_broker
 from apps.api.model_export import service
 from apps.api.projects.tests.test_routes_common import headers_of
+from packages.core.clock import SystemClock
 from packages.db.models.auth import User
 from packages.db.models.project_settings import ProjectSettingsRow
 from packages.db.models.projects import Project
@@ -24,6 +26,7 @@ from packages.testing.factories.auth import make_user
 from packages.testing.factories.floors import make_floor
 from packages.testing.factories.model_export import make_model_export
 from packages.testing.factories.projects import make_project
+from packages.testing.factories.spatial import make_floor_document, sample_floor_layer
 from packages.testing.fixtures.messaging import queued_payloads
 
 BAKE_QUEUE = "bake"
@@ -267,3 +270,26 @@ async def test_model_export_start_export__unexpected_error(
     assert response.status_code == 500
     assert await _statuses(db_session, project.id) == []
     assert [info.key async for info in local_storage.list_prefix(f"projects/{project.id}/model-exports/")] == []
+
+
+async def test_model_export_start_export__layer_from_document(
+    db_session: AsyncSession, api_client: AsyncClient, local_storage: LocalDiskStorage, bake_broker: SyncRedis
+) -> None:
+    """Snapshot lấy đúng `document["layer"]` của dạng lưu thật (codec), không lấy cả document (lỗi đo trên f14)."""
+    owner, project, _ = await _project(db_session)
+    floor = await make_floor(db_session, project=project)
+    layer = sample_floor_layer(0, level_id=floor.level_id)
+    await make_floor_document(db_session, floor_pk=floor.pk, layer=layer, revision=3, clock=SystemClock())
+    await db_session.commit()
+
+    created = await api_client.post(_path(project.id), json={}, headers=headers_of(owner))
+
+    assert created.status_code == 202, created.text
+    key = model_export_object(project.id, created.json()["id"], "snapshot.json")
+    raw = b"".join([chunk async for chunk in local_storage.open_read(key)])
+    floors = json.loads(raw)["floors"]
+    assert len(floors) == 1
+    assert floors[0]["revision"] == 3
+    assert len(floors[0]["layer"]["walls"]) == len(layer.walls) > 0
+    assert len(floors[0]["layer"]["openings"]) == len(layer.openings)
+    assert {"axes", "dimensions"}.isdisjoint(floors[0]["layer"])

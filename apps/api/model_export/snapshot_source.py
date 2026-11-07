@@ -62,11 +62,17 @@ def _floor_rows(rows: Sequence[Mapping[Any, Any]]) -> list[Mapping[Any, Any]]:
     return [row for row in rows if row["level_id"] is not None]
 
 
+def _layer_of(document: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Lớp không gian của document đã lưu (`codec.document_to_json`: `{layer, axes, dimensions}`); chưa có → rỗng."""
+    layer = (document or {}).get("layer")
+    return dict(layer) if isinstance(layer, Mapping) else {}
+
+
 async def take(db: AsyncSession, project_id: str, versions: Mapping[str, Any]) -> Snapshot:
     """Dựng snapshot đầy đủ (kèm `layer` của từng tầng; tầng chưa có document → lớp rỗng)."""
     rows = (await db.execute(_FULL, {"p": project_id})).mappings().all()
     scene_style = rows[0]["scene_style"]
-    floors = [{**_meta(row), "layer": row["document"] or {}} for row in _floor_rows(rows)]
+    floors = [{**_meta(row), "layer": _layer_of(row["document"])} for row in _floor_rows(rows)]
     body = build_snapshot(project_id, floors, versions, scene_style=scene_style)
     return Snapshot(
         body=body,

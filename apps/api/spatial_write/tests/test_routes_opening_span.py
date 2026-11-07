@@ -137,7 +137,6 @@ async def test_spatial_write_layer__stair_variant(api_client: httpx.AsyncClient,
     assert response.json()["field"] == "body.layer.furniture.0.variant"
 
 
-
 async def test_write_layer__opening_span_only_on_user_route(db_session: AsyncSession, fake_clock: FakeClock) -> None:
     """Không bật `check_spans` (khôi phục phiên bản ghi lại tài liệu cũ) → cửa vượt vẫn ghi; bật → 422."""
     scene = await make_scene(db_session)

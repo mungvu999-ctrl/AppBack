@@ -222,12 +222,14 @@ source = { virtual = "packages/domain" }
 dependencies = [
     { name = "appback-core", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "pydantic", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "shapely", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "appback-core", virtual = "packages/core" },
     { name = "pydantic" },
+    { name = "shapely" },
 ]
 
 [[package]]

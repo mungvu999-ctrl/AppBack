@@ -1,0 +1,359 @@
+"""Thực thi `plan.json` trong Blender rồi xuất `model.glb` + `geometry.json` (M1-01, HOP-DONG-M1 §4, §10).
+
+    blender -b --factory-startup --python-exit-code 1 -t 4 -P compile_plan.bpy -- <plan.json> <pack_dir> <out_dir>
+
+Chỉ thực thi, không suy luận hình học (mọi tính 2D nằm ở `packages.domain.model_export`). Toạ độ
+trong plan tính bằng mét, Z lên, **theo tầng** (z của phần tử tính từ cao độ tầng): mỗi phần tử là con
+của `Level_<id>` đặt ở `elevation`. Phân cấp `Building › Level › Group › phần tử`; mọi `props`/`stamps`
+ra custom props (→ glTF extras). Sau dựng kiểm từng đối tượng kiến trúc (prism + hộp của bộ cửa): cạnh
+biên, cạnh không-manifold, mặt diện tích < 1e-8 m² → `geometry.json`. Lỗi Python → mã thoát 1.
+Như `lighting_bake/bake_glb.bpy`: không tính độ phủ, giữ mỏng.
+"""
+
+import json
+import math
+import os
+import sys
+
+import bmesh
+import bpy
+from mathutils import Matrix, Vector
+from mathutils.geometry import tessellate_polygon
+
+PLAN_PATH, PACK, OUT = sys.argv[sys.argv.index("--") + 1 :][:3]
+DEGENERATE_M2 = 1e-8
+DEDUP_M = 1e-5
+
+bpy.ops.wm.read_factory_settings(use_empty=True)
+scene = bpy.context.scene
+plan = json.load(open(PLAN_PATH, encoding="utf-8"))
+records = []
+"""Bản ghi phía Blender (ảnh/mẫu thiếu trong thư mục gói) — task gộp vào sổ."""
+
+
+def set_props(obj, props):
+    """Custom props: số/chuỗi/bool giữ nguyên, kiểu khác ghi JSON; `None` bỏ qua."""
+    for key, value in (props or {}).items():
+        if value is None:
+            continue
+        obj[key] = value if isinstance(value, (str, int, float, bool)) else json.dumps(value, ensure_ascii=False)
+
+
+def empty(name, parent=None, at=(0.0, 0.0, 0.0), angle=0.0, props=None):
+    """Empty đặt theo toạ độ cục bộ của cha."""
+    obj = bpy.data.objects.new(name, None)
+    scene.collection.objects.link(obj)
+    obj.parent = parent
+    obj.location = at
+    obj.rotation_euler = (0.0, 0.0, angle)
+    set_props(obj, props)
+    return obj
+
+
+def srgb_to_linear(c):
+    """Màu plan là sRGB 0..1; Principled cần tuyến tính."""
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+# ---------------------------------------------------------------- vật liệu
+MATS, SIZES = {}, {}
+
+
+def image_node(tree, rel, colorspace, key):
+    """Nút ảnh từ tệp trong gói; thiếu tệp → ghi sổ major, trả None."""
+    path = os.path.join(PACK, rel)
+    if not os.path.isfile(path):
+        records.append({"level": "", "kind": "material", "id": key, "status": "degraded", "severity": "major",
+                        "reason": f"thiếu ảnh vật liệu {rel} trong gói xuất"})
+        return None
+    node = tree.nodes.new("ShaderNodeTexImage")
+    node.image = bpy.data.images.load(path)
+    node.image.colorspace_settings.name = colorspace
+    return node
+
+
+for key, spec in plan.get("materials", {}).items():
+    mat = bpy.data.materials.new(key)
+    mat.use_nodes = True
+    tree = mat.node_tree
+    bsdf = tree.nodes["Principled BSDF"]
+    bsdf.inputs["Base Color"].default_value = (*[srgb_to_linear(c) for c in spec["color"]], 1.0)
+    bsdf.inputs["Roughness"].default_value = spec.get("roughness", 0.9)
+    bsdf.inputs["Metallic"].default_value = spec.get("metallic", 0.0)
+    if spec.get("transmission"):
+        bsdf.inputs["Transmission Weight"].default_value = spec["transmission"]
+        bsdf.inputs["IOR"].default_value = 1.5
+    maps = spec.get("maps") or {}
+    if maps.get("base") and (node := image_node(tree, maps["base"], "sRGB", key)):
+        tree.links.new(node.outputs["Color"], bsdf.inputs["Base Color"])
+    if maps.get("rough") and (node := image_node(tree, maps["rough"], "Non-Color", key)):
+        tree.links.new(node.outputs["Color"], bsdf.inputs["Roughness"])
+    if maps.get("normal") and (node := image_node(tree, maps["normal"], "Non-Color", key)):
+        normal = tree.nodes.new("ShaderNodeNormalMap")
+        tree.links.new(node.outputs["Color"], normal.inputs["Color"])
+        tree.links.new(normal.outputs["Normal"], bsdf.inputs["Normal"])
+    set_props(mat, {"editorRef": spec.get("editorRef"), "prov": spec.get("prov"), "label": spec.get("label")})
+    MATS[key], SIZES[key] = mat, float(spec.get("sizeM") or 1.0)
+
+# ---------------------------------------------------------------- phân cấp
+building = empty("Building", props={"kind": "building", "unit": "metre", **plan.get("stamps", {})})
+LEVELS, GROUPS = {}, {}
+for lv in plan.get("levels", []):
+    LEVELS[lv["id"]] = empty(f"Level_{lv['id']}", building, (0.0, 0.0, lv["elevation"]),
+                             props={"kind": "level", "levelId": lv["id"], "name": lv.get("name"),
+                                    "elevation": lv["elevation"], "height": lv["height"]})
+
+
+def group(level, name):
+    """Empty nhóm `name` dưới tầng, tạo một lần."""
+    key = (level, name)
+    if key not in GROUPS:
+        GROUPS[key] = empty(f"{name}_{level}", LEVELS[level], props={"kind": "group", "group": name})
+    return GROUPS[key]
+
+
+def link_mesh(name, bm, parent, props=None):
+    """Đối tượng mesh từ bmesh, gắn vào cha."""
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh)
+    bm.free()
+    obj = bpy.data.objects.new(name, mesh)
+    scene.collection.objects.link(obj)
+    obj.parent = parent
+    set_props(obj, props)
+    return obj
+
+
+# ---------------------------------------------------------------- prism
+def signed_area(ring):
+    """Diện tích có dấu (dương = ngược chiều kim đồng hồ)."""
+    return sum(ring[i - 1][0] * ring[i][1] - ring[i][0] * ring[i - 1][1] for i in range(len(ring))) / 2
+
+
+def dedup(ring):
+    """Bỏ điểm trùng liền kề, giữ chỉ số cạnh gốc: [(chỉ số gốc, (x, y))]."""
+    out = []
+    for i, p in enumerate(ring):
+        if not out or math.dist(p, out[-1][1]) > DEDUP_M:
+            out.append((i, tuple(p)))
+    if len(out) > 1 and math.dist(out[0][1], out[-1][1]) <= DEDUP_M:
+        out.pop()
+    return out
+
+
+def prism_mesh(spec, slot_of):
+    """Đùn vòng ngoài + lỗ: mặt bên tứ giác, đỉnh dùng chung → mesh kín.
+
+    Đáy/đỉnh: `caps` của plan (tam giác chỉ số vào đỉnh nối tiếp các vòng, domain đã làm sạch vòng — khi đó
+    không bỏ đỉnh nào) nếu có; không có → `dedup` + `tessellate_polygon`.
+    """
+    bm = bmesh.new()
+    z0, z1 = spec["z0"], spec["z1"]
+    faces = spec.get("faceMaterials") or {}
+    by_edge = {(e["ring"], e["edgeIndex"]): e["material"] for e in faces.get("sideByRoom") or []}
+    caps = spec.get("caps")
+    rings, bottoms, tops = [], [], []
+    for r, raw in enumerate(spec["rings"]):
+        ring = [(i, tuple(p)) for i, p in enumerate(raw)] if caps else dedup(raw)
+        if len(ring) < 3 and not caps:
+            continue
+        rings.append((r, ring))
+        bottoms.append([bm.verts.new((p[0], p[1], z0)) for _, p in ring])
+        tops.append([bm.verts.new((p[0], p[1], z1)) for _, p in ring])
+    flat_b = [v for ring in bottoms for v in ring]
+    flat_t = [v for ring in tops for v in ring]
+    if not caps:
+        caps = tessellate_polygon([[Vector((p[0], p[1], 0.0)) for _, p in ring] for _, ring in rings])
+    for tri in caps:
+        tri = tuple(tri)
+        a, b, c = (flat_b[i].co for i in tri)
+        up = (b - a).cross(c - a).z > 0
+        order = tri if up else tri[::-1]
+        bm.faces.new([flat_t[i] for i in order]).material_index = slot_of(faces.get("top"))
+        bm.faces.new([flat_b[i] for i in order[::-1]]).material_index = slot_of(faces.get("bottom"))
+    for (r, ring), bot, top in zip(rings, bottoms, tops):
+        flip = (signed_area([p for _, p in ring]) > 0) != (r == 0)
+        for i, (orig, _) in enumerate(ring):
+            j = (i + 1) % len(ring)
+            quad = (bot[j], bot[i], top[i], top[j]) if flip else (bot[i], bot[j], top[j], top[i])
+            bm.faces.new(quad).material_index = slot_of(by_edge.get((r, orig), faces.get("side")))
+    return bm
+
+
+def slots_for(spec):
+    """Danh sách khoá vật liệu của prism, `side` ở ô 0 (mặt lộ ra sau boolean nhận ô 0)."""
+    faces = spec.get("faceMaterials") or {}
+    keys = [faces.get("side"), faces.get("top"), faces.get("bottom")]
+    keys += [e["material"] for e in faces.get("sideByRoom") or []]
+    ordered = []
+    for k in keys:
+        if k and k not in ordered:
+            ordered.append(k)
+    return ordered
+
+
+PRISMS, ARCH = {}, []
+for spec in plan.get("prisms", []):
+    keys = slots_for(spec)
+    bm = prism_mesh(spec, lambda k: keys.index(k) if k in keys else 0)
+    obj = link_mesh(spec["name"], bm, group(spec["level"], spec.get("group", "Misc")),
+                    {"kind": spec.get("kind"), "appId": spec.get("appId"), **(spec.get("props") or {})})
+    for k in keys:
+        obj.data.materials.append(MATS[k])
+    PRISMS[spec["name"]] = obj
+    ARCH.append(obj)
+
+
+# ---------------------------------------------------------------- ô mở (boolean EXACT, một tường một lượt)
+def box_mesh(c, size, angle, pitch=0.0):
+    """Hộp kín tâm `c`, cỡ `size`; `pitch` quay quanh trục Y của hộp (dương = đầu +X nhô lên), rồi `angle` quanh Z."""
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
+    bmesh.ops.scale(bm, vec=Vector(size), verts=bm.verts)
+    if pitch:
+        bmesh.ops.rotate(bm, matrix=Matrix.Rotation(-pitch, 3, "Y"), verts=bm.verts)
+    bmesh.ops.rotate(bm, matrix=Matrix.Rotation(angle, 3, "Z"), verts=bm.verts)
+    bmesh.ops.translate(bm, vec=Vector(c), verts=bm.verts)
+    return bm
+
+
+cutters_by_target = {}
+for cut in plan.get("cutters", []):
+    cutters_by_target.setdefault(cut["target"], []).append(cut)
+helpers = bpy.data.collections.new("_cutters")
+scene.collection.children.link(helpers)
+bpy.context.view_layer.update()
+for target, cuts in cutters_by_target.items():
+    obj = PRISMS[target]
+    for k, cut in enumerate(cuts):
+        mesh = bpy.data.meshes.new(f"_cut_{k}")
+        box_mesh(cut["box"]["c"], cut["box"]["size"], cut["box"].get("angle", 0.0)).to_mesh(mesh)
+        cutter = bpy.data.objects.new(f"_cut_{k}", mesh)
+        helpers.objects.link(cutter)
+        cutter.matrix_world = obj.parent.matrix_world if obj.parent else Matrix()
+    bpy.context.view_layer.update()
+    mod = obj.modifiers.new("cut", "BOOLEAN")
+    mod.operation, mod.solver, mod.operand_type, mod.collection = "DIFFERENCE", "EXACT", "COLLECTION", helpers
+    new = bpy.data.meshes.new_from_object(obj.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    obj.modifiers.remove(mod)
+    old, obj.data = obj.data, new
+    bpy.data.meshes.remove(old)
+    new.name = obj.name
+    for cutter in list(helpers.objects):
+        bpy.data.meshes.remove(cutter.data)
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=DEDUP_M)
+    bm.to_mesh(obj.data)
+    bm.free()
+bpy.data.collections.remove(helpers)
+
+# ---------------------------------------------------------------- bộ cửa
+for asm in plan.get("assemblies", []):
+    root = empty(asm["name"], group(asm["level"], asm.get("group", "Openings")),
+                 props={"appId": asm.get("appId"), **(asm.get("props") or {})})
+    bpy.context.view_layer.update()
+    nodes = {asm["name"]: root}
+    for pv in asm.get("pivots", []):
+        nodes[pv["name"]] = node = empty(pv["name"], root, props=pv.get("props"))
+        node.matrix_world = root.matrix_world @ Matrix.Translation(pv["at"]) @ Matrix.Rotation(pv.get("angle", 0.0), 4, "Z")
+    for bx in asm.get("boxes", []):
+        parent = nodes[bx["parent"]]
+        obj = link_mesh(bx["name"], box_mesh(bx["c"], bx["size"], bx.get("angle", 0.0), bx.get("pitch", 0.0)), parent,
+                        {"kind": "assembly-part", **(bx.get("props") or {})})
+        bpy.context.view_layer.update()
+        obj.matrix_world = root.matrix_world  # đỉnh hộp theo toạ độ tầng; bản lề quay thì hộp quay theo
+        if bx.get("material"):
+            obj.data.materials.append(MATS[bx["material"]])
+        ARCH.append(obj)
+
+# ---------------------------------------------------------------- mẫu đồ (nhập một lần, bản sao dùng chung mesh)
+TEMPLATES = {}
+
+
+def template(rel):
+    """Đối tượng mesh của `rel` (mỗi tệp nhập một lần); thiếu tệp → None."""
+    if rel not in TEMPLATES:
+        path = os.path.join(PACK, rel)
+        if not os.path.isfile(path):
+            TEMPLATES[rel] = None
+        else:
+            before = set(bpy.data.objects)
+            bpy.ops.import_scene.gltf(filepath=path)
+            bpy.context.view_layer.update()
+            TEMPLATES[rel] = [(o.data, o.matrix_world.copy()) for o in bpy.data.objects if o not in before and o.type == "MESH"]
+            for o in [o for o in bpy.data.objects if o not in before]:
+                bpy.data.objects.remove(o)
+    return TEMPLATES[rel]
+
+
+INSTANCES = set()
+for inst in plan.get("instances", []):
+    parts = template(inst["model"])
+    if parts is None:
+        records.append({"level": inst["level"], "kind": "furniture", "id": inst["name"], "status": "skipped",
+                        "severity": "major", "reason": f"mẫu {inst['model']} chưa có trong gói xuất"})
+        continue
+    root = empty(inst["name"], group(inst["level"], inst.get("group", "Furniture")), inst["at"], inst.get("rotZ", 0.0),
+                 {"model": inst["model"], **(inst.get("props") or {})})
+    root.scale = inst.get("scale", [1, 1, 1])
+    for k, (mesh, matrix) in enumerate(parts):
+        part = bpy.data.objects.new(f"{inst['name']}_{k}", mesh)
+        scene.collection.objects.link(part)
+        part.parent = root
+        part.matrix_basis = matrix
+        INSTANCES.add(part.name)
+
+
+# ---------------------------------------------------------------- UV thế giới theo `sizeM`
+def world_uv(obj):
+    """UV theo toạ độ thế giới chia cỡ lặp của vật liệu mặt: mặt ngang chiếu XY, mặt đứng chiếu (ngang, Z)."""
+    bpy.context.view_layer.update()
+    mw, mats = obj.matrix_world, obj.data.materials
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    uv = bm.loops.layers.uv.verify()
+    for f in bm.faces:
+        size = SIZES.get(mats[f.material_index].name, 1.0) if len(mats) and mats[f.material_index] else 1.0
+        n = (mw.to_3x3() @ f.normal).normalized()
+        if abs(n.z) > 0.7:
+            tu, tv = Vector((1, 0, 0)), Vector((0, 1, 0))
+        else:
+            h = Vector((n.x, n.y, 0)).normalized()
+            tu, tv = Vector((-h.y, h.x, 0)), Vector((0, 0, 1))
+        for loop in f.loops:
+            p = mw @ loop.vert.co
+            loop[uv].uv = (p.dot(tu) / size, p.dot(tv) / size)
+    bm.to_mesh(obj.data)
+    bm.free()
+
+
+for obj in ARCH:
+    world_uv(obj)
+
+# ---------------------------------------------------------------- kiểm hình học + xuất
+geometry = {"objects": 0, "open": [], "degenerate": 0, "degenerateObjects": [], "tris": 0, "records": records}
+for obj in ARCH:
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    boundary = sum(1 for e in bm.edges if e.is_boundary)
+    non_manifold = sum(1 for e in bm.edges if not e.is_manifold)
+    degenerate = sum(1 for f in bm.faces if f.calc_area() < DEGENERATE_M2)
+    geometry["objects"] += 1
+    geometry["tris"] += sum(len(f.verts) - 2 for f in bm.faces)
+    bm.free()
+    info = {"name": obj.name, "appId": obj.get("appId"), "kind": obj.get("kind")}
+    if boundary or non_manifold:
+        geometry["open"].append({**info, "boundary": boundary, "nonManifold": non_manifold})
+    if degenerate:
+        geometry["degenerate"] += degenerate
+        geometry["degenerateObjects"].append({**info, "faces": degenerate})
+for name in INSTANCES:
+    geometry["tris"] += sum(len(p.vertices) - 2 for p in bpy.data.objects[name].data.polygons)
+
+os.makedirs(OUT, exist_ok=True)
+bpy.ops.export_scene.gltf(filepath=os.path.join(OUT, "model.glb"), export_format="GLB", export_extras=True,
+                          export_yup=True, export_image_format="JPEG", export_apply=True)
+with open(os.path.join(OUT, "geometry.json"), "w", encoding="utf-8") as handle:
+    json.dump(geometry, handle, ensure_ascii=False)
+print("MODEL_EXPORT_DONE", json.dumps({k: geometry[k] for k in ("objects", "degenerate", "tris")}))

@@ -14,9 +14,9 @@ from typing import Final
 
 from packages.core.ids import check_id, is_ulid
 from packages.core.object_keys import META_SUFFIX as META_SUFFIX
+from packages.core.object_keys import MODEL_EXPORT_PACKS_PREFIX, is_segment, model_prefix, run_prefix
 from packages.core.object_keys import check_key as check_key
 from packages.core.object_keys import check_prefix as check_prefix
-from packages.core.object_keys import is_segment, model_prefix, run_prefix
 from packages.core.object_keys import project_prefix as project_prefix
 from packages.core.object_keys import upload_prefix as upload_prefix
 from packages.storage.sniff import ImageKind
@@ -105,6 +105,21 @@ def lighting_bake_prefix(project_id: str, bake_id: str) -> str:
 def lighting_bake_object(project_id: str, bake_id: str, name: str) -> str:
     """Khoá một tệp của lượt bake (`input.glb`, `baked.glb`, `lightmap.png`, `manifest.json`); `name` một đoạn."""
     return check_key(f"{lighting_bake_prefix(project_id, bake_id)}{_name(name)}")
+
+
+def model_export_prefix(project_id: str, export_id: str) -> str:
+    """Tiền tố object của một lượt xuất GLB: `projects/{prj}/model-exports/{mex}/` (id sai mẫu → `ValueError`)."""
+    return check_prefix(f"{project_prefix(project_id)}model-exports/{check_id('mex', export_id)}/")
+
+
+def model_export_object(project_id: str, export_id: str, name: str) -> str:
+    """Khoá một tệp của lượt xuất (`snapshot.json`, `model.glb`, `report.json`, `CREDITS.txt`); `name` một đoạn."""
+    return check_key(f"{model_export_prefix(project_id, export_id)}{_name(name)}")
+
+
+def model_export_pack_object(version: str, rel: str) -> str:
+    """Khoá một tệp của gói xuất `model-export-packs/{version}/{rel}`; `version` một đoạn, `rel` có thể nhiều đoạn."""
+    return check_key(f"{MODEL_EXPORT_PACKS_PREFIX}{_name(version)}/{rel}")
 
 
 def library_object(item: str, name: str) -> str:

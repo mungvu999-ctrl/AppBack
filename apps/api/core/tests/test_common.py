@@ -64,6 +64,7 @@ PATH_VALUES: Final[dict[str, str]] = {
     "family": "wallSegmentation",
     "token": "token-mau-cua-case-chung",
     "bake_id": f"bak_{ULID}",
+    "export_id": f"mex_{ULID}",
     "file_name": "baked.glb",
 }
 

@@ -20,6 +20,8 @@ META_SUFFIX: Final = ".meta.json"
 """Đuôi file metadata của `LocalDiskStorage`; khoá object không được trùng."""
 MODELS_PREFIX: Final = "ml/models/"
 """Gốc mọi phiên bản mô hình ML (BE-00 §8); payload kết thúc huấn luyện chỉ biết gốc này, chưa có id."""
+MODEL_EXPORT_PACKS_PREFIX: Final = "model-export-packs/"
+"""Gốc các gói vật liệu/mẫu của bộ xuất GLB (M1-01): `model-export-packs/{version}/…`."""
 
 _DOT_SEGMENTS: Final = frozenset({"", ".", ".."})
 _SEGMENT_RE: Final = re.compile(r"[A-Za-z0-9._-]+")

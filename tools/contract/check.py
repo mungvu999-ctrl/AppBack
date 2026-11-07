@@ -44,7 +44,9 @@ SHA_FILE: Final = Path(__file__).resolve().parent / "APPFRONT_SHA"
 SAMPLES_ENV: Final = "CONTRACT_SAMPLES_DIR"
 REQUIRE_ALL_ENV: Final = "CONTRACT_REQUIRE_ALL"
 
-H1_EXEMPT: Final = frozenset({"health_live", "health_ready", "files_read_object", "lighting_bake_download_file"})
+H1_EXEMPT: Final = frozenset(
+    {"health_live", "health_ready", "files_read_object", "lighting_bake_download_file", "model_export_download_file"}
+)
 """Miễn H1 **đóng** (B0-07 [2], K06): thêm tên vào đây là trái hiến chương."""
 PROGRESS_OP: Final = "drawings_read_progress"
 PROGRESS_BRANCHES: Final = ("pending", "running", "completed", "failed")

@@ -705,3 +705,17 @@ ruleConfig.ts       RULE_OVERRIDE_SEVERITIES · RuleOverrideSchema · ProjectRul
   revision mọi tầng, phiên bản thư viện, vật liệu, prompt) thì dùng lại, không gọi AI. Lỗi 503 `DESIGN_DIRECTOR_DISABLED`,
   429 `DESIGN_DIRECTOR_QUOTA` (cả hai `Retry-After: 10`). Mã hỏng: `DESIGN_DIRECTOR_FAILED`, `DESIGN_DIRECTOR_OUTPUT_INVALID`,
   `DESIGN_DIRECTOR_STALLED`. FE coi mọi lỗi là "dùng cách bày mặc định", không báo lỗi chặn.
+
+## 13. Xuất mô hình dựng trên máy chủ → `modelExport.ts` (M1-01)
+
+- `MODEL_EXPORT_STATUSES = ['queued', 'running', 'done', 'failed', 'superseded']`; `MODEL_EXPORT_QUALITIES = ['ready', 'degraded', 'blocked']`.
+- `ModelExportSchema` (strict): `id` (`mex_` + ULID), `status`, `stale` (bool), `fingerprint`, `currentFingerprint`, `snapshotRevisions`
+  (`{levelId, revision}[]`), `counts` (`Record<string, number>`, khoá `<loại>:<trạng thái>`), `issues` (`{severity: minor|major|critical,
+  reason, count}[]`, lý do tiếng Việt do BE sinh), `createdAt`; `startedAt` khi `status ≠ queued`; `endedAt` khi `done|failed`;
+  `quality` khi và chỉ khi `done`; `failureCode` khi và chỉ khi `failed`; `glbBytes` khi `done` và còn tệp. Không trả URL (W1).
+- N49 thân `{}`; dựng ảnh chụp bất biến (mọi tầng: cao độ, cao tầng, ẩn, revision, tài liệu) + phiên bản bộ biên dịch/gói → dấu vân.
+  Cùng dấu vân đã có job `queued|running|done` → 200 job đó; khác → job `queued|running` cũ thành `superseded`, 202 job mới.
+- N50 404 `resource: "modelExport"` khi chưa có. N51 `model.glb` khi chưa `done` hoặc `quality = blocked` → 409 `MODEL_EXPORT_NOT_READY`.
+- Mã hỏng: `MODEL_EXPORT_FAILED`, `MODEL_EXPORT_TIMEOUT`, `MODEL_EXPORT_OUTPUT_INVALID`, `MODEL_EXPORT_STALLED`, `MODEL_EXPORT_PACK_MISSING`.
+- Câu chữ mục này, dòng N49–N51 của BE-BIND và phần thêm ở BE-00 (W4 `mex_`, hàng `bake`, khoá lưu trữ, miễn H1 N51) **chờ chủ
+  dự án duyệt** (tiền lệ LB-01).

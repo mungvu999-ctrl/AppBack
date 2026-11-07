@@ -15,7 +15,7 @@
 > - S1/S2 chia chủ S-case.
 >
 > **Đường v1** là đường thật sau F-01a (tiền tố `/api`, E1) và F-03 (lồng tạo và liệt kê tầng, T3). Tham số đường viết snake_case (W21).
-> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 50 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
+> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 53 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
 > **Khoá:** `—` = mọi vai đã đăng nhập (miễn C07), `thành viên` = mọi vai là thành viên dự án, `admin` = `require_admin` (route trong dự án: `require_project("admin")` — thành viên **và** vai admin, 404 trước 403).
 
 ## 1. Hợp đồng CŨ — 49 thao tác HTTP + 2 kênh SSE
@@ -132,6 +132,9 @@
 | N46 | `GET /api/projects/{project_id}/floors/{floor_id}/detected-geometry` | `spatial_read_detected_geometry` | `quality.ts` (`DetectedGeometry`) | Đ | thành viên | — | QT-SCALE-API | màn tỉ lệ: điểm bắt, bề dày tường, cửa, phòng lớn nhất, hộp ngoài (px trang); chưa có lượt → rỗng |
 | N47 | `GET /api/projects/{project_id}/design-concept` | `design_director_read_state` | `designConcept.ts` (`DesignConceptState`) | Đ | thành viên | — | AID-01 | editor: công tắc, kiểu AI đề xuất, concept đang chọn; thăm dò 3 s khi đang chạy |
 | N48 | `POST /api/projects/{project_id}/design-concept` | `design_director_select_concept` | `designConcept.ts` (`DesignConcept`) | G | `project.settings.edit` | — | AID-01 | ô chọn phong cách; luôn 202 (dùng lại concept cùng đầu vào); 503 `DESIGN_DIRECTOR_DISABLED`, 429 `DESIGN_DIRECTOR_QUOTA` |
+| N49 | `POST /api/projects/{project_id}/model-exports` | `model_export_start_export` | `modelExport.ts` | G | `model.export` | — | M1-01 | màn Xuất, lựa chọn "GLB dựng trên máy chủ" (sau cờ `VITE_EXPORT_ENGINE=compiler`); thân `{}`; 202 job mới, 200 khi đã có job cùng dấu vân (cache) |
+| N50 | `GET /api/projects/{project_id}/model-exports/latest` | `model_export_read_latest` | `modelExport.ts` | Đ | thành viên | — | M1-01 | thăm dò mỗi 3 s; bỏ job `superseded`; `stale` khi tài liệu đổi sau lần xuất; chưa có → 404 |
+| N51 | `GET /api/projects/{project_id}/model-exports/{export_id}/files/{file_name}` | `model_export_download_file` | nhị phân | Đ | thành viên | — | M1-01 | model.glb / report.json / CREDITS.txt; model.glb chỉ khi `done` và `quality ≠ blocked` (409 `MODEL_EXPORT_NOT_READY`); miễn H1 (thân nhị phân) |
 
 N24 có version: áp thêm C09, C09b, C14 theo CASE §2.2 A.
 

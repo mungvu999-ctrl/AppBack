@@ -31,7 +31,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 JUNIT_PATHS = (Path("/tmp/junit.xml"), Path("/tmp/junit-perf.xml"))
 # route hạ tầng/tệp nhị phân (= H1_EXEMPT): miễn cảnh báo "đã mount nhưng không có dòng";
 # N44 có dòng BE-BIND nên vẫn đòi case
-INFRA_OPS = frozenset({"files_read_object", "health_live", "health_ready", "lighting_bake_download_file"})
+INFRA_OPS = frozenset(
+    {"files_read_object", "health_live", "health_ready", "lighting_bake_download_file", "model_export_download_file"}
+)
 
 # ---------------------------------------------------------------------------
 # Kiểu dữ liệu

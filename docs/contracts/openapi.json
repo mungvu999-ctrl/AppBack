@@ -1900,6 +1900,31 @@
         "title": "EmptyBody",
         "type": "object"
       },
+      "ExportIssue": {
+        "additionalProperties": false,
+        "description": "Thiếu sót gom theo (mức, lý do) từ `report_summary.records`.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "severity",
+          "reason",
+          "count"
+        ],
+        "title": "ExportIssue",
+        "type": "object"
+      },
       "FeatureFlagsOut": {
         "additionalProperties": false,
         "description": "`GET /api/feature-flags` — đúng 10 khoá của `flags.FEATURE_FLAG_KEYS`.",
@@ -2903,7 +2928,10 @@
                   "lounger",
                   "planter",
                   "bamboo",
-                  "shrub"
+                  "shrub",
+                  "straight",
+                  "curved",
+                  "spiral"
                 ],
                 "type": "string"
               },
@@ -3215,7 +3243,10 @@
                   "lounger",
                   "planter",
                   "bamboo",
-                  "shrub"
+                  "shrub",
+                  "straight",
+                  "curved",
+                  "spiral"
                 ],
                 "type": "string"
               },
@@ -4018,6 +4049,144 @@
         "enum": [
           "engineer",
           "viewer"
+        ],
+        "type": "string"
+      },
+      "ModelExport": {
+        "additionalProperties": false,
+        "description": "Một lượt xuất: N49 trả lượt mở/đã có, N50 trả lượt mới nhất không bị thay thế.",
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "currentFingerprint": {
+            "title": "Currentfingerprint",
+            "type": "string"
+          },
+          "endedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endedat"
+          },
+          "failureCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failurecode"
+          },
+          "fingerprint": {
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "glbBytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Glbbytes"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/ExportIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelExportQuality"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "snapshotRevisions": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotRevision"
+            },
+            "title": "Snapshotrevisions",
+            "type": "array"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ModelExportStatus"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "stale",
+          "fingerprint",
+          "currentFingerprint",
+          "snapshotRevisions",
+          "counts",
+          "issues",
+          "createdAt"
+        ],
+        "title": "ModelExport",
+        "type": "object"
+      },
+      "ModelExportQuality": {
+        "enum": [
+          "ready",
+          "degraded",
+          "blocked"
+        ],
+        "type": "string"
+      },
+      "ModelExportStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed",
+          "superseded"
         ],
         "type": "string"
       },
@@ -7031,6 +7200,31 @@
           "kind"
         ],
         "title": "SnapPointOut",
+        "type": "object"
+      },
+      "SnapshotRevision": {
+        "additionalProperties": false,
+        "description": "Revision của một tầng trong snapshot.",
+        "properties": {
+          "levelId": {
+            "title": "Levelid",
+            "type": "string"
+          },
+          "levelName": {
+            "title": "Levelname",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "levelId",
+          "levelName",
+          "revision"
+        ],
+        "title": "SnapshotRevision",
         "type": "object"
       },
       "SpatialGraphDocumentOut": {
@@ -11772,6 +11966,146 @@
         "summary": "Members Remove Member",
         "tags": [
           "members"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/model-exports": {
+      "post": {
+        "description": "N49 — thân `{}`; 202 với lượt `queued` mới, 200 khi đã có lượt sống cùng dấu vân (cache).",
+        "operationId": "model_export_start_export_api_projects__project_id__model_exports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelExport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Model Export Start Export",
+        "tags": [
+          "model_export"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/model-exports/latest": {
+      "get": {
+        "description": "N50 — lượt mới nhất không `superseded`, kèm `stale`; chưa có → 404 `modelExport`.",
+        "operationId": "model_export_read_latest_api_projects__project_id__model_exports_latest_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelExport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Model Export Read Latest",
+        "tags": [
+          "model_export"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/model-exports/{export_id}/files/{file_name}": {
+      "get": {
+        "description": "N51 — stream `model.glb` | `report.json` | `CREDITS.txt` của lượt `done`.",
+        "operationId": "model_export_download_file_api_projects__project_id__model_exports__export_id__files__file_name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_name",
+            "required": true,
+            "schema": {
+              "title": "File Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Model Export Download File",
+        "tags": [
+          "model_export"
         ]
       }
     },

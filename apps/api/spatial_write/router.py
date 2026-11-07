@@ -14,8 +14,6 @@ qua C09b của `write_layer`. Handler **không** `commit` — `AppRoute` commit 
 from typing import Annotated, Final
 
 from fastapi import Depends
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.core.deps import ClockDep, DbSession
 from apps.api.core.routing import protected_router, route_options
@@ -23,9 +21,8 @@ from apps.api.floors.lookup import get_floor
 from apps.api.projects.access import ProjectAccess, require_project
 from apps.api.spatial_read.wire import layer_out
 from apps.api.spatial_write.schemas import FloorLayerWriteResultSchema, FloorLayerWriteSchema
-from apps.api.spatial_write.writer import LayerWrite, write_layer
+from apps.api.spatial_write.writer import LayerWrite, actor_name, write_layer
 from packages.core.error_codes import NOT_FOUND
-from packages.db.models.auth import User
 from packages.domain.permissions import can
 
 BODY_LIMIT: Final = 8 * 1024 * 1024
@@ -33,15 +30,6 @@ BODY_LIMIT: Final = 8 * 1024 * 1024
 
 router = protected_router(tags=["spatial"])
 ROUTERS: Final = (router,)
-
-
-async def _actor_name(db: AsyncSession, user_id: str) -> str:
-    """Tên người ghi đọc **trong cùng giao dịch** với lượt ghi.
-
-    Nhật ký lưu tên **lúc ghi** (`changed_by_name`), nên đọc nó ở đây chứ không lấy từ token:
-    token chỉ mang `sub` (K05, W18), và một lần đổi tên sau đó không được sửa dòng cũ.
-    """
-    return (await db.execute(select(User.name).where(User.id == user_id))).scalar_one()
 
 
 @router.put("/projects/{project_id}/floors/{floor_id}/spatial/layer")
@@ -69,7 +57,7 @@ async def spatial_write_layer(
             origin=body.body.origin,
         ),
         actor_id=access.principal.user_id,
-        actor_name=await _actor_name(db, access.principal.user_id),
+        actor_name=await actor_name(db, access.principal.user_id),
         clock=clock,
         may_approve=can(access.role, "qc.approve"),
     )

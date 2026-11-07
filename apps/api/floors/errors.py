@@ -15,3 +15,6 @@ FLOOR_LIMIT_REACHED = ERRORS.define("FLOOR_LIMIT_REACHED", 422)
 
 FLOOR_REORDER_MISMATCH = ERRORS.define("FLOOR_REORDER_MISMATCH", 422)
 """#13: `floorIds` không bằng đúng tập tầng chưa xoá của một dự án; ném kèm `field="floorIds"`."""
+
+FLOOR_HEIGHT_BELOW_OPENING = ERRORS.define("FLOOR_HEIGHT_BELOW_OPENING", 422)
+"""#34 (H2): hạ `heightMm` làm một tường theo tầng thấp hơn đỉnh ô mở của nó; ném kèm `field="heightMm"`."""

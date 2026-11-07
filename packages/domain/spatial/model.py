@@ -141,8 +141,12 @@ FurnitureVariant = Literal[
     "planter",
     "bamboo",
     "shrub",
+    "straight",
+    "curved",
+    "spiral",
 ]
-"""35 `FURNITURE_VARIANTS` của FE `src/domain/spatial/types.ts`, đúng thứ tự."""
+"""35 `FURNITURE_VARIANTS` của FE `src/domain/spatial/types.ts`, đúng thứ tự, cộng 3 kiểu cầu thang `StairType` của
+Pascal (`straight`, `curved`, `spiral`) mà `toSpatial` ghi cho cầu thang (M1-01 H3.4)."""
 
 
 def _straight(curve_offset_mm: int) -> bool:

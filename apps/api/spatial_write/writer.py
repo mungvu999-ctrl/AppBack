@@ -19,6 +19,7 @@ Python** truyền sai đối số (không bao giờ do dây gửi lên).
 
 import json
 import logging
+import math
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -43,6 +44,7 @@ from apps.api.spatial_write.settings import get_spatial_write_settings
 from packages.core.clock import Clock
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, FORBIDDEN, NOT_FOUND, VALIDATION
 from packages.core.errors import MISSING, SYSTEM_PIPELINE, VersionConflictError
+from packages.db.models.auth import User
 from packages.db.models.floors import FloorRow
 from packages.db.models.spatial import FloorChangeLogRow, FloorDocumentRow
 from packages.domain.rules_ai import merge_dimensions
@@ -223,6 +225,15 @@ def body_sha256(body: LayerWrite) -> str:
     return sha256(canonical.encode()).hexdigest()
 
 
+async def actor_name(db: AsyncSession, user_id: str) -> str:
+    """Tên người ghi đọc **trong cùng giao dịch** với lượt ghi (`actor_name` của `write_layer`).
+
+    Nhật ký lưu tên **lúc ghi** (`changed_by_name`), nên đọc nó ở đây chứ không lấy từ token:
+    token chỉ mang `sub` (K05, W18), và một lần đổi tên sau đó không được sửa dòng cũ.
+    """
+    return (await db.execute(select(User.name).where(User.id == user_id))).scalar_one()
+
+
 async def write_layer(
     db: AsyncSession,
     *,
@@ -390,6 +401,8 @@ async def _attempt(db: AsyncSession, request: _Request) -> WriteResult | None:
     settled = await _settle_base(db, request, current)
     if isinstance(settled, WriteResult):
         return settled
+    if request.body.layer is not None:
+        _check_opening_spans(request.body.layer, current.layer)
     scale = await _target_scale(db, request, current)
     nxt = _next_layer(request, current, scale)
     dimensions = _next_dimensions(request, current, scale, nxt)
@@ -406,6 +419,35 @@ async def _attempt(db: AsyncSession, request: _Request) -> WriteResult | None:
     return await _commit(
         db, request, current, expected=settled, nxt=nxt, document=document, scale=scale, dimensions=dimensions
     )
+
+
+def _check_opening_spans(sent: SpatialLayer, stored: SpatialLayer) -> None:
+    """H4 (HOP-DONG-M1 §7): ô mở phải nằm trong tường chủ — `0 ≤ offsetMm` và `offsetMm + widthMm ≤ dài + 1 mm`.
+
+    Chỉ kiểm ô mở **bị chạm** trong lượt ghi: mới, đổi `wallId`/`offsetMm`/`widthMm` so với bản đã lưu, hoặc
+    tường chủ đổi `centreline`. Ô mở cũ đã vượt mà không ai chạm vẫn ghi được — dữ liệu cũ không làm kẹt autosave
+    (bộ biên dịch xuất xử lý nó theo §1, không kẹp). Đổi trường khác (`swing`, …) không tính là chạm vì không đổi
+    phép đo này. So ở tỉ lệ của thân (trước co giãn), cùng hệ với `stored`.
+
+    Tường cong (`curveOffsetMm ≠ 0`) bỏ qua phép kiểm: chưa rõ Pascal đo `offsetMm` theo cung hay theo dây, dùng dây
+    cung sẽ chặn nhầm ô mở hợp lệ gần đầu tường; bộ biên dịch cũng bỏ qua ô mở trên tường cong (§1). Tường chủ luôn
+    có trong `sent`: `_check_candidate` đã chặn ô mở mất tường (toàn vẹn `critical`).
+    """
+    walls = {wall.id: wall for wall in sent.walls}
+    stored_lines = {wall.id: wall.centreline for wall in stored.walls}
+    stored_spans = {item.id: (item.wall_id, item.offset_mm, item.width_mm) for item in stored.openings}
+    for index, opening in enumerate(sent.openings):
+        host = walls[opening.wall_id]
+        touched = (
+            stored_spans.get(opening.id) != (opening.wall_id, opening.offset_mm, opening.width_mm)
+            or stored_lines.get(host.id) != host.centreline
+        )
+        if host.curve_offset_mm != 0 or not touched:
+            continue
+        start, end = host.centreline.start, host.centreline.end
+        length = math.hypot(end.x - start.x, end.y - start.y)
+        if opening.offset_mm < 0 or opening.offset_mm + opening.width_mm > length + 1:
+            raise VALIDATION.error(field=f"body.layer.openings.{index}.offsetMm")
 
 
 type _Reviewable = Wall | Opening | Room | Furniture | Roof | Dimension | Axis

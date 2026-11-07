@@ -21,6 +21,7 @@ from apps.api.projects.tests.test_routes_common import headers_of
 from apps.api.spatial_read.tests._helpers import make_scene
 from apps.api.spatial_write.tests._helpers import log_count, log_rows, make_room, make_wall, simple_layer
 from apps.api.spatial_write.tests._route_helpers import (
+    fitted,
     layer_path,
     make_furniture,
     put_layer,
@@ -74,7 +75,7 @@ async def test_spatial_write_layer__C01(api_client: httpx.AsyncClient, db_sessio
     """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
-    layer = sample_floor_layer(0, level_id=floor.level_id)
+    layer = fitted(sample_floor_layer(0, level_id=floor.level_id))
 
     response = await put_layer(api_client, scene.project.id, floor.level_id, scene.owner, write_body(0, layer=layer))
 
@@ -95,7 +96,7 @@ async def test_spatial_write_layer__C01_clear_area(api_client: httpx.AsyncClient
     """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
-    layer = sample_floor_layer(0, level_id=floor.level_id)
+    layer = fitted(sample_floor_layer(0, level_id=floor.level_id))
 
     response = await put_layer(api_client, scene.project.id, floor.level_id, scene.owner, write_body(0, layer=layer))
 
@@ -116,7 +117,7 @@ async def test_spatial_write_layer__C01_pascal_fields(api_client: httpx.AsyncCli
     """FE3D-B J-v3: PUT nhận sơn tường, mặt sàn phòng, biến thể/mô hình/ô vật liệu đồ đạc; N16 trả lại đúng."""
     scene = await make_scene(db_session)
     floor = scene.floors[0]
-    layer = with_pascal_fields(sample_floor_layer(0, level_id=floor.level_id))
+    layer = with_pascal_fields(fitted(sample_floor_layer(0, level_id=floor.level_id)))
 
     response = await put_layer(api_client, scene.project.id, floor.level_id, scene.owner, write_body(0, layer=layer))
 
@@ -135,7 +136,7 @@ async def test_spatial_write_layer__C01_door_style(
     """EDITOR3D-DOT2: `doorStyle` khứ hồi trên cửa đi lùa; trên cửa bản lề thì cả thân 422 (FE bỏ trường)."""
     scene = await make_scene(db_session)
     floor = scene.floors[0]
-    payload = write_body(0, layer=sample_floor_layer(0, level_id=floor.level_id))
+    payload = write_body(0, layer=fitted(sample_floor_layer(0, level_id=floor.level_id)))
     openings = payload["body"]["layer"]["openings"]
     openings[0] = {**openings[0], "kind": "door", "swing": swing, "doorStyle": "pocket"}
 

@@ -80,3 +80,15 @@ def make_furniture(
             "reviewed": False,
         }
     )
+
+
+def fitted(layer: SpatialLayer) -> SpatialLayer:
+    """Lớp mẫu với mọi ô mở đặt lọt tường 1000 mm (offset 50, rộng ≤ 900).
+
+    Toà mẫu (`samples.py`, đồng bộ với FE) đặt cửa 300+900 và cửa sổ 500+1200 trên tường 1000 mm —
+    vượt đầu tường, nên PUT nó như ô mở **mới** bị H4 chặn (HOP-DONG-M1 §7).
+    """
+    openings = tuple(
+        item.model_copy(update={"offset_mm": 50, "width_mm": min(item.width_mm, 900)}) for item in layer.openings
+    )
+    return layer.model_copy(update={"openings": openings})

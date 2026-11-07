@@ -5,7 +5,10 @@ cần ghi `FOR UPDATE` theo `pk` → `summaries.*` → `touch_project` cuối c�
 (trùng id, trần tầng, tập tầng) kiểm **sau** khoá tư vấn, trong giao dịch ghi.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from decimal import Decimal
+from typing import cast
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -15,16 +18,24 @@ from apps.api.access.activity import record_activity
 from apps.api.access.kinds import ActivityKind
 from apps.api.core.auth import Principal
 from apps.api.drawings.runs import restore_window_elapsed
-from apps.api.floors.errors import FLOOR_ID_TAKEN, FLOOR_LIMIT_REACHED, FLOOR_REORDER_MISMATCH
+from apps.api.floors.errors import (
+    FLOOR_HEIGHT_BELOW_OPENING,
+    FLOOR_ID_TAKEN,
+    FLOOR_LIMIT_REACHED,
+    FLOOR_REORDER_MISMATCH,
+)
 from apps.api.floors.lookup import floor_outs, get_floor, lock_project_floors
 from apps.api.floors.schemas import FloorCreateIn, FloorPatchIn
 from apps.api.floors.settings import get_floors_settings
 from apps.api.projects.summaries import register_floor, set_floor_orders, touch_project, unregister_floor
 from apps.api.projects.wire import FloorOut
+from apps.api.spatial_read.documents import load_document
+from apps.api.spatial_write.writer import LayerWrite, actor_name, write_layer
 from packages.core.clock import Clock
 from packages.core.error_codes import NOT_FOUND, PATH_BODY_MISMATCH
 from packages.db.errors import unique_violation
 from packages.db.models.floors import FloorRow
+from packages.domain.spatial import SpatialLayer
 
 
 async def _locked_rows(db: AsyncSession, project_id: str, level_id: str) -> list[FloorRow]:
@@ -292,6 +303,62 @@ def _apply_changes(row: FloorRow, changes: dict[str, object]) -> None:
         setattr(row, "floor_order" if field == "order" else field, value)
 
 
+@dataclass(frozen=True)
+class _Retargeted:
+    """`MergeOutcome` của `write_layer` cho H2: lớp đã đổi cao tường, không đổi id nào."""
+
+    layer: SpatialLayer
+    id_map: Mapping[str, str]
+
+
+def _retargeted_heights(layer: SpatialLayer, old_mm: int, new_mm: int) -> SpatialLayer:
+    """Lớp với mọi tường "theo tầng" (`heightMm == old_mm`) đổi sang `new_mm`; tường khác giữ nguyên.
+
+    Một ô mở của tường theo tầng có `sill + height > new_mm` → 422 `FLOOR_HEIGHT_BELOW_OPENING`
+    (`field="heightMm"`) trước khi đổi gì (H2, HOP-DONG-M1 §7). Không tường nào khớp → trả nguyên
+    `layer`, `write_layer` khi đó thấy "không đổi" và không tăng `revision`.
+    """
+    inherited = {wall.id for wall in layer.walls if wall.height_mm == old_mm}
+    if any(item.wall_id in inherited and item.sill_height_mm + item.height_mm > new_mm for item in layer.openings):
+        raise FLOOR_HEIGHT_BELOW_OPENING.error(field="heightMm")
+    walls = tuple(
+        wall.model_copy(update={"height_mm": new_mm}) if wall.id in inherited else wall for wall in layer.walls
+    )
+    return layer.model_copy(update={"walls": walls})
+
+
+async def _retarget_walls(db: AsyncSession, row: FloorRow, new_mm: int, principal: Principal, clock: Clock) -> None:
+    """H2: đổi cao tầng kéo theo tường "theo tầng", qua `write_layer` (khoá, `revision += 1`, nhật ký `height_mm`).
+
+    Đi đường `merge` của `write_layer` chứ không ghi tay: đường ấy khoá `floor_documents FOR UPDATE`
+    rồi `floor_entity_ids` → `project_floor_summaries` → `projects` đúng BE-00 §7 (dòng `floors` đã
+    `FOR UPDATE` ở `patch_floor`), ghi nhật ký theo trường để 409 W20 của FE cầm `baseVersion` cũ thấy
+    `remoteChanges` `height_mm`, và không đánh `edited` cho tường AI (đây không phải người sửa tường).
+    Không có lỗi xung đột: PATCH tầng vốn last-write-wins. Tầng chưa có tài liệu → không làm gì.
+
+    Giới hạn đã biết: tường **tuỳ chỉnh** trùng đúng chiều cao cũ của tầng không phân biệt được với
+    tường theo tầng, nên cũng bị đổi theo.
+    """
+    if await load_document(db, row.pk) is None:
+        return
+    old_mm = row.height_mm
+
+    def retarget(layer: SpatialLayer, _scale: Decimal | None) -> _Retargeted:
+        """Hàm `merge`: nền là lớp đang có, đã khoá."""
+        return _Retargeted(_retargeted_heights(layer, old_mm, new_mm), {})
+
+    await write_layer(
+        db,
+        floor_pk=row.pk,
+        base_revision=0,
+        body=LayerWrite(layer=None, scale_mm_per_px=None),
+        actor_id=principal.user_id,
+        actor_name=await actor_name(db, principal.user_id),
+        clock=clock,
+        merge=retarget,
+    )
+
+
 async def patch_floor(
     db: AsyncSession,
     project_id: str,
@@ -302,12 +369,18 @@ async def patch_floor(
     *,
     app: object | None,
 ) -> FloorOut:
-    """#34: last-write-wins; `{}` hay giá trị không đổi → 200 không ghi, không nhật ký (B2-03 [6])."""
+    """#34: last-write-wins; `{}` hay giá trị không đổi → 200 không ghi, không nhật ký (B2-03 [6]).
+
+    Đổi `heightMm` thì tường theo tầng đổi theo trong cùng giao dịch (H2, `_retarget_walls`), **trước**
+    `set_floor_orders`/`touch_project` để giữ thứ tự khoá `floors` → `floor_documents` → … → `projects`.
+    """
     _check_path_body_id(level_id, body.id)
     await lock_project_floors(db, project_id)
     found = await get_floor(db, project_id=project_id, level_id=level_id, for_update=True)
     row = _checked_floor(found)
     changes = _changed_fields(row, body)
+    if "height_mm" in changes:
+        await _retarget_walls(db, row, cast("int", changes["height_mm"]), principal, clock)
     if changes:
         _apply_changes(row, changes)
         if "order" in changes:

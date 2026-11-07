@@ -325,3 +325,75 @@ async def test_model_export_read_latest__issues_skip_info(db_session: AsyncSessi
         {"severity": "major", "reason": "tường trùng", "count": 1},
         {"severity": "minor", "reason": "cửa xếp dựng như 2 tấm", "count": 1},
     ]
+
+
+OPTIONAL_UNSET = ("quality", "startedAt", "endedAt", "failureCode", "glbBytes")
+"""Trường tuỳ chọn của `ModelExport` mà lượt `queued` chưa có (C17: vắng khoá, không `null`)."""
+
+
+async def test_model_export_start_export__C08(db_session: AsyncSession, api_client: AsyncClient) -> None:
+    """Dự án không tồn tại → 404 `project`, không mở lượt."""
+    owner, _, _ = await _project(db_session)
+    response = await api_client.post(_path("prj_" + "0" * 26), json={}, headers=headers_of(owner))
+    assert response.status_code == 404
+    assert response.json()["resource"] == "project"
+
+
+async def test_model_export_start_export__C17(
+    db_session: AsyncSession, api_client: AsyncClient, local_storage: LocalDiskStorage, bake_broker: SyncRedis
+) -> None:
+    """Lượt mới `queued`: các trường chưa có giá trị vắng khoá."""
+    owner, project, _ = await _project(db_session)
+    await make_floor(db_session, project=project)
+    await db_session.commit()
+
+    response = await api_client.post(_path(project.id), json={}, headers=headers_of(owner))
+
+    assert response.status_code == 202, response.text
+    assert not set(OPTIONAL_UNSET) & set(response.json())
+
+
+async def test_model_export_read_latest__C06(db_session: AsyncSession, api_client: AsyncClient) -> None:
+    """Không là thành viên → 404 `project`, kể cả khi dự án có lượt xuất."""
+    _, project, _ = await _project(db_session)
+    await make_model_export(db_session, project_id=project.id, status="done", quality="ready")
+    outsider = await make_user(db_session)
+    await db_session.commit()
+
+    response = await api_client.get(_path(project.id, "/latest"), headers=headers_of(outsider))
+
+    assert response.status_code == 404
+    assert response.json()["resource"] == "project"
+
+
+async def test_model_export_read_latest__C17(db_session: AsyncSession, api_client: AsyncClient) -> None:
+    """Lượt `queued` đọc qua N50: các trường chưa có giá trị vắng khoá."""
+    owner, project, _ = await _project(db_session)
+    await make_model_export(db_session, project_id=project.id)
+
+    response = await api_client.get(_path(project.id, "/latest"), headers=headers_of(owner))
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "queued"
+    assert not set(OPTIONAL_UNSET) & set(response.json())
+
+
+async def test_model_export_download_file__C06(
+    db_session: AsyncSession, api_client: AsyncClient, local_storage: LocalDiskStorage
+) -> None:
+    """Không là thành viên → 404 `project`, không stream tệp."""
+    _, project, _ = await _project(db_session)
+    row = await make_model_export(db_session, project_id=project.id, status="done", quality="ready")
+    await local_storage.put(
+        model_export_object(project.id, row.id, "model.glb"),
+        b"glTF-bytes",
+        content_type="model/gltf-binary",
+        max_bytes=100,
+    )
+    outsider = await make_user(db_session)
+    await db_session.commit()
+
+    response = await api_client.get(_path(project.id, f"/{row.id}/files/model.glb"), headers=headers_of(outsider))
+
+    assert response.status_code == 404
+    assert response.json()["resource"] == "project"

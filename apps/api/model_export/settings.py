@@ -14,7 +14,7 @@ class ModelExportSettings(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore", env_file=None)
 
-    model_export_pack_version: str = "m1-01-pack-1"
+    model_export_pack_version: str = "m1-01-pack-2"
     """Gói đã kiểm cùng mã này (nạp bằng `cli import-pack`); đổi qua biến môi trường khi nạp gói mới."""
     model_export_compiler_version: str | None = None
     """`None` → suy từ mã (`packages.domain.model_export.version.compiler_version`); chỉ đặt khi cần ghim tay."""

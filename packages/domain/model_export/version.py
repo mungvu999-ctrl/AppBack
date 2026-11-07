@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Final
 
 PREFIX: Final = "m1-01"
-EXECUTOR_SHA: Final = "750a80dbf786725268854409b7519a755d5b6bc29bdcd44bc7fce6d64998ab59"
+EXECUTOR_SHA: Final = "ed404d4632f1af5e440779fe6e176e441c1365cdd257c4f131085768099a9f7b"
 """sha256 (xuống dòng LF) của `apps/worker/model_export/compile_plan.bpy`."""
 
 

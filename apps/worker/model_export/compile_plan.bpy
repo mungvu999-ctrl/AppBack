@@ -21,7 +21,9 @@ from mathutils import Matrix, Vector
 from mathutils.geometry import tessellate_polygon
 
 PLAN_PATH, PACK, OUT = sys.argv[sys.argv.index("--") + 1 :][:3]
-DEGENERATE_M2 = 1e-8
+DEGENERATE_M2 = 1e-10
+"""Ngưỡng mặt suy biến: dưới tam giác nhỏ nhất mà lưới 0,1 mm của kế hoạch cho phép (0,5 · 1e-4² = 5e-9 m²),
+nên chỉ bắt mặt thẳng hàng thật; 1e-8 cũ bắt nhầm bậc 0,1 mm hợp lệ (đo trên nt-02, 07/11)."""
 DEDUP_M = 1e-5
 
 bpy.ops.wm.read_factory_settings(use_empty=True)

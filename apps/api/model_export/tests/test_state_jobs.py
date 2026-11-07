@@ -89,7 +89,7 @@ async def _objects(storage: LocalDiskStorage, project_id: str, export_id: str) -
     return [info.key async for info in storage.list_prefix(model_export_prefix(project_id, export_id))]
 
 
-async def test_run_model_export_sweep__J06(
+async def test_sweep_model_exports__J06(
     db_session: AsyncSession,
     db_sessionmaker: async_sessionmaker[AsyncSession],
     local_storage: LocalDiskStorage,
@@ -165,7 +165,7 @@ async def _seed_old_queued() -> str:
 
 
 @pytest.mark.usefixtures("process_env", "celery_test_app")
-def test_sweep_model_exports_smoke(bake_broker: SyncRedis) -> None:
+def test_sweep_model_exports__J01(bake_broker: SyncRedis) -> None:
     """Hàm lịch thật (đồng bộ, như test khói LB-01): lượt `queued` im được gửi lại lên hàng `bake`."""
     export_id = asyncio.run(_seed_old_queued())
 

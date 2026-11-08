@@ -55,6 +55,20 @@ async def test_take__floor_with_suggestions() -> None:
     assert "suggestionsEnabled" not in floor
 
 
+async def test_take__layer_switched_off_exports_no_suggestions() -> None:
+    """F5: tầng tắt lớp (writer giữ bản đã lưu, bỏ khoá `suggestionsEnabled`, tăng revision) → snapshot không mang đề
+    xuất, `snapshotSha` bằng bản không đề xuất cùng revision; dấu vân đổi theo revision nên không trả GLB cũ."""
+    on_doc = {"layer": LAYER, "suggestions": SUGGESTIONS, "suggestionsMeta": META, "suggestionsEnabled": True}
+    off_doc = {"layer": LAYER, "suggestions": SUGGESTIONS, "suggestionsMeta": META}
+    on = await snapshot_source.take(_Db([_row(on_doc)]), "p", VERSIONS)  # type: ignore[arg-type]
+    off = await snapshot_source.take(_Db([{**_row(off_doc), "revision": 3}]), "p", VERSIONS)  # type: ignore[arg-type]
+    plain = await snapshot_source.take(_Db([{**_row({"layer": LAYER}), "revision": 3}]), "p", VERSIONS)  # type: ignore[arg-type]
+
+    assert not {"suggestions", "suggestionsMeta"} & set(off.body["floors"][0])
+    assert off.sha == plain.sha != on.sha
+    assert off.fingerprint != on.fingerprint
+
+
 async def test_take__no_suggestions_keeps_m1_sha() -> None:
     plain = await snapshot_source.take(_Db([_row({"layer": LAYER})]), "p", VERSIONS)  # type: ignore[arg-type]
     empty = await snapshot_source.take(_Db([_row({"layer": LAYER, "suggestions": []})]), "p", VERSIONS)  # type: ignore[arg-type]

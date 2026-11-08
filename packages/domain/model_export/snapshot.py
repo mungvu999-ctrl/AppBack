@@ -50,12 +50,14 @@ def fingerprint(
 
 
 def suggestion_keys(document: Mapping[str, Any] | None) -> dict[str, Any]:
-    """`suggestions` + `suggestionsMeta` của document đã lưu, chỉ khi có (danh sách rỗng → không khoá nào).
+    """`suggestions` + `suggestionsMeta` của document đã lưu, chỉ khi lớp đang bật và danh sách không rỗng.
 
-    Document không có lớp đề xuất cho dict rỗng, nên tầng của snapshot và `snapshotSha` giữ nguyên như trước M2.
-    Dấu vân không đổi: `revision` đã bao cả hai khoá (§4)."""
+    Lớp tắt (`suggestionsEnabled` vắng/khác `true`) thì không đề xuất nào vào bản xuất dù writer giữ các bản đã lưu
+    (§8 quyết định 1, không âm thầm dựng thứ người dùng đã tắt). Không có lớp → dict rỗng, nên tầng của snapshot và
+    `snapshotSha` giữ nguyên như trước M2.
+    Dấu vân không đổi: `revision` đã bao cả ba khoá (bật/tắt lớp là một lượt ghi tăng revision, §4)."""
     doc = document or {}
-    if not doc.get("suggestions"):
+    if doc.get("suggestionsEnabled") is not True or not doc.get("suggestions"):
         return {}
     return {k: doc[k] for k in SUGGESTION_KEYS if doc.get(k) is not None}
 

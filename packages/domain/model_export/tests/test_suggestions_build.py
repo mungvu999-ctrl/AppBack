@@ -406,7 +406,10 @@ def test_snapshot_without_suggestions__sha_unchanged() -> None:
     )
     assert snapshot_sha(snap) == "d35b7d065c7c1064b0d37e17701ab11eeb335dc198d13efe6b7d1a2f852cae68"
     meta = {"ruleset": "r", "rulesetSha": SHA, "basisRevision": 7}
-    keys = suggestion_keys({**document, "suggestions": [{"id": "DRESS-x"}], "suggestionsMeta": meta})
+    stored = {**document, "suggestions": [{"id": "DRESS-x"}], "suggestionsMeta": meta}
+    assert suggestion_keys(stored) == {}
+    assert suggestion_keys({**stored, "suggestionsEnabled": False}) == {}
+    keys = suggestion_keys({**stored, "suggestionsEnabled": True})
     assert keys == {"suggestions": [{"id": "DRESS-x"}], "suggestionsMeta": meta}
 
 

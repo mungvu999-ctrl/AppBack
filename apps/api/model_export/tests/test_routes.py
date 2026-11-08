@@ -10,10 +10,11 @@ from decimal import Decimal
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.lighting_bake.tests._helpers import bake_broker as bake_broker
 from apps.api.model_export import service
+from apps.api.model_export.jobs import run_model_export_sweep
 from apps.api.projects.tests.test_routes_common import headers_of
 from packages.core.clock import SystemClock
 from packages.db.models.auth import User
@@ -97,6 +98,45 @@ async def test_model_export_start_export__supersede(
     assert response.status_code == 202
     assert sorted(await _statuses(db_session, project.id)) == ["done", "queued", "superseded"]
     found = await db_session.execute(text("SELECT status FROM model_exports WHERE id = :id"), {"id": running.id})
+    assert found.scalar_one() == "superseded"
+
+
+async def test_model_export_start_export__pruned_cache(
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    api_client: AsyncClient,
+    local_storage: LocalDiskStorage,
+    bake_broker: SyncRedis,
+) -> None:
+    """Dấu vân quay lại một lượt `done` đã bị lịch quét dọn tệp (bật/tắt rồi bật lại) → 202 lượt mới, không 200.
+
+    Lượt cũ thành `superseded` để unique partial `uq_model_exports_fingerprint` không chặn lượt mới.
+    """
+    owner, project, _ = await _project(db_session)
+    await make_floor(db_session, project=project)
+    await db_session.commit()
+    first = (await api_client.post(_path(project.id), json={}, headers=headers_of(owner))).json()
+    await db_session.execute(
+        text(
+            "UPDATE model_exports SET status = 'done', quality = 'ready', glb_bytes = 1, started_at = now(), "
+            "ended_at = now(), report_summary = '{\"counts\": {}}'::jsonb WHERE id = :id"
+        ),
+        {"id": first["id"]},
+    )
+    await db_session.commit()
+    for _ in range(5):
+        await make_model_export(
+            db_session, project_id=project.id, status="done", quality="ready", report_summary={"counts": {}}
+        )
+    assert (await run_model_export_sweep(db_sessionmaker, local_storage, SystemClock())).pruned == 1
+
+    again = await api_client.post(_path(project.id), json={}, headers=headers_of(owner))
+
+    assert again.status_code == 202, again.text
+    assert again.json()["id"] != first["id"]
+    assert again.json()["fingerprint"] == first["fingerprint"]
+    assert again.json()["status"] == "queued"
+    found = await db_session.execute(text("SELECT status FROM model_exports WHERE id = :id"), {"id": first["id"]})
     assert found.scalar_one() == "superseded"
 
 

@@ -4,6 +4,9 @@ N49 theo thứ tự hợp đồng: dựng snapshot + dấu vân → dòng sống
 lượt `queued|running` khác thành `superseded` → ghi `snapshot.json` vào kho, chèn dòng `queued`,
 `send_task` sau commit → 202. Hai yêu cầu đua cùng dấu vân: unique partial
 `uq_model_exports_fingerprint` cho một lượt thắng; lượt thua xoá object của mình và trả dòng thắng.
+
+Dòng `done` mà lịch quét đã dọn tệp (`report_summary.pruned`) không còn là cache: N49 chuyển nó sang
+`superseded` (ra khỏi chỉ mục partial) rồi mở lượt mới.
 """
 
 import hashlib
@@ -52,6 +55,9 @@ _INSERT: Final = text(
     "INSERT INTO model_exports (id, project_id, created_by, fingerprint, snapshot_sha, snapshot_revisions, "
     "compiler_version, pack_version, status, created_at, updated_at) VALUES (:id, :p, :by, :fp, :sha, "
     "CAST(:revs AS jsonb), :compiler, :pack, 'queued', :now, :now)"
+)
+_RETIRE: Final = text(
+    "UPDATE model_exports SET status = 'superseded', updated_at = :now WHERE id = :id AND status = 'done'"
 )
 _FILE: Final = text("SELECT status, quality FROM model_exports WHERE id = :id AND project_id = :p")
 
@@ -116,8 +122,10 @@ async def start_export(
     """N49 — trả `(lượt, mã HTTP)`: 200 khi đã có lượt sống cùng dấu vân, 202 khi mở lượt mới; tự `commit`."""
     snap = await snapshot_source.take(db, project_id, _versions(settings))
     existing = (await db.execute(_LIVE, {"p": project_id, "fp": snap.fingerprint})).first()
-    if existing is not None:
+    if existing is not None and not (existing.report_summary or {}).get("pruned"):
         return _wire(existing, snap.fingerprint), 200
+    if existing is not None:
+        await db.execute(_RETIRE, {"id": existing.id, "now": clock.now()})
     await state.supersede(db, project_id, clock)
     export_id = new_id("mex", clock)
     key = model_export_object(project_id, export_id, MODEL_EXPORT_SNAPSHOT)

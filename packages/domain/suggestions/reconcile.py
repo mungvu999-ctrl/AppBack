@@ -8,7 +8,7 @@ the rule table changed (or the per-floor cap forces it).
 from __future__ import annotations
 
 import re
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -120,16 +120,17 @@ def reconcile(
     concept: Mapping[str, Any] | None = None,
     *,
     revision: int,
-    adopted: Collection[str] = frozenset(),
+    adopted: Mapping[str, str] | None = None,
     prev_meta: SuggestionsMeta | None = None,
     cap: int = SUGGESTIONS_CAP,
 ) -> Reconciled:
     """Run every rule in order and merge with `prev` (contract §3 steps 1-6 and the version-bump policy).
 
     `revision` is the layer revision being written (new records get it as `createdRevision`, stale ones as `since`).
-    `adopted` holds the suggestion ids still present in the layer as `furniture[].origin.suggestionId`; the writer
-    computes it. `prev_meta` tells whether the rule table changed since the last run (only then stale records without
-    user data are purged).
+    `adopted` maps each `furniture[].origin.suggestionId` of the layer to that furniture id (the writer computes it):
+    those records become `adopted` with `adoptedAs` = the furniture, adopted ones no longer in it become `disabled`.
+    `prev_meta` tells whether the rule table changed since the last run (only then stale records without user data are
+    purged).
     """
     notes: list[Note] = []
     old = {s.id: s for s in prev}
@@ -175,8 +176,12 @@ def reconcile(
         reason = _stale_reason(s, ruleset, host_ids, why)
         since = s.stale.since if s.stale else revision
         out[s.id] = s.model_copy(update={"stale": Stale(since=since, reason_vi=reason)})
+    adopted = adopted or {}
     for sid, s in out.items():
-        if s.state == "adopted" and sid not in adopted:
+        if sid in adopted:
+            if (s.state, s.adopted_as) != ("adopted", adopted[sid]):
+                out[sid] = s.model_copy(update={"state": "adopted", "adopted_as": adopted[sid]})
+        elif s.state == "adopted":
             out[sid] = s.model_copy(update={"state": "disabled", "adopted_as": None})
             notes.append(Note(s.rule, sid, "log", messages.ADOPTED_GONE))
     result_list = sorted(out.values(), key=lambda s: s.id)

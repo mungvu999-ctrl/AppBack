@@ -504,7 +504,8 @@ def _next_suggestions(request: _Request, current: FloorDocument, layer: SpatialL
     switched_on = enabled and not current.suggestions_enabled
     if not enabled or (layer == current.layer and not switched_on):
         return _Suggestions(items, current.suggestions_meta, enabled)
-    adopted = {item.origin.suggestion_id for item in layer.furniture if item.origin is not None}
+    # Món mang `origin.suggestionId` → đề xuất ấy `adopted`, `adoptedAs` = id món (§3 bước 6).
+    adopted = {item.origin.suggestion_id: item.id for item in layer.furniture if item.origin is not None}
     try:
         result = reconcile(
             items,

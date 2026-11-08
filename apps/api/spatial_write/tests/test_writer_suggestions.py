@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.projects.tests.test_routes_common import headers_of
 from apps.api.spatial_read.tests._helpers import make_scene
+from apps.api.spatial_read.tests._read_helpers import graph_path
 from apps.api.spatial_write import writer
 from apps.api.spatial_write.errors import SUGGESTION_CAP
 from apps.api.spatial_write.tests._helpers import (
@@ -34,7 +35,7 @@ from apps.api.spatial_write.tests._helpers import (
     reread,
     simple_layer,
 )
-from apps.api.spatial_write.tests._route_helpers import layer_path, put_layer, wire
+from apps.api.spatial_write.tests._route_helpers import layer_path, put_layer, wire, write_body
 from apps.api.spatial_write.writer import LayerWrite, WriteResult, write_layer
 from packages.core.clock import Clock
 from packages.core.errors import SYSTEM_PIPELINE, AppError, VersionConflictError
@@ -348,16 +349,21 @@ async def test_conflict_409__lists_suggestion_state_changes(db_session: AsyncSes
 
 
 async def test_adopted_furniture_removed__suggestion_disabled(db_session: AsyncSession, fake_clock: FakeClock) -> None:
-    """`adopted` giữ khi lớp còn món có `origin.suggestionId` khớp; xoá món thì đề xuất về `disabled` (§3 bước 6)."""
+    """Món có `origin.suggestionId` → đề xuất `adopted` (`adoptedAs` = món) ngay lượt ghi ấy; `suggestionState` gửi
+    lại cùng trạng thái không đổi gì; xoá món thì đề xuất về `disabled` (§3 bước 6)."""
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     bed = _adopted_bed(floor.level_id)
-    await _write(db_session, floor, scene.owner, fake_clock, base=0, layer=_layer(floor.level_id, furniture=(bed,)))
-    kept = await _write(db_session, floor, scene.owner, fake_clock, base=1, state=[{"id": L1_ID, "state": "adopted"}])
-    assert _by_id(kept.suggestions)[L1_ID].state == "adopted"
-    assert kept.layer.furniture[0].origin is not None
+    first = await _write(
+        db_session, floor, scene.owner, fake_clock, base=0, layer=_layer(floor.level_id, furniture=(bed,))
+    )
+    lamp = _by_id(first.suggestions)[L1_ID]
+    assert (lamp.state, lamp.adopted_as) == ("adopted", FURNITURE_ID)
+    same = await _write(db_session, floor, scene.owner, fake_clock, base=1, state=[{"id": L1_ID, "state": "adopted"}])
+    assert not same.applied
+    assert _by_id(same.suggestions)[L1_ID].adopted_as == FURNITURE_ID
 
-    removed = await _write(db_session, floor, scene.owner, fake_clock, base=2, layer=_layer(floor.level_id))
+    removed = await _write(db_session, floor, scene.owner, fake_clock, base=1, layer=_layer(floor.level_id))
 
     assert _by_id(removed.suggestions)[L1_ID].state == "disabled"
 
@@ -471,3 +477,47 @@ def test_reconcile_p95__golden_layers_within_budget(capsys: pytest.CaptureFixtur
     with capsys.disabled():
         print("\nreconcile (records, p95 ms, within 150 ms):", report)
     assert all(p95 <= CEILING_MS for _, p95, _ in report.values()), report
+
+
+async def test_put_furniture_origin__adopts_then_disables(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """PUT #35 mang món có `origin.suggestionId` → đề xuất ấy `adopted`, `adoptedAs` = id món; lượt sau xoá món →
+    `disabled`, bỏ `adoptedAs` (§3 bước 6)."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    project_id, level_id = scene.project.id, floor.level_id
+    first = await put_layer(api_client, project_id, level_id, scene.owner, write_body(0, layer=_layer(level_id)))
+    bed = _adopted_bed(level_id)
+    adopted = await put_layer(
+        api_client, project_id, level_id, scene.owner, write_body(1, layer=_layer(level_id, furniture=(bed,)))
+    )
+    removed = await put_layer(api_client, project_id, level_id, scene.owner, write_body(2, layer=_layer(level_id)))
+
+    assert first.status_code == adopted.status_code == removed.status_code == 200
+    lamp = next(item for item in adopted.json()["suggestions"] if item["id"] == L1_ID)
+    assert (lamp["state"], lamp["adoptedAs"]) == ("adopted", FURNITURE_ID)
+    lamp = next(item for item in removed.json()["suggestions"] if item["id"] == L1_ID)
+    assert lamp["state"] == "disabled"
+    assert "adoptedAs" not in lamp
+
+
+async def test_spatial_graph__floor_revisions_carry_suggestions(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """N15 `floorRevisions[]` mang ba khoá lớp đề xuất như N16 (editor nạp tầng qua N15); tầng tắt → vắng cả ba."""
+    scene = await make_scene(db_session, floors=2)
+    on, off = scene.floors
+    await make_floor_document(db_session, floor_pk=off.pk, revision=3, clock=fake_clock)
+    await db_session.commit()
+    await put_layer(api_client, scene.project.id, on.level_id, scene.owner, write_body(0, layer=_layer(on.level_id)))
+
+    graph = await api_client.get(graph_path(scene.project.id), headers=headers_of(scene.owner))
+    layer = await api_client.get(layer_path(scene.project.id, on.level_id), headers=headers_of(scene.owner))
+
+    assert graph.status_code == layer.status_code == 200
+    first, second = graph.json()["floorRevisions"]
+    keys = ("suggestions", "suggestionsMeta", "suggestionsEnabled")
+    assert {key: first[key] for key in keys} == {key: layer.json()[key] for key in keys}
+    assert first["suggestions"]
+    assert second == {"floorId": off.level_id, "revision": 3}

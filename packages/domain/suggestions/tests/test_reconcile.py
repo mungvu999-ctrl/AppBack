@@ -144,11 +144,21 @@ def test_adopted_without_furniture__coerced_disabled() -> None:
         s.model_copy(update={"state": "adopted", "adopted_as": sid("F", 9)}) if s.id == LAMP else s
         for s in base.suggestions
     ]
-    kept = run(flat_layer(), adopted, revision=2, adopted={LAMP})
+    kept = run(flat_layer(), adopted, revision=2, adopted={LAMP: sid("F", 9)})
     assert (get(kept, LAMP).state, get(kept, LAMP).adopted_as) == ("adopted", sid("F", 9))
     dropped = run(flat_layer(), adopted, revision=3)
     assert (get(dropped, LAMP).state, get(dropped, LAMP).adopted_as) == ("disabled", None)
     assert [(n.host, n.reason_vi) for n in dropped.notes if n.status == "log"] == [(LAMP, messages.ADOPTED_GONE)]
+
+
+def test_furniture_origin__marks_suggestion_adopted() -> None:
+    """A layer item carrying `origin.suggestionId` adopts that record (`adoptedAs` = the item), whatever its state."""
+    base = run(flat_layer())
+    off = with_state(base.suggestions, {"id": LAMP, "state": "disabled"})
+    got = run(flat_layer(), off, revision=2, adopted={LAMP: sid("F", 7)})
+    assert (get(got, LAMP).state, get(got, LAMP).adopted_as) == ("adopted", sid("F", 7))
+    again = run(flat_layer(), got.suggestions, revision=3, adopted={LAMP: sid("F", 7)})
+    assert get(again, LAMP) == get(got, LAMP)
 
 
 def test_minor_bump__unknown_override_keys_dropped_and_logged() -> None:

@@ -75,6 +75,13 @@ def model_size(model_id: str) -> tuple[int, int, int]:
     return w, d, h
 
 
+def footprint_ratio(box_mm: Sequence[float], model_mm: Sequence[float]) -> float:
+    """Uniform scale that fits a model footprint into a box footprint, long side on long side; height ignored (as
+    `place`). The one fit rule of the rules (F1) and the compiler (`model_export.assets.fit_scale`)."""
+    (bl, bs), (ml, ms) = sorted(box_mm[:2], reverse=True), sorted(model_mm[:2], reverse=True)
+    return min(bl / ml, bs / ms)
+
+
 def model_origin(
     model_id: str, centre: XY, rotation_deg: float, lift_mm: float, scale: float = 1.0
 ) -> tuple[float, float, float]:

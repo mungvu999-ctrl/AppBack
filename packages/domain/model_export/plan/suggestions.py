@@ -27,7 +27,7 @@ from shapely.geometry import Point, Polygon
 from shapely.geometry.base import BaseGeometry
 
 from packages.domain.model_export import defaults
-from packages.domain.model_export.assets import AssetResolver
+from packages.domain.model_export.assets import AssetResolver, fit_scale, model_size_m
 from packages.domain.model_export.materials import MaterialResolver, Role
 from packages.domain.model_export.plan.openings import _frame, _inside_sign
 from packages.domain.model_export.records import RecordBook, Severity, Status
@@ -114,21 +114,6 @@ def _m(x: float, y: float) -> tuple[float, float]:
 def _r(*xs: float) -> list[float]:
     """Làm tròn µm cho plan tất định."""
     return [round(x, 6) for x in xs]
-
-
-def model_size_m(meta: Mapping[str, Any]) -> tuple[float, float, float] | None:
-    """`sizeMm` của gói (list `[x, y, z]` hoặc dict `w/d/h` hay `x/y/z`) → mét; thiếu → None.
-
-    Riêng cho đề xuất: `assets._size_mm` chỉ đọc `x/y/z` (đang sửa ở nhánh M1), gói thật ghi `w/d/h`."""
-    s = meta.get("sizeMm")
-    if isinstance(s, Mapping):
-        vals = (s.get("w", s.get("x", 0)), s.get("d", s.get("y", 0)), s.get("h", s.get("z", 0)))
-    elif isinstance(s, (list, tuple)) and len(s) == 3:
-        vals = tuple(s)
-    else:
-        return None
-    out = tuple(float(v) / 1000 for v in vals)
-    return (out[0], out[1], out[2]) if all(v > 0 for v in out) else None
 
 
 @dataclass(frozen=True)
@@ -659,19 +644,18 @@ def _model(ctx: LevelCtx, mid: Any) -> tuple[str, tuple[float, float, float] | N
 def build_item(
     ctx: LevelCtx, s: Mapping[str, Any], p: Mapping[str, Any], props: dict[str, Any], book: RecordBook
 ) -> Parts:
-    """P1-P3, D3-D5, AID: mẫu `modelId` co đều để vừa hộp `sizeMm` (quá ±10 % → bỏ), đáy hộp trên sàn hoàn thiện
-    + `liftMm`, tâm hộp ở `centre`."""
+    """P1-P3, D3-D5, AID: mẫu `modelId` co đều theo vết chân để vừa hộp `sizeMm` (cùng luật `fit_scale` với đồ của
+    document; quá ±10 % → bỏ, luật không bao giờ để vậy), đáy hộp bao mẫu trên sàn hoàn thiện + `liftMm`, tâm ở
+    `centre`."""
     mid, size = _model(ctx, p.get("modelId"))
-    target = [v / 1000 for v in p["sizeMm"]]
     notes = []
     scale = 1.0
     if size is None:
         notes.append(f"mẫu {mid} chưa có kích thước trong gói, giữ cỡ thật")
     else:
-        scale = round(min(t / m for t, m in zip(target, size, strict=True)), 4)
-        if abs(round(scale, 3) - 1) > defaults.SUGGESTION_SCALE_TOL + 1e-9:  # rules round scale to 3 decimals
-            pct = f"{scale * 100:.0f}"
-            raise SkipError(f"mẫu {mid} phải co giãn {pct} % để vừa hộp (ngoài ±10 %)")
+        scale, fits = fit_scale(p["sizeMm"], [size[0] * 1000, size[1] * 1000])
+        if not fits:
+            raise SkipError(f"mẫu {mid} phải co giãn ngoài ±10 % để vừa hộp")
     x, y = to_m(p["centre"])
     at = (x, y, FIN + (p.get("liftMm") or 0) / 1000)
     rot = -math.radians(p.get("rotationDeg") or 0)

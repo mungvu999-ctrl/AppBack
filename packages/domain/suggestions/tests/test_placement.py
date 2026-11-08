@@ -14,6 +14,7 @@ from packages.domain.suggestions.rules.placement import (
     _lines,
     check_collisions,
     facing,
+    footprint_ratio,
     front,
     known_model,
     model_origin,
@@ -157,3 +158,10 @@ def test_check_collisions__doc_types_logged_rule_ones_flagged() -> None:
     rule = [(n.item, n.type, n.other) for n in notes if n.label == "rule"]
     assert rule == [("DRESS-D5-x1", "item-item", sid("F", 2))]
     assert notes == sorted(notes, key=lambda n: (n.label, n.item, n.type, n.other or ""))
+
+
+def test_footprint_ratio__long_on_long_height_ignored() -> None:
+    """Long side on long side whatever the order; a third (height) value is ignored."""
+    assert footprint_ratio((900, 1800), (2000, 900)) == pytest.approx(0.9)
+    assert footprint_ratio((1800, 900, 10), (900, 2000, 5000)) == pytest.approx(0.9)
+    assert footprint_ratio((2000, 450), (2000, 900)) == pytest.approx(0.5)

@@ -15,6 +15,7 @@ from packages.domain.suggestions import messages
 from packages.domain.suggestions.model import HostRef, ModelPickParams, params_dict
 from packages.domain.suggestions.rules.base import Draft, Note, RuleInput, RuleOutput
 from packages.domain.suggestions.rules.geom import js_round, point_in_ring, ring, room_at
+from packages.domain.suggestions.rules.placement import footprint_ratio
 from packages.domain.suggestions.ruleset import RuleSpec
 
 
@@ -67,7 +68,7 @@ def f1_model_pick(inp: RuleInput, spec: RuleSpec) -> RuleOutput:
             continue
         model = p["models"][row["pick"]]
         mw, md = model["sizeMm"][0], model["sizeMm"][1]
-        ratio = min(long / max(mw, md), short / min(mw, md))
+        ratio = footprint_ratio((long, short), (mw, md))
         if ratio < 1 - p["scaleTolPct"] / 100:
             reason = messages.model_too_big(row["pick"], math.floor(ratio * 100), p["scaleTolPct"])
             out.notes.append(Note("F1", f.id, "skipped", reason))

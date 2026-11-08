@@ -109,7 +109,8 @@ NEUTRAL_PBR = {
 
 # Lớp đề xuất (HOP-DONG-DU-LIEU-LOP-DE-XUAT §2.5): hằng dựng hình mà `params` không mang
 SUGGESTION_SCALE_TOL = 0.10
-"""Món `item` phải co giãn quá ±10 % để vừa hộp → bỏ (F4 của §5, không âm thầm kẹp)."""
+"""F4: co giãn đều theo vết chân tối đa ±10 %. Món `item` đề xuất cần hơn → bỏ; đồ của document → kẹp ở ±10 %
++ `degraded minor`."""
 CABINET_PLINTH_M = 0.1
 CABINET_COUNTERTOP_M = 0.04
 CABINET_GAP_M = 0.004

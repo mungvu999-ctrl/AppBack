@@ -563,14 +563,6 @@ def test_summary_mixed_rulesets() -> None:
     assert summary.extras() == {"rulesetSha": ["a", "b"], "counts": {}, "disabled": []}
 
 
-def test_model_size_forms() -> None:
-    """sizeMm as list, w/d/h dict, x/y/z dict; missing or zero → None."""
-    assert sg.model_size_m({"sizeMm": [1000, 500, 250]}) == (1.0, 0.5, 0.25)
-    assert sg.model_size_m({"sizeMm": {"x": 1000, "y": 500, "z": 250}}) == (1.0, 0.5, 0.25)
-    assert sg.model_size_m({"sizeMm": {"w": 1000, "d": 0, "h": 1}}) is None
-    assert sg.model_size_m({}) is None
-
-
 def test_room_instances_share_images_distinct_materials() -> None:
     """Two rooms with the same floor ref: `<ref>@R-1`, `<ref>@R-2` share image files, are distinct materials;
     room-facing wall edges take the room's own wall instance."""
@@ -698,3 +690,20 @@ def test_skip_reasons() -> None:
         "j": ("skipped", "đồ chủ đã có mẫu người chọn"),
         "k": ("degraded", "rèm hẹp"),
     }
+
+
+def test_item_scale_matches_rules_rounding() -> None:
+    """ch-04 basin: rules shrank vanity-sf 917x636 by 10 % and stored whole mm (825x572); the compiler's footprint fit
+    reads that back as 0.9 (built), not 89.9 % (skipped) — height is not part of the fit."""
+    pack = {**PACK, "models": {**PACK["models"], "vanity": {"sizeMm": {"w": 917, "d": 636, "h": 1130}}}}
+    item = _s(
+        "P1-basin",
+        "P1",
+        "item",
+        {"room": "R-1"},
+        {"modelId": "vanity", "centre": {"x": 2000, "y": 1000}, "sizeMm": [825, 572, 900], "rotationDeg": 0},
+    )
+    plan = _plan([item], pack)
+    (inst,) = _by_sid(plan)["DRESS-P1-basin"]
+    assert inst["scale"] == [0.9, 0.9, 0.9]
+    assert _sug_records(plan)["DRESS-P1-basin"]["status"] == "built"

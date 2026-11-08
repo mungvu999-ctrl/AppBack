@@ -42,8 +42,10 @@
   đọc của tệp đó qua `tools.charter.pending_bind_rows`; #35/N15/N16 không cần dòng (không đổi `operationId`/đường).
   `docs/contracts/openapi.json` sinh lại theo route và trường M2 dù hiến chương chưa duyệt (cổng so `--compare`).
   `schema-map.ts` **chưa** có `suggestion_rules_read`: tệp FE `suggestionRules.ts` chỉ có ở nhánh FE M2, thêm mục khi
-  ghim `6fbff729` làm Smoke hỏng mọi test dùng runner. Bước 7 "Bản đồ đủ" và `test_real_repo_check_runs_through` đỏ
-  một dòng cho tới khi FE M2 được đẩy: cùng commit ghim `APPFRONT_SHA` thêm
+  ghim `6fbff729` làm Smoke hỏng mọi test dùng runner. Bước 7 "Bản đồ đủ" đỏ một dòng, kéo theo 5 test
+  `tools/contract/tests/test_check.py` dùng bản đồ thật (`test_real_map_covers_every_contract_row`,
+  `test_map_missing_a_bind_row_fails`, `test_map_extra_entry_fails`, `test_run_checks_passes_on_consistent_inputs`,
+  `test_real_repo_check_runs_through`) cho tới khi FE M2 được đẩy: cùng commit ghim `APPFRONT_SHA` thêm
   `suggestion_rules_read: object('@/api/schemas/suggestionRules', 'SuggestionRulesWireSchema')`. Duyệt xong: chép dòng N52 vào BE-BIND, xoá tệp chờ; không
   duyệt thì gỡ route N52 và mục bản đồ.
 - Chưa làm: 409 liệt kê đổi `state`/`override` (cần migration CHECK `entity_type` + lõi `VersionEntityType`);

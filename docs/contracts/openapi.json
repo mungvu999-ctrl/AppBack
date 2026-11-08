@@ -2277,6 +2277,42 @@
               }
             ],
             "title": "Suggestedscalemmperpx"
+          },
+          "suggestions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SuggestionOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestions"
+          },
+          "suggestionsEnabled": {
+            "anyOf": [
+              {
+                "const": true,
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestionsenabled"
+          },
+          "suggestionsMeta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SuggestionsMetaOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -2292,7 +2328,7 @@
       },
       "FloorLayerWriteBodySchema": {
         "additionalProperties": false,
-        "description": "`body` của #35: lớp, tỉ lệ, kích thước, trục, gốc toạ độ — ít nhất một khoá (FE `refine` ≥ 1 khoá).\n\n`axes` thay nguyên danh sách trục như `dimensions`; `origin` là gốc toạ độ màn Trục (mm, G4b-17).",
+        "description": "`body` của #35: lớp, tỉ lệ, kích thước, trục, gốc toạ độ, lớp đề xuất — ít nhất một khoá (FE `refine` ≥ 1).\n\n`axes` thay nguyên danh sách trục như `dimensions`; `origin` là gốc toạ độ màn Trục (mm, G4b-17).\n`suggestionState` là trạng thái **thưa** cả tầng của lớp đề xuất M2, `suggestionsEnabled` bật/tắt lớp ấy.\n`suggestions` (danh sách đề xuất) do máy chủ sinh: client gửi lên thì nhận và bỏ qua (W18), không tính là khoá.",
         "properties": {
           "axes": {
             "anyOf": [
@@ -2351,6 +2387,35 @@
                 "type": "null"
               }
             ]
+          },
+          "suggestionState": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SuggestionStateRowSchema"
+                },
+                "maxItems": 2000,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestionstate"
+          },
+          "suggestions": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "suggestionsEnabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestionsenabled"
           }
         },
         "title": "FloorLayerWriteBodySchema",
@@ -2358,7 +2423,7 @@
       },
       "FloorLayerWriteResultSchema": {
         "additionalProperties": false,
-        "description": "200 của #35: bản ghi mới và lớp đã lưu — nguồn thay store của F-04b.",
+        "description": "200 của #35: bản ghi mới, lớp đã lưu và lớp đề xuất M2 cùng revision — nguồn thay store của F-04b.\n\nBa trường đề xuất vắng khi rỗng/tắt, đúng như N16 (`suggestion_fields`).",
         "properties": {
           "layer": {
             "$ref": "#/components/schemas/SpatialLayerOut"
@@ -2367,6 +2432,42 @@
             "minimum": 0.0,
             "title": "Revision",
             "type": "integer"
+          },
+          "suggestions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SuggestionOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestions"
+          },
+          "suggestionsEnabled": {
+            "anyOf": [
+              {
+                "const": true,
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestionsenabled"
+          },
+          "suggestionsMeta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SuggestionsMetaOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -2624,6 +2725,42 @@
             "minimum": 0.0,
             "title": "Revision",
             "type": "integer"
+          },
+          "suggestions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SuggestionOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestions"
+          },
+          "suggestionsEnabled": {
+            "anyOf": [
+              {
+                "const": true,
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestionsenabled"
+          },
+          "suggestionsMeta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SuggestionsMetaOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -2837,6 +2974,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/FurnitureModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FurnitureOrigin"
               },
               {
                 "type": "null"
@@ -3073,6 +3220,60 @@
         "title": "FurnitureModelOut",
         "type": "object"
       },
+      "FurnitureOrigin": {
+        "additionalProperties": false,
+        "description": "Đề xuất M2 mà người dùng đã nhận nuôi thành món đồ này (HOP-DONG-DU-LIEU-LOP-DE-XUAT §2.4).\n\nWriter dựa vào `suggestionId` để biết đề xuất `adopted` nào còn món trong lớp; món mất thì đề xuất về `disabled`.",
+        "properties": {
+          "rule": {
+            "pattern": "^[A-Z][A-Z0-9]{0,5}$",
+            "title": "Rule",
+            "type": "string"
+          },
+          "ruleVersion": {
+            "minimum": 1.0,
+            "title": "Ruleversion",
+            "type": "integer"
+          },
+          "suggestionId": {
+            "pattern": "^DRESS-[A-Za-z0-9_.:-]{1,160}$",
+            "title": "Suggestionid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "suggestionId",
+          "rule",
+          "ruleVersion"
+        ],
+        "title": "FurnitureOrigin",
+        "type": "object"
+      },
+      "FurnitureOriginOut": {
+        "additionalProperties": false,
+        "description": "Đề xuất M2 nguồn của một món đã nhận nuôi (`origin`, HOP-DONG-DU-LIEU-LOP-DE-XUAT §2.4).",
+        "properties": {
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "ruleVersion": {
+            "minimum": 1.0,
+            "title": "Ruleversion",
+            "type": "integer"
+          },
+          "suggestionId": {
+            "title": "Suggestionid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "suggestionId",
+          "rule",
+          "ruleVersion"
+        ],
+        "title": "FurnitureOriginOut",
+        "type": "object"
+      },
       "FurnitureOut": {
         "additionalProperties": false,
         "description": "`FurnitureSchema` — `roomId` **vắng khoá** khi món đồ chưa gắn phòng (C17).",
@@ -3150,6 +3351,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/FurnitureModelOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FurnitureOriginOut"
               },
               {
                 "type": "null"
@@ -7484,6 +7695,396 @@
         "title": "StraightenIn",
         "type": "object"
       },
+      "SuggestionHostRefOut": {
+        "additionalProperties": false,
+        "description": "`hostRef`: id W4 của chủ, hay id đề xuất chủ (P2 bám giường của P1); ít nhất một khoá.",
+        "properties": {
+          "furniture": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Furniture"
+          },
+          "opening": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opening"
+          },
+          "room": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room"
+          },
+          "suggestion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestion"
+          },
+          "wall": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wall"
+          }
+        },
+        "title": "SuggestionHostRefOut",
+        "type": "object"
+      },
+      "SuggestionOut": {
+        "additionalProperties": false,
+        "description": "Một đề xuất đã lưu (§2.2). `params` theo lược đồ của `kind`, mm nguyên; `override` chỉ vô hướng.",
+        "properties": {
+          "adoptedAs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adoptedas"
+          },
+          "createdRevision": {
+            "minimum": 0.0,
+            "title": "Createdrevision",
+            "type": "integer"
+          },
+          "hostRef": {
+            "$ref": "#/components/schemas/SuggestionHostRefOut"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "skirting",
+              "wallTile",
+              "cornice",
+              "casing",
+              "sash",
+              "railing",
+              "cabinetRun",
+              "curtain",
+              "rug",
+              "ceilingLight",
+              "item",
+              "modelPick"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "override": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override"
+          },
+          "params": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "ruleVersion": {
+            "minimum": 1.0,
+            "title": "Ruleversion",
+            "type": "integer"
+          },
+          "stale": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SuggestionStaleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "enum": [
+              "active",
+              "disabled",
+              "overridden",
+              "adopted"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "rule",
+          "ruleVersion",
+          "kind",
+          "hostRef",
+          "params",
+          "state",
+          "createdRevision"
+        ],
+        "title": "SuggestionOut",
+        "type": "object"
+      },
+      "SuggestionRuleOut": {
+        "additionalProperties": false,
+        "description": "Một luật của bảng: phiên bản, loại đề xuất, tên tiếng Việt, cách editor dùng, tham số (mm) và khoá chỉnh được.",
+        "properties": {
+          "editor": {
+            "enum": [
+              "render",
+              "mirror",
+              "list"
+            ],
+            "title": "Editor",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "majorSince": {
+            "minimum": 1.0,
+            "title": "Majorsince",
+            "type": "integer"
+          },
+          "nameVi": {
+            "title": "Namevi",
+            "type": "string"
+          },
+          "overridable": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Overridable",
+            "type": "array"
+          },
+          "params": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "majorSince",
+          "kind",
+          "nameVi",
+          "editor",
+          "params",
+          "overridable"
+        ],
+        "title": "SuggestionRuleOut",
+        "type": "object"
+      },
+      "SuggestionRulesOut": {
+        "additionalProperties": false,
+        "description": "Cả bảng: tên bộ luật, sha của JSON chuẩn hoá (cũng là `ETag`) và các luật theo thứ tự tệp.",
+        "properties": {
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/SuggestionRuleOut"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "ruleset": {
+            "title": "Ruleset",
+            "type": "string"
+          },
+          "rulesetSha": {
+            "title": "Rulesetsha",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ruleset",
+          "rulesetSha",
+          "rules"
+        ],
+        "title": "SuggestionRulesOut",
+        "type": "object"
+      },
+      "SuggestionStaleOut": {
+        "additionalProperties": false,
+        "description": "`stale`: BE đặt khi luật thôi sinh bản ghi; tách khỏi `state` của người dùng.",
+        "properties": {
+          "reasonVi": {
+            "title": "Reasonvi",
+            "type": "string"
+          },
+          "since": {
+            "minimum": 0.0,
+            "title": "Since",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "since",
+          "reasonVi"
+        ],
+        "title": "SuggestionStaleOut",
+        "type": "object"
+      },
+      "SuggestionStateRowSchema": {
+        "additionalProperties": false,
+        "description": "Một dòng `suggestionState` (M2 §4): trạng thái người dùng của **một** đề xuất.\n\n`params`, `stale`, `createdRevision` là trường máy chủ sở hữu: FE gửi lại nguyên bản ghi thì nhận và bỏ qua (W18),\nkhông 422. Id lạ hay khoá `override` ngoài `overridable` của luật do `write_layer` kiểm (cần tài liệu đã lưu).",
+        "properties": {
+          "createdRevision": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "id": {
+            "pattern": "^DRESS-[A-Za-z0-9_.:-]{1,160}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "override": {
+            "anyOf": [
+              {
+                "maxProperties": 16,
+                "minProperties": 1,
+                "patternProperties": {
+                  "^[a-z][A-Za-z0-9]{0,39}$": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override"
+          },
+          "params": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "stale": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "disabled",
+              "overridden",
+              "adopted"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state"
+        ],
+        "title": "SuggestionStateRowSchema",
+        "type": "object"
+      },
+      "SuggestionsMetaOut": {
+        "additionalProperties": false,
+        "description": "`suggestionsMeta`: bộ luật đã sinh danh sách và revision lớp làm nền.",
+        "properties": {
+          "basisRevision": {
+            "minimum": 0.0,
+            "title": "Basisrevision",
+            "type": "integer"
+          },
+          "ruleset": {
+            "title": "Ruleset",
+            "type": "string"
+          },
+          "rulesetSha": {
+            "title": "Rulesetsha",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ruleset",
+          "rulesetSha",
+          "basisRevision"
+        ],
+        "title": "SuggestionsMetaOut",
+        "type": "object"
+      },
       "SummaryMemberOut": {
         "additionalProperties": false,
         "description": "`ProjectSummarySchema.members[]`: N1 chỉ cần tên để dựng chữ cái đầu, không lộ email.",
@@ -11476,7 +12077,7 @@
     },
     "/api/projects/{project_id}/floors/{floor_id}/spatial/layer": {
       "get": {
-        "description": "N16 — lớp của một tầng: `revision`, `level`, `scaleStatus`/`readiness`, bốn danh sách, trục, kích thước.\n\nSerialize một lần + `ETag`/304 (`cached_json`); `response_model` giữ openapi như cũ.",
+        "description": "N16 — lớp của một tầng: `revision`, `level`, `scaleStatus`/`readiness`, bốn danh sách, trục, kích thước,\nlớp đề xuất M2 (`suggestions`, `suggestionsMeta`, `suggestionsEnabled`, vắng khi rỗng/tắt).\n\nSerialize một lần + `ETag`/304 (`cached_json`); `response_model` giữ openapi như cũ.",
         "operationId": "spatial_read_layer_api_projects__project_id__floors__floor_id__spatial_layer_get",
         "parameters": [
           {
@@ -11526,7 +12127,7 @@
         ]
       },
       "put": {
-        "description": "#35 — ghi lớp và/hoặc tỉ lệ một tầng: base cũ → 409 W20, lượt lặp của chính mình → 200.",
+        "description": "#35 — ghi lớp, tỉ lệ và/hoặc lớp đề xuất một tầng: base cũ → 409 W20, lượt lặp của chính mình → 200.",
         "operationId": "spatial_write_layer_api_projects__project_id__floors__floor_id__spatial_layer_put",
         "parameters": [
           {
@@ -13227,6 +13828,28 @@
         "summary": "Streams Open Progress",
         "tags": [
           "streams"
+        ]
+      }
+    },
+    "/api/suggestion-rules": {
+      "get": {
+        "description": "Bảng luật đề xuất (router bảo vệ nên chỉ cần đã đăng nhập); `If-None-Match` khớp `rulesetSha` → 304.",
+        "operationId": "suggestion_rules_read_api_suggestion_rules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionRulesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Suggestion Rules Read",
+        "tags": [
+          "suggestions"
         ]
       }
     },

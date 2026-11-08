@@ -1,6 +1,6 @@
 """Furniture model resolution against the export pack (HOP-DONG-M1 §1 "Đồ đạc", §8).
 
-Pack: `models.json` `{id: {file, license, author, source, sizeMm: [x, y, z] | {x, y, z}}}`,
+Pack: `models.json` `{id: {file, license, author, source, sizeMm: {w, d, h} | [x, y, z]}}` (`{x, y, z}` cũ vẫn đọc),
 `furniture-defaults.json` `{"kind|variant" | "kind": modelId}`.
 Assumptions: `boundingBox` is the footprint before rotation (width along x, depth along y, mm);
 `rotationDeg` turns in the editor's Y-down frame, so it flips sign in the export's Y-up frame;
@@ -9,6 +9,7 @@ Assumptions: `boundingBox` is the footprint before rotation (width along x, dept
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 from collections.abc import Mapping
@@ -17,14 +18,18 @@ from typing import Any
 from packages.domain.model_export.records import RecordBook
 from packages.domain.model_export.units import to_m
 
+_log = logging.getLogger(__name__)
 _SRC = re.compile(r"^/items/([a-z0-9_-]+)/model\.glb$")
 SCALE_TOLERANCE = 0.3
 """Uniform scale off by more than ±30 % → degraded minor (never clamped silently)."""
 
 
-def _size_mm(size: Any) -> tuple[float, float, float] | None:
-    """`sizeMm` as (x, y, z); list or dict accepted."""
+def _size_mm(size: Any, model_id: str) -> tuple[float, float, float] | None:
+    """`sizeMm` as (x, y, z): pack dict `{w, d, h}` (width, depth, height); list, or legacy `{x, y, z}` (logged)."""
     if isinstance(size, Mapping):
+        if "w" in size or "d" in size or "h" in size:
+            return (size.get("w", 0), size.get("d", 0), size.get("h", 0))
+        _log.warning("model_export_pack_size_xyz", extra={"model": model_id})
         return (size.get("x", 0), size.get("y", 0), size.get("z", 0))
     if isinstance(size, (list, tuple)) and len(size) == 3:
         return tuple(size)
@@ -65,7 +70,7 @@ class AssetResolver:
             return None
         bb = f["boundingBox"]
         target = (bb["max"]["x"] - bb["min"]["x"], bb["max"]["y"] - bb["min"]["y"], f.get("heightMm") or 0)
-        size = _size_mm(meta.get("sizeMm")) or (0, 0, 0)
+        size = _size_mm(meta.get("sizeMm"), mid) or (0, 0, 0)
         ratios = [t / s for t, s in zip(target, size, strict=False) if t > 0 and s > 0]
         scale = round(min(ratios), 4) if ratios else 1.0
         status = "built"

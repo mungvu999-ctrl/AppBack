@@ -1,7 +1,10 @@
 """Furniture model resolution (HOP-DONG-M1 §1 "Đồ đạc")."""
 
+import logging
 import math
 from typing import Any
+
+import pytest
 
 from packages.domain.model_export.assets import AssetResolver
 from packages.domain.model_export.records import RecordBook
@@ -10,6 +13,7 @@ MODELS: dict[str, dict[str, Any]] = {
     "sofa": {"file": "models/sofa.glb", "license": "CC0", "author": "A", "source": "s", "sizeMm": [2000, 900, 800]},
     "bed": {"sizeMm": {"x": 1600, "y": 2000, "z": 500}},
     "odd": {"sizeMm": "?"},
+    "pack-bed": {"file": "models/pack-bed.glb", "license": "MIT (Pascal)", "sizeMm": {"w": 1520, "d": 2000, "h": 710}},
 }
 DEFAULTS = {"bed|bed": "bed", "table": "sofa", "chair": "ghost"}
 
@@ -81,3 +85,39 @@ def test_resolve__skips() -> None:
     odd = r.resolve_furniture(_f(model={"src": "/items/odd/model.glb"}), "L", book)
     assert odd is not None
     assert odd["scale"] == [1.0, 1.0, 1.0]
+
+
+def test_resolve__pack_size_keys_w_d_h(caplog: pytest.LogCaptureFixture) -> None:
+    """Gói xuất ghi `sizeMm` `{w, d, h}`: hộp bao khác cỡ mẫu → co giãn theo hộp, lệch > 30 % → degraded."""
+    r, book = AssetResolver(MODELS, DEFAULTS), RecordBook()
+    fits = r.resolve_furniture(
+        _f(
+            model={"src": "/items/pack-bed/model.glb"},
+            boundingBox={"min": {"x": 0, "y": 0}, "max": {"x": 1520, "y": 2000}},
+            heightMm=710,
+        ),
+        "L",
+        book,
+    )
+    small = r.resolve_furniture(
+        _f(
+            model={"src": "/items/pack-bed/model.glb"},
+            boundingBox={"min": {"x": 0, "y": 0}, "max": {"x": 760, "y": 1000}},
+        ),
+        "L",
+        book,
+    )
+    assert fits is not None
+    assert fits["scale"] == [1.0, 1.0, 1.0]
+    assert small is not None
+    assert small["scale"] == [0.5, 0.5, 0.5]
+    assert [x.status for x in book.records] == ["built", "degraded"]
+    with caplog.at_level(logging.WARNING):
+        legacy = r.resolve_furniture(
+            _f(kind="bed", variant="bed", boundingBox={"min": {"x": 0, "y": 0}, "max": {"x": 800, "y": 1000}}),
+            "L",
+            book,
+        )
+    assert legacy is not None
+    assert legacy["scale"] == [0.5, 0.5, 0.5]
+    assert [rec.message for rec in caplog.records] == ["model_export_pack_size_xyz"]

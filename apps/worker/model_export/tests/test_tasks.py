@@ -516,3 +516,35 @@ def test_geometry_records__J01_suggestion_minor() -> None:
         ("geometry", "W-1", "critical"),
         ("suggestion:D1", "DRESS-D1-y", "minor"),
     ]
+
+
+async def test_run_model_export__mit_licence(
+    db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock, cache_dir: Path, queue: QueueExport
+) -> None:
+    """Có mẫu MIT (Pascal) được dựng → CREDITS.txt kèm nguyên văn `LICENSE-PASCAL-MIT.txt` của gói."""
+    job = await queue()
+    licence = b"MIT License\n\nCopyright (c) Pascal\n"
+    files = {**PACK_FILES, tasks.PASCAL_LICENSE: licence}
+    await _put(local_storage, model_export_pack_object(VERSION, tasks.PASCAL_LICENSE), licence)
+    sha = {rel: hashlib.sha256(data).hexdigest() for rel, data in files.items()}
+    await _put(local_storage, model_export_pack_object(VERSION, "manifest.json"), json.dumps({"files": sha}).encode())
+    plan = _plan()
+    plan["instances"][0]["props"] = {"license": "MIT (Pascal)", "author": "Pascal", "source": "github"}
+
+    await compile_model_export(
+        db_sessionmaker, local_storage, fake_clock, export_id=job.export_id, argv_for=argv_for("ok"), build=_stub(plan)
+    )
+
+    key = model_export_object(job.project_id, job.export_id, "CREDITS.txt")
+    credits = b"".join([c async for c in local_storage.open_read(key)]).decode()
+    assert "- models/chair.glb: Pascal · MIT (Pascal) · github" in credits
+    assert credits.endswith(f"Giấy phép MIT của mẫu Pascal ({tasks.PASCAL_LICENSE}):\n\n{licence.decode()}")
+
+
+def test_credits__mit_text_only_when_mit_model_built() -> None:
+    """Mẫu MIT bị bỏ, hay gói không có tệp giấy phép → không nối văn bản MIT."""
+    plan = _plan()
+    plan["instances"][0]["props"] = {"license": "MIT (Pascal)", "author": "Pascal", "source": "github"}
+    assert "MIT License" not in tasks._credits(plan, {"Furniture_F-1"}, "MIT License")
+    assert tasks._credits(plan, set(), None).endswith("· CC0 · nguồn\n")
+    assert tasks._credits(_plan(), set(), "MIT License").endswith("· CC0 · nguồn\n")

@@ -5,7 +5,9 @@ Chỉ nhập `packages.*` và `state`/`settings`. Một lượt quét, trong **m
 1. chốt `failed` `MODEL_EXPORT_STALLED` lượt `queued` > 2 giờ và `running` > 15 phút;
 2. gửi lại task của lượt `queued` im > 10 phút, đẩy `updated_at` lên để lượt sau không gửi lặp;
 3. dọn: mỗi dự án giữ object của 5 lượt `done` mới nhất (mọi chất lượng, gồm `blocked`); dòng cũ hơn
-   giữ lại với `glb_bytes = NULL` và `report_summary.pruned = true`.
+   giữ lại với `glb_bytes = NULL` và `report_summary.pruned = true`;
+4. dọn object (`snapshot.json`) của lượt `superseded` đã quá trần `running` (15 phút): lượt bị thay khi còn
+   `queued` không có worker nào dọn hộ. Đánh dấu `report_summary.pruned` như bước 3 để không dọn lặp.
 
 Object của lượt bị chốt/dọn xoá sau commit.
 """
@@ -54,6 +56,14 @@ _PRUNE: Final = text(
 )
 """Đánh dấu đã dọn bằng `report_summary.pruned` (không bằng `glb_bytes`): bản `blocked` không có GLB
 nhưng vẫn có `snapshot.json`/`report.json`/`CREDITS.txt` cần xoá theo cùng luật giữ 5 bản."""
+_CLEAN_SUPERSEDED: Final = text(
+    "UPDATE model_exports SET updated_at = :now, "
+    "report_summary = COALESCE(report_summary, '{}'::jsonb) || '{\"pruned\": true}'::jsonb WHERE id IN ("
+    "SELECT id FROM model_exports WHERE status = 'superseded' AND updated_at < :cutoff "
+    "AND NOT COALESCE((report_summary ->> 'pruned')::boolean, false) LIMIT :batch) RETURNING id, project_id"
+)
+"""Chờ quá trần `running`: lượt `running` bị thay thì worker của nó đã xong hoặc bị giết, không còn đọc
+`snapshot.json`; lượt đó tự dọn ở `finish → False`, nên ở đây thường chỉ còn object của lượt bị thay khi `queued`."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,7 +87,10 @@ async def run_model_export_sweep(
     *,
     batch: int = SWEEP_BATCH,
 ) -> SweepResult:
-    """Một lượt quét: chốt lượt kẹt, gửi lại lượt `queued` quá hạn, dọn bản `done` cũ; xoá object sau commit."""
+    """Một lượt quét: chốt lượt kẹt, gửi lại lượt `queued` quá hạn, dọn bản `done` cũ và lượt `superseded` cũ.
+
+    Object xoá sau commit.
+    """
     settings = get_model_export_settings()
     now = clock.now()
     async with sessionmaker() as db:
@@ -103,6 +116,9 @@ async def run_model_export_sweep(
         pruned = list(
             (await db.execute(_PRUNE, {"now": now, "keep": settings.model_export_keep_done, "batch": batch})).tuples()
         )
+        running_cutoff = now - timedelta(seconds=settings.model_export_running_max_age_s)
+        params = {"now": now, "cutoff": running_cutoff, "batch": batch}
+        pruned += list((await db.execute(_CLEAN_SUPERSEDED, params)).tuples())
         await db.commit()
         await after_commit_idle(db)
     for export_id, project_id in failed:

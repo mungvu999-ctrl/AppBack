@@ -74,8 +74,9 @@
   `liftMm`, tâm ở tâm hộp; cạnh dài mẫu cắt cạnh dài hộp (cả hai dài ≥ 1,2 lần) → xoay 90°, lưng về tường gần hơn;
   tỉ lệ = `fit_scale`, cần quá ±10 % → kẹp ở ±10 % + `degraded minor` có lý do ("mẫu toilet cần co giãn 43 %… chỉ
   cho 90 %"). Đề xuất `item` ngoài ±10 % vẫn bị bỏ (luật không bao giờ để vậy). Không áp lưng mẫu vào tường khi mẫu
-  sâu hơn hộp (B2 có; ở đây tâm luôn ở tâm hộp). `model_size_m` chuyển sang `assets`; `assets._size_mm` để nguyên
-  (sửa ở nhánh M1) và không còn được gọi — xoá khi gộp M1.
+  sâu hơn hộp (B2 có; ở đây tâm luôn ở tâm hộp). `model_size_m` chuyển sang `assets`; `assets._size_mm` (bản sửa
+  `w/d/h` của M1) đã xoá khi gộp M1 `07a957d9`: `model_size_m` đọc `w/d/h` rồi mới `x/y/z`; mất log
+  `model_export_pack_size_xyz` của M1; test `w/d/h` của M1 giữ, đổi kỳ vọng theo `fit_scale` (kẹp ±10 %).
 - **ch-04 dựng lại** (`appback-bake:f14`, mã worktree): 83 đề xuất dựng hết, 0 bỏ; bản ghi `degraded minor` 40 → 15
   (3 đề xuất: rèm 2, gộp tủ 1; 12 đồ document theo F4: hộp tài liệu nhỏ/lớn hơn mẫu); `major` 3 (tường chồng, như
   trước); chất lượng `degraded` như trước; plan tất định; không hình hở/suy biến.
@@ -85,7 +86,7 @@
 - **Nợ còn mở:** 409 `remoteChanges` chưa liệt kê đổi `state`/`override` của đề xuất (cần migration CHECK
   `entity_type` + `VersionEntityType`); concept AI truyền `None` vào `reconcile`; `versions` chưa chụp lớp đề xuất;
   FE strict (zod) và hiến chương `docs/reviews/pending/charter-M2-QL.md` chưa duyệt → cổng bước 7 đỏ tới khi duyệt;
-  `_size_mm` chết chờ gộp M1; ca vàng FE mirror theo `rulesetSha` mới.
+  ca vàng FE mirror theo `rulesetSha` mới.
 - Cổng áp dụng: ruff, mypy, lint-imports, pytest `packages/domain/suggestions`, `packages/domain/model_export`,
   `apps/worker/model_export/tests`, `apps/api/model_export/tests/test_snapshot_source.py`. Migration/openapi/hợp đồng
   FE–BE: không đổi thêm.

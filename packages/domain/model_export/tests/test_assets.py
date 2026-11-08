@@ -12,6 +12,7 @@ MODELS: dict[str, dict[str, Any]] = {
     "sofa": {"file": "models/sofa.glb", "license": "CC0", "author": "A", "source": "s", "sizeMm": [2000, 900, 800]},
     "bed": {"sizeMm": {"x": 1600, "y": 2000, "z": 500}},
     "odd": {"sizeMm": "?"},
+    "pack-bed": {"file": "models/pack-bed.glb", "license": "MIT (Pascal)", "sizeMm": {"w": 1520, "d": 2000, "h": 710}},
 }
 DEFAULTS = {"bed|bed": "bed", "table": "sofa", "chair": "ghost"}
 
@@ -141,3 +142,30 @@ def test_model_size_forms() -> None:
     assert model_size_m({"sizeMm": {"x": 1000, "y": 500, "z": 250}}) == (1.0, 0.5, 0.25)
     assert model_size_m({"sizeMm": {"w": 1000, "d": 0, "h": 1}}) is None
     assert model_size_m({}) is None
+
+
+def test_resolve__pack_size_keys_w_d_h() -> None:
+    """Gói xuất ghi `sizeMm` `{w, d, h}`: hộp bao vừa mẫu → built, scale 1; hộp chỉ bằng nửa → degraded (cỡ được đọc)."""
+    r, book = AssetResolver(MODELS, DEFAULTS), RecordBook()
+    fits = r.resolve_furniture(
+        _f(
+            model={"src": "/items/pack-bed/model.glb"},
+            boundingBox={"min": {"x": 0, "y": 0}, "max": {"x": 1520, "y": 2000}},
+            heightMm=710,
+        ),
+        "L",
+        book,
+    )
+    small = r.resolve_furniture(
+        _f(
+            model={"src": "/items/pack-bed/model.glb"},
+            boundingBox={"min": {"x": 0, "y": 0}, "max": {"x": 760, "y": 1000}},
+        ),
+        "L",
+        book,
+    )
+    assert fits is not None
+    assert fits["scale"] == [1.0, 1.0, 1.0]
+    assert small is not None
+    assert small["scale"][0] < 1
+    assert [x.status for x in book.records] == ["built", "degraded"]

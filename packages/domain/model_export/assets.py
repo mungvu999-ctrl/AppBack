@@ -1,6 +1,6 @@
 """Furniture model resolution against the export pack (HOP-DONG-M1 §1 "Đồ đạc", §8).
 
-Pack: `models.json` `{id: {file, license, author, source, sizeMm: [x, y, z] | {x, y, z}}}`,
+Pack: `models.json` `{id: {file, license, author, source, sizeMm: {w, d, h} | [x, y, z]}}` (`{x, y, z}` cũ vẫn đọc),
 `furniture-defaults.json` `{"kind|variant" | "kind": modelId}`.
 Assumptions: `boundingBox` is the footprint before rotation (width along x, depth along y, mm);
 `rotationDeg` turns in the editor's Y-down frame, so it flips sign in the export's Y-up frame;
@@ -35,19 +35,10 @@ LONG_AXIS_RATIO = 1.2
 """Model and box both at least this elongated, long sides crossed → turn the model 90° (B2 F4)."""
 
 
-def _size_mm(size: Any) -> tuple[float, float, float] | None:
-    """`sizeMm` as (x, y, z); list or dict accepted."""
-    if isinstance(size, Mapping):
-        return (size.get("x", 0), size.get("y", 0), size.get("z", 0))
-    if isinstance(size, (list, tuple)) and len(size) == 3:
-        return tuple(size)
-    return None
-
-
 def model_size_m(meta: Mapping[str, Any]) -> tuple[float, float, float] | None:
-    """`sizeMm` of a pack model (list `[x, y, z]` or dict `w/d/h`, else `x/y/z`) → metres; missing → None.
+    """`sizeMm` of a pack model (list `[x, y, z]` or dict `w/d/h`, else legacy `x/y/z`) → metres; missing → None.
 
-    `_size_mm` reads only `x/y/z` (fixed on the M1 branch); the real pack writes `w/d/h`."""
+    The one size reader of the compiler (M1's `_size_mm` w/d/h fix merged into it, M2-QL)."""
     s = meta.get("sizeMm")
     if isinstance(s, Mapping):
         vals = (s.get("w", s.get("x", 0)), s.get("d", s.get("y", 0)), s.get("h", s.get("z", 0)))

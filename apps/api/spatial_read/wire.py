@@ -270,20 +270,6 @@ class SpatialGraphOut(WireModel):
     """Vắng khoá khi cả công trình không có mái (đồ thị cũ giữ đúng hình dạng)."""
 
 
-class FloorRevisionOut(WireModel):
-    """`FloorRevisionSchema` — đủ để mở một lượt `PUT` có version lên đúng tầng ấy (#35)."""
-
-    floor_id: str
-    revision: Annotated[int, Field(ge=0)]
-
-
-class SpatialGraphDocumentOut(WireModel):
-    """N15 — đồ thị cộng bảng `revision`; zod refine hai danh sách là **song ánh**."""
-
-    graph: SpatialGraphOut
-    floor_revisions: list[FloorRevisionOut]
-
-
 ReadinessState = Literal["ready", "needsReview", "notEvaluated"]
 ReadinessReason = Literal[
     "scaleUnresolved",
@@ -394,6 +380,25 @@ class FloorLayerDocumentOut(WireModel):
     suggestions_meta: SuggestionsMetaOut | None = None
     suggestions_enabled: Literal[True] | None = None
     """Lớp đề xuất đang bật ở tầng này; vắng = tắt (như `edited`)."""
+
+
+class FloorRevisionOut(WireModel):
+    """`FloorRevisionSchema` — đủ để mở một lượt `PUT` có version lên đúng tầng ấy (#35)."""
+
+    floor_id: str
+    revision: Annotated[int, Field(ge=0)]
+    suggestions: list[SuggestionOut] | None = None
+    """Lớp đề xuất M2 của tầng như N16 (editor nạp tầng qua N15); vắng khi rỗng, cùng `suggestionsMeta`."""
+    suggestions_meta: SuggestionsMetaOut | None = None
+    suggestions_enabled: Literal[True] | None = None
+    """Lớp đề xuất đang bật ở tầng này; vắng = tắt."""
+
+
+class SpatialGraphDocumentOut(WireModel):
+    """N15 — đồ thị cộng bảng `revision`; zod refine hai danh sách là **song ánh**."""
+
+    graph: SpatialGraphOut
+    floor_revisions: list[FloorRevisionOut]
 
 
 def suggestion_fields(items: Sequence[Suggestion], meta: SuggestionsMeta | None, *, enabled: bool) -> dict[str, Any]:

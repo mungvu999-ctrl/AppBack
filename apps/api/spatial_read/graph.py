@@ -31,6 +31,7 @@ from apps.api.spatial_read.wire import (
     axes_out,
     dimensions_out,
     layer_out,
+    suggestion_fields,
 )
 from packages.db.models.projects import Project
 
@@ -88,6 +89,11 @@ async def spatial_graph(db: AsyncSession, project_id: str, *, app: object | None
         roofs=[roof for layer in layers for roof in layer.roofs or ()] or None,
     )
     revisions = [
-        FloorRevisionOut(floor_id=level.id, revision=doc.revision) for level, doc in zip(levels, docs, strict=True)
+        FloorRevisionOut(
+            floor_id=level.id,
+            revision=doc.revision,
+            **suggestion_fields(doc.suggestions, doc.suggestions_meta, enabled=doc.suggestions_enabled),
+        )
+        for level, doc in zip(levels, docs, strict=True)
     ]
     return SpatialGraphDocumentOut(graph=graph, floor_revisions=revisions)

@@ -53,6 +53,12 @@ Cách trả lời đủ: "duyệt nguyên văn", hoặc liệt kê dòng cần s
 >   `suggestionId` khớp mẫu id đề xuất, `rule` `^[A-Z][A-Z0-9]{0,5}$`, `ruleVersion` int ≥ 1). Vắng khoá với đồ thường.
 >   Áp cho N15, N16, #35 (vào và ra), phiên bản.
 > - `FloorLayerDocumentSchema` (N16) thêm `suggestions?`, `suggestionsMeta?`, `suggestionsEnabled?` (§14).
+> - N15: mỗi phần tử `floorRevisions[]` (`FloorRevisionSchema`, strict) thêm cùng ba khoá tuỳ chọn ấy của tầng
+>   đó, cùng luật vắng khi rỗng/tắt như N16 (editor nạp tầng qua N15). Áp cho cả N15 qua liên kết chia sẻ (cùng
+>   `spatial_graph`). zod refine song ánh `levels` ↔ `floorRevisions` không đổi.
+> - `adoptedAs`/`adopted` do máy chủ đặt: #35 mang món có `origin.suggestionId` → đề xuất đó `state: "adopted"`,
+>   `adoptedAs` = id món (thắng `suggestionState` client gửi cho id ấy); món biến mất ở lượt sau → `disabled`, bỏ
+>   `adoptedAs` (hợp đồng M2 §3 bước 6). Chỉ chạy ở lượt đổi `layer` khi lớp bật.
 
 ### 2.3 Mục mới §14
 

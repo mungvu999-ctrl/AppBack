@@ -143,7 +143,7 @@ class _Missing:
 MISSING: Final = _Missing()
 """Giá trị của `RemoteFieldChange.value` khi trường bị gỡ (trên dây: vắng khoá `value`)."""
 
-VersionEntityType = Literal["vertex", "wall", "door", "window", "furniture", "room", "dimension", "roof"]
+VersionEntityType = Literal["vertex", "wall", "door", "window", "furniture", "room", "dimension", "roof", "suggestion"]
 _ENTITY_TYPES: Final = frozenset(get_args(VersionEntityType))
 SYSTEM_PIPELINE: Final = "system:pipeline"
 

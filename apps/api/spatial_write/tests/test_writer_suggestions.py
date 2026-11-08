@@ -38,7 +38,7 @@ from apps.api.spatial_write.tests._helpers import (
 from apps.api.spatial_write.tests._route_helpers import layer_path, put_layer, wire, write_body
 from apps.api.spatial_write.writer import LayerWrite, WriteResult, write_layer
 from packages.core.clock import Clock
-from packages.core.errors import SYSTEM_PIPELINE, AppError, VersionConflictError
+from packages.core.errors import MISSING, SYSTEM_PIPELINE, AppError, VersionConflictError
 from packages.db.models.auth import User
 from packages.db.models.floors import FloorRow
 from packages.db.models.spatial import FloorDocumentRow
@@ -319,13 +319,7 @@ async def test_pipeline_merge__user_state_survives(db_session: AsyncSession, fak
 
 
 async def test_conflict_409__lists_suggestion_state_changes(db_session: AsyncSession, fake_clock: FakeClock) -> None:
-    """Bản ghi cũ → 409 với thay đổi `layer` của người kia; trạng thái đề xuất người kia vừa đặt vẫn còn.
-
-    Giới hạn đã biết (Lệch của M2-QL): nhật ký `floor_change_log` chưa nhận loại thực thể `suggestion` (CHECK
-    `ck_floor_change_log_entity_type` và `VersionEntityType` của lõi), nên `remoteChanges` chưa liệt kê được đổi
-    `state`/`override`. Test khoá hành vi hiện có: 409 vẫn bắn nhờ thay đổi `layer`, và lượt ghi cũ không mang
-    `suggestionState` không đè trạng thái của người kia.
-    """
+    """Bản ghi cũ → 409 liệt kê cả thay đổi `layer` lẫn `state`/`override` đề xuất của người kia; không gì bị đè."""
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     other = await make_user(db_session, name="Người thứ hai")
@@ -337,15 +331,55 @@ async def test_conflict_409__lists_suggestion_state_changes(db_session: AsyncSes
         fake_clock,
         base=1,
         layer=_layer(floor.level_id, thickness=250),
-        state=[{"id": L1_ID, "state": "disabled"}],
+        state=[{"id": L1_ID, "state": "disabled"}, {"id": R1_ID, "state": "overridden", "override": {"heightMm": 120}}],
     )
 
     with pytest.raises(VersionConflictError) as caught:
         await _write(db_session, floor, scene.owner, fake_clock, base=1, layer=_layer(floor.level_id, thickness=300))
 
     assert caught.value.current_version == 2
-    assert {change.entity_type for change in caught.value.remote_changes} == {"wall"}
+    assert {change.entity_type for change in caught.value.remote_changes} == {"wall", "suggestion"}
+    assert {
+        (change.entity_id, change.field, json.dumps(change.value))
+        for change in caught.value.remote_changes
+        if change.entity_type == "suggestion"
+    } == {
+        (L1_ID, "state", '"disabled"'),
+        (R1_ID, "state", '"overridden"'),
+        (R1_ID, "override", '{"heightMm": 120}'),
+    }
     assert _by_id((await reread(db_session, floor.pk)).suggestions)[L1_ID].state == "disabled"
+
+
+async def test_conflict_409__state_only_change_blocks_stale_state(
+    db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """F4: người kia **chỉ** đổi trạng thái đề xuất (tắt L1, gỡ điều chỉnh R1; không đổi `layer`). Lượt cầm nền cũ gửi
+    `suggestionState` của mình → 409 liệt kê đúng ba đổi ấy (gỡ điều chỉnh = `override` bị gỡ, `MISSING`); trạng
+    thái của người kia còn nguyên."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    other = await make_user(db_session, name="Người thứ hai")
+    await _write(db_session, floor, scene.owner, fake_clock, base=0, layer=_layer(floor.level_id))
+    tuned = [{"id": R1_ID, "state": "overridden", "override": {"heightMm": 120}}]
+    await _write(db_session, floor, scene.owner, fake_clock, base=1, state=tuned)
+    await _write(db_session, floor, other, fake_clock, base=2, state=[{"id": L1_ID, "state": "disabled"}])
+
+    with pytest.raises(VersionConflictError) as caught:
+        await _write(
+            db_session, floor, scene.owner, fake_clock, base=2, state=[*tuned, {"id": L1_ID, "state": "active"}]
+        )
+
+    remote = caught.value.remote_changes
+    assert caught.value.current_version == 3
+    assert {(c.entity_type, c.entity_id, c.field, c.value) for c in remote} == {
+        ("suggestion", L1_ID, "state", "disabled"),
+        ("suggestion", R1_ID, "state", "active"),
+        ("suggestion", R1_ID, "override", MISSING),
+    }
+    assert {c.changed_by for c in remote} == {other.id}
+    stored = _by_id((await reread(db_session, floor.pk)).suggestions)
+    assert (stored[L1_ID].state, stored[R1_ID].state) == ("disabled", "active")
 
 
 async def test_adopted_furniture_removed__suggestion_disabled(db_session: AsyncSession, fake_clock: FakeClock) -> None:

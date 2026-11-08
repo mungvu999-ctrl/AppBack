@@ -822,7 +822,9 @@ async def _commit(
             await savepoint.rollback()
             return None
         await _claim(db, request, current=current, layer=nxt.layer)
-        await _write_log(db, request, revision=expected + 1, current=current, after=(nxt.layer, dimensions))
+        await _write_log(
+            db, request, revision=expected + 1, current=current, after=(nxt.layer, dimensions, suggestions.items)
+        )
         counts = layer_counts(nxt.layer)
         await set_layer_counts(
             db,
@@ -938,26 +940,47 @@ def _dimension_marks(old: Sequence[Dimension], new: Sequence[Dimension]) -> list
     ]
 
 
+def _diff_suggestion_state(old: Sequence[Suggestion], new: Sequence[Suggestion]) -> list[FieldChange]:
+    """Trường người dùng sở hữu của đề xuất đã đổi: `state` (giá trị mới), `override` (mới, hay `MISSING` khi gỡ).
+
+    So với mặc định `active` không điều chỉnh, nên sinh mới hay dọn bản không dữ liệu người dùng không ra dòng nào;
+    `reconcile` ép `adopted` → `disabled` thì có (người kia cần thấy). `params` sinh lại không ghi.
+    """
+    before = {item.id: (item.state, item.override) for item in old}
+    changes: list[FieldChange] = []
+    for item in new:
+        state, override = before.get(item.id, ("active", None))
+        if item.state != state:
+            changes.append(FieldChange(item.id, "suggestion", "state", item.state))
+        if item.override != override:
+            changes.append(FieldChange(item.id, "suggestion", "override", item.override or MISSING))
+    return changes
+
+
 async def _write_log(
     db: AsyncSession,
     request: _Request,
     *,
     revision: int,
     current: FloorDocument,
-    after: tuple[SpatialLayer, tuple[Dimension, ...]],
+    after: tuple[SpatialLayer, tuple[Dimension, ...], tuple[Suggestion, ...]],
 ) -> None:
     """Bước 13: nhật ký theo trường vào `floor_change_log`; không có gì đổi thì không câu nào.
+
+    Đổi `state`/`override` của đề xuất M2 cũng vào nhật ký (loại `suggestion`): lượt ghi cầm bản cũ nhận 409 thay vì
+    lặng lẽ đè lựa chọn của người kia (HOP-DONG-DU-LIEU-LOP-DE-XUAT §4).
 
     Mỗi khúc `_LOG_CHUNK_ROWS` dòng là **một** câu `INSERT … SELECT FROM unnest(…)`: lô
     `executemany` cũ tốn ~80 µs/dòng, 12 s cho 140.000 dòng của lớp 20.000 tường dưới khoá tầng
     (NO-296). Chia khúc để mỗi câu xa `statement_timeout`; `id` vẫn tăng theo thứ tự `changes`.
     """
-    old, (new, dimensions) = current.layer, after
+    old, (new, dimensions, suggestions) = current.layer, after
     changes = diff_layers(old, new)
     if not changes and has_untracked_changes(old, new):
         changes = _touch_marks(old, new)
     dimension_changes = _diff_dimensions(current.dimensions, dimensions)
     changes += dimension_changes or _dimension_marks(current.dimensions, dimensions)
+    changes += _diff_suggestion_state(current.suggestions, suggestions)
     now = request.clock.now()
     for start in range(0, len(changes), _LOG_CHUNK_ROWS):
         await db.execute(_log_insert(request, revision, now, changes[start : start + _LOG_CHUNK_ROWS]))

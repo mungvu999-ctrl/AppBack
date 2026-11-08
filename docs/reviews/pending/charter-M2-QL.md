@@ -1,7 +1,10 @@
 # Nguyên văn thay đổi hiến chương AppBack cho M2-QL (lớp đề xuất) — **chờ chủ dự án duyệt**
 
 Trạng thái: **CHƯA DUYỆT.** Mã trên nhánh `feature/m2-ql-suggestions` (worktree `F:/worktrees/AppBack/m2-ql`) đã chạy theo
-các dòng dưới đây nhưng **không** sửa `docs/charter/*`, `openapi.json` hay `tools/contract/*`. Nguồn thiết kế:
+các dòng dưới đây và **không** sửa `docs/charter/*`, nhưng **có** sửa `docs/contracts/openapi.json` (sinh lại theo route
+N52 và các trường M2), `tools/contract/*` (`APPFRONT_SHA` ghim FE M2, `schema-map.ts` thêm N52, `check.py` và
+`tests/test_check.py` đọc dòng chờ duyệt qua shim `tools.charter.pending_bind_rows`) và `docs/contracts.toml` (revision
+contract `r20261108_m2_ql`, xem §2.3 "nhật ký"). Nguồn thiết kế:
 `F:/App/docs/mo-hinh-dep-chuyen-nghiep/M2/HOP-DONG-DU-LIEU-LOP-DE-XUAT.md` (§2.1, §3, §4, §8). Không ai được ghi
 "đã duyệt" cho tới khi bạn trả lời; khi bạn duyệt, người điều phối thêm trailer
 `Charter-Approved: <đường tệp này + ngày bạn duyệt>` vào commit hiến chương theo luật `/merge-review` §2.
@@ -83,9 +86,11 @@ Cách trả lời đủ: "duyệt nguyên văn", hoặc liệt kê dòng cần s
 >   `If-None-Match` khớp → 304 không thân.
 > - Bộ luật mới (đổi `rulesetSha`) chỉ áp ở lượt ghi đổi `layer` đầu tiên của tầng đã bật lớp; máy chủ ghi nhật ký sha
 >   cũ → mới; không tự tăng revision khi không ai lưu (§8.4).
-> - **Việc còn mở:** (a) 409 liệt kê đổi `state`/`override` cần thêm `suggestion` vào CHECK
->   `ck_floor_change_log_entity_type` (migration) và `VersionEntityType` của lõi, rồi enum `entityType` của FE;
->   (b) ngân sách `reconcile` ≤ 150 ms p95 (§8.6) — đo trên penthouse là 163 ms (xem báo cáo M2-QL).
+> - **Nhật ký (§1.3, dòng mới):** `| Đề xuất M2 | suggestion | DRESS-… | state, override |`. Mỗi lượt ghi đổi
+>   `state`/`override` của đề xuất để lại dòng nhật ký (gỡ điều chỉnh = trường bị gỡ); `params` sinh lại không ghi. Nên
+>   lượt ghi cầm `baseVersion` cũ nhận 409 có `remoteChanges[].entityType = "suggestion"` (W20). Máy chủ đã làm
+>   (migration `r20261108_m2_ql`); FE phải thêm `suggestion` vào `VERSION_ENTITY_KINDS` (NO-M2-2).
+> - Ngân sách `reconcile` ≤ 150 ms p95 (§8.6): đo 08/11 trên penthouse 81,8 ms (ch-04 27,2, ch-06 30,1).
 > - Câu chữ mục này, dòng N52 và phần thêm ở #35/N16/`FurnitureSchema` **chờ chủ dự án duyệt** (tiền lệ M1-01).
 
 ---

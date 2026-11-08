@@ -101,3 +101,60 @@
 - Cổng áp dụng: ruff, mypy, lint-imports, pytest `packages/domain/suggestions`, `packages/domain/model_export`,
   `apps/worker/model_export/tests`, `apps/api/model_export/tests/test_snapshot_source.py`. Migration/openapi/hợp đồng
   FE–BE: không đổi thêm.
+
+## M2-QL — vòng sửa review 2026-11-08 (`docs/reviews/2026-11-08-feature-m2-ql-suggestions.md`)
+
+- F4: `_write_log` ghi đổi `state`/`override` (loại `suggestion`) → nền cũ nhận 409 liệt kê đổi ấy. **Migration có:**
+  `r20261108_m2_ql` (contract, thay CHECK `entity_type` như `r20261024_fe3d_roof`, có downgrade + test vòng lên/xuống),
+  đăng ký trong `docs/contracts.toml`; `VersionEntityType`/`CHANGE_ENTITY_TYPES` thêm `suggestion`.
+- F5: snapshot bỏ đề xuất khi `suggestionsEnabled` không bật. F6: `flag_collisions` (trong `reconcile` và lượt chỉ bật
+  lại) đánh `stale` có lý do bản đề xuất va nhau. F7: `gapMm`/`plinthMm`/`countertopMm` trong `params` dãy tủ, xoá bốn
+  hằng `CABINET_*` và lọc trùng của compiler. F8: bản chính không `migrate` → `stale` giữ trạng thái người dùng.
+  F9: `check_override` → 422 `SUGGESTION_OVERRIDE_INVALID`. F13 + F12: đồ của document không xoay (như editor), vừa hộp
+  theo hướng dựng thật. F10 (một phần): `origin` ⇒ `source='human'`. F11: `SUGGESTION_CAP` mang số sau `reconcile`.
+  F17 (một phần): ca 401 N52. Nit 19: lý do chỉ tiếng Việt. Nit 21: xoá `model_origin`. F14/F15 (một phần): compiler
+  không còn nhập `suggestions` (xoá phụ thuộc vòng; `compiler_version` băm đủ mã compiler).
+- Cổng áp dụng: ruff, mypy, lint-imports, migration (bước 6), pytest đích `spatial_write`, `spatial_read`,
+  `suggestion_rules`, `model_export`, `packages/domain/{suggestions,model_export,spatial}`, `packages/db`, `packages/core`.
+  openapi: không đổi thêm. Hợp đồng FE–BE: 409 thêm `entityType: "suggestion"` (NO-M2-2).
+
+Phân loại: **[merge]** chặn merge · **[mặc định]** chặn bật cờ mặc định · **[phát hành]** chặn phát hành · **[sau]** để sau, giới hạn đã ghi.
+
+- NO-M2-2 (CON/API) **[merge]**: 409 `remoteChanges` nay có `entityType: "suggestion"` (`entityId` = id đề xuất,
+  `field` = `state`/`override`). AppFront `VERSION_ENTITY_KINDS` (`src/api/schemas/errors.ts:155`) là enum strict → FE
+  hiện từ chối thân 409 ấy (báo lỗi chung, không trộn; không mất dữ liệu vì máy chủ đã chặn ghi). Cần cùng lúc: FE thêm
+  `suggestion` vào enum + chiến lược trộn, câu chữ HOP-DONG-MOI §1.3 (dòng mới ở `docs/reviews/pending/charter-M2-QL.md`
+  §2.3), ghim lại `APPFRONT_SHA`. Revision `r20261108_m2_ql` được worker đăng ký vào `docs/contracts.toml` (tệp của người
+  điều phối, tiền lệ `f7585326`): người điều phối xác nhận dòng ấy. Đi cùng NO-M2-1.
+- NO-M2-3 (LOG) **[sau]**: bản vừa bật lại mà va món khác (F6) ở `stale` tới lượt đổi `layer` sau mới được xếp lại;
+  tắt món chặn nó cũng không gỡ `stale` ngay. Lý do: chạy lại `reconcile` ở lượt chỉ đổi trạng thái sẽ áp bộ luật mới
+  ngoài lượt đổi `layer` (trái §8 quyết định 4). Lý do va chạm hiện trong `stale.reasonVi` nên người dùng thấy.
+- NO-M2-4 (LOG) **[sau]**: F10 phần còn lại — `suggestionState` gửi `adopted` cho đề xuất không có món `origin` khớp
+  khi `layer` không đổi vẫn được nhận (lượt đổi `layer` sau ép về `disabled`); hai món cùng `origin.suggestionId` thì
+  món sau thắng im lặng. Không mất món của người dùng (món nằm trong `layer`), chỉ lệch trạng thái một lượt.
+- NO-M2-5 (RES) **[phát hành]**: lỗi trong một luật làm `reconcile` ném → mọi lượt lưu trên tầng bật lớp hỏng (kể cả
+  `merge` của pipeline); chưa bọc, chưa lùi về danh sách cũ. Chưa từng gặp trên 66 ca bench; sửa trước phát hành
+  (bọc + log + giữ danh sách cũ) hoặc chứng minh bằng fuzz.
+- NO-M2-6 (PARITY) **[phát hành]**: concept AI chưa vào `reconcile` (truyền `None`; hợp đồng §8 quyết định 5): dự án
+  chọn concept thì editor bày `additions`/mẫu theo vai, GLB không có.
+- NO-M2-7 (DATA) **[sau]**: `versions` chưa chụp lớp đề xuất; khôi phục phiên bản đổi `layer`, lượt `reconcile` sau
+  sinh lại theo id và giữ trạng thái người dùng theo id, nên chỉ mất trạng thái của id không còn sinh ra.
+- NO-M2-8 (R-07) **[sau]**: hai bảng cỡ mẫu không ai so (`suggestions/data/model_bbox.json` của luật, `sizeMm` trong
+  `models.json` của gói) — F15 phần còn lại. Lệch thì luật đặt món mà compiler ghi `degraded` "cần co giãn"; hiện hai
+  bảng trùng số. Thêm test so ở bước dựng gói.
+- NO-M2-9 (PARITY) **[sau]**: F1 chọn mẫu bằng `footprint_ratio` cạnh dài–cạnh dài (bảng mirror FE), còn compiler từ
+  F13 dựng mẫu không xoay, vừa hộp theo hướng thật → mẫu F1 chọn cho hộp có trục dài cắt trục mẫu ra `degraded minor`
+  (kẹp 90 %) thay vì vừa. Đúng với editor (cũng không xoay); đổi F1 là đổi ca vàng mirror FE.
+- NO-M2-10 (TEST) **[sau]**: test hiệu năng chỉ chặn ở 3 000 ms (F17): máy cổng + `coverage` làm số dao động; p95 đo
+  08/11 trong `run.sh shell` (`-n 3`, không coverage): ch-04 27,2 ms, ch-06 30,1 ms, syn-penthouse 81,8 ms (< 150 ms).
+- NO-M2-11 (OBS) **[sau]**: `apps/worker/datasets/tasks._reviewed_after` coi mọi dòng nhật ký của người là "đã duyệt
+  sau khi tải ảnh"; dòng `suggestion` (chỉ bật/tắt đề xuất) nay cũng tính. Tín hiệu yếu nhưng đúng là người đã mở tầng;
+  lọc `entity_type <> 'suggestion'` nếu bộ dữ liệu cần chặt hơn (tệp của prompt datasets).
+- NO-M2-12 (R-07) **[sau]**: Nit 20 — hai danh sách mẫu "vải" (`materials.py:50`, `compile_plan.bpy:315`, bpy còn khớp
+  `sheet`); ảnh nhiễu `roughVar` gieo theo khoá có `@roomId` nên mỗi phòng một ảnh 128 px.
+- NO-M2-13 (MNT-05) **[sau]**: F18 — nhánh ~8.500 dòng logic, reviewer không bắt tách; merge squash.
+- F16 các nợ tác giả cũ: 409 không liệt kê đổi đề xuất → **đã sửa** (F4); `compiler_version` không băm luật tỉ lệ →
+  **đã sửa** (F13: compiler không còn nhập `suggestions`); concept AI → NO-M2-6; `versions` → NO-M2-7; `reconcile` lỗi
+  chặn lượt lưu → NO-M2-5.
+- Ca vàng `ch-04.golden.json`: hai dãy tủ (F2/F3, luật chỉ máy chủ) thêm `gapMm`/`plinthMm`/`countertopMm`;
+  `rulesetSha` không đổi, ca mirror FE (R1/R4/C2/F1/L1) không đổi.

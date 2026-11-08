@@ -145,7 +145,7 @@ def test_model_size_forms() -> None:
 
 
 def test_resolve__pack_size_keys_w_d_h() -> None:
-    """Gói xuất ghi `sizeMm` `{w, d, h}`: hộp bao vừa mẫu → built, scale 1; hộp chỉ bằng nửa → degraded (cỡ được đọc)."""
+    """Gói xuất ghi `sizeMm` `{w, d, h}`: hộp bao vừa mẫu → built, scale 1; hộp chỉ bằng nửa → degraded (đọc cỡ)."""
     r, book = AssetResolver(MODELS, DEFAULTS), RecordBook()
     fits = r.resolve_furniture(
         _f(

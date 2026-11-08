@@ -6,7 +6,7 @@ Chúng nằm ở miền thuần vì `packages.db` (seed) không được nhập 
 `db-isolated`); `apps.api.spatial_read.codec`/`counts` chỉ chuyển tiếp lại.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -24,12 +24,20 @@ class LayerCounts:
 
 
 def document_to_json(
-    layer: SpatialLayer, axes: Sequence[Axis], dimensions: Sequence[Dimension], origin: Point | None = None
+    layer: SpatialLayer,
+    axes: Sequence[Axis],
+    dimensions: Sequence[Dimension],
+    origin: Point | None = None,
+    suggestions: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Dạng dây của một tài liệu (G4b-17): trục và gốc toạ độ (mm) của màn Trục được lưu thật.
 
     `origin=None` → **vắng khoá** `origin` (không `null`), nên tài liệu cũ chưa đặt gốc vẫn ra
     đúng jsonb như trước và phép so "không đổi" (C09b bước 10) không lệch.
+
+    `suggestions`: các khoá lớp đề xuất M2 (`suggestions`, `suggestionsMeta`, `suggestionsEnabled`) đã ở dạng dây,
+    ghép nguyên vào tài liệu. Miền không gian không nhập gói `suggestions` (gói ấy nhập miền này), nên người gọi
+    dựng sẵn; rỗng hay `None` → vắng cả ba khoá, tài liệu cũ giữ đúng jsonb.
     """
     document: dict[str, object] = {
         "layer": layer.model_dump(mode="json", by_alias=True, exclude_none=True),
@@ -38,6 +46,8 @@ def document_to_json(
     }
     if origin is not None:
         document["origin"] = origin.model_dump(mode="json", by_alias=True)
+    if suggestions:
+        document.update(suggestions)
     return document
 
 

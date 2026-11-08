@@ -12,13 +12,19 @@ phải dữ liệu cần đoán lại.
 
 `axes` và `origin` (gốc toạ độ, mm, tuỳ chọn) là dữ liệu màn Trục gửi qua #35 (G4b-17);
 tài liệu cũ không có khoá `origin` vẫn đọc được, nên không cần migration.
+
+Lớp đề xuất M2 (HOP-DONG-DU-LIEU-LOP-DE-XUAT §2.1) thêm ba khoá tuỳ chọn cùng luật "vắng khi rỗng":
+`suggestions` + `suggestionsMeta` (luôn đi cặp) và `suggestionsEnabled` (chỉ ghi `true`; vắng = theo mặc định
+của tầng, xem `documents.document_from_row`).
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError, model_validator
 
 from packages.domain.spatial import Axis, Dimension, Point, SpatialLayer, document_to_json, entity_ids
+from packages.domain.suggestions import Suggestion, SuggestionsMeta, document_keys
 
 __all__ = [
     "DocumentCorruptError",
@@ -27,6 +33,7 @@ __all__ = [
     "document_from_json",
     "document_to_json",
     "entity_ids",
+    "suggestion_keys",
 ]
 """`document_to_json` và `entity_ids` sống ở `packages.domain.spatial.document` (NO-220); đây chỉ chuyển tiếp."""
 
@@ -48,6 +55,24 @@ class DocumentEnvelope(BaseModel):
     axes: tuple[Axis, ...]
     dimensions: tuple[Dimension, ...]
     origin: Point | None = None
+    suggestions: tuple[Suggestion, ...] = ()
+    suggestions_meta: SuggestionsMeta | None = Field(default=None, alias="suggestionsMeta")
+    suggestions_enabled: StrictBool | None = Field(default=None, alias="suggestionsEnabled")
+
+    @model_validator(mode="after")
+    def _suggestions_with_meta(self) -> Self:
+        """`suggestions` không rỗng thì phải có `suggestionsMeta` (`document_keys` luôn ghi cả hai)."""
+        if self.suggestions and self.suggestions_meta is None:
+            raise ValueError("suggestions thiếu suggestionsMeta")
+        return self
+
+
+def suggestion_keys(items: Sequence[Suggestion], meta: SuggestionsMeta | None, *, enabled: bool) -> dict[str, object]:
+    """Ba khoá lớp đề xuất cho `document_to_json`: cặp danh sách/meta khi danh sách không rỗng, cờ chỉ khi bật."""
+    keys: dict[str, object] = {} if meta is None else document_keys(items, meta)
+    if enabled:
+        keys["suggestionsEnabled"] = True
+    return keys
 
 
 def document_from_json(raw: Mapping[str, object]) -> tuple[SpatialLayer, tuple[Axis, ...], tuple[Dimension, ...]]:

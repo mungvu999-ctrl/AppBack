@@ -45,6 +45,7 @@ from apps.api.spatial_read.wire import (
     axes_out,
     dimensions_out,
     layer_out,
+    suggestion_fields,
 )
 from packages.core.error_codes import NOT_FOUND
 from packages.db.models.drawings import DrawingRow
@@ -108,7 +109,8 @@ async def spatial_read_graph(project_id: str, request: Request, db: DbSession) -
     response_model=FloorLayerDocumentOut,
 )
 async def spatial_read_layer(project_id: str, floor_id: str, request: Request, db: DbSession) -> Response:
-    """N16 — lớp của một tầng: `revision`, `level`, `scaleStatus`/`readiness`, bốn danh sách, trục, kích thước.
+    """N16 — lớp của một tầng: `revision`, `level`, `scaleStatus`/`readiness`, bốn danh sách, trục, kích thước,
+    lớp đề xuất M2 (`suggestions`, `suggestionsMeta`, `suggestionsEnabled`, vắng khi rỗng/tắt).
 
     Serialize một lần + `ETag`/304 (`cached_json`); `response_model` giữ openapi như cũ.
     """
@@ -133,6 +135,7 @@ async def spatial_read_layer(project_id: str, floor_id: str, request: Request, d
         axes=axes_out(document.axes),
         dimensions=dimensions_out(document.dimensions),
         origin=None if document.origin is None else PointOut.model_validate(document.origin.model_dump()),
+        **suggestion_fields(document.suggestions, document.suggestions_meta, enabled=document.suggestions_enabled),
     )
     return cached_json(request, out_document)
 

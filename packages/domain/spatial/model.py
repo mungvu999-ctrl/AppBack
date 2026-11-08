@@ -294,6 +294,17 @@ class Opening(Reviewed):
         return self
 
 
+class FurnitureOrigin(DomainModel):
+    """Đề xuất M2 mà người dùng đã nhận nuôi thành món đồ này (HOP-DONG-DU-LIEU-LOP-DE-XUAT §2.4).
+
+    Writer dựa vào `suggestionId` để biết đề xuất `adopted` nào còn món trong lớp; món mất thì đề xuất về `disabled`.
+    """
+
+    suggestion_id: DressingId
+    rule: Annotated[StrictStr, Field(pattern=r"^[A-Z][A-Z0-9]{0,5}$")]
+    rule_version: Annotated[StrictInt, Field(ge=1)]
+
+
 class Furniture(Reviewed):
     """Đồ đạc đặt trên mặt bằng; `roomId` vắng khi chưa gắn phòng.
 
@@ -325,6 +336,8 @@ class Furniture(Reviewed):
     model: FurnitureModel | None = None
     slots: Annotated[dict[SlotName, MaterialRef], Field(max_length=8)] | None = None
     suggested: StrictBool = Field(default=False, exclude_if=_not_edited)
+    origin: FurnitureOrigin | None = None
+    """Món nhận nuôi từ đề xuất M2 (`origin.suggestionId`); vắng khoá với đồ thường."""
 
 
 class Room(Reviewed):

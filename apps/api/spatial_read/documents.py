@@ -25,6 +25,7 @@ from apps.api.spatial_read.codec import DocumentCorruptError, decode_document, d
 from packages.core.clock import Clock
 from packages.db.models.spatial import FloorDocumentRow
 from packages.domain.spatial import Axis, Dimension, Point, SpatialLayer
+from packages.domain.suggestions import Suggestion, SuggestionsMeta
 
 _log: Final = logging.getLogger(__name__)
 
@@ -58,6 +59,12 @@ class FloorDocument:
     updated_at: datetime | None
     origin: Point | None = None
     """Gốc toạ độ màn Trục (mm, G4b-17); `None` = chưa đặt."""
+    suggestions: tuple[Suggestion, ...] = ()
+    """Lớp đề xuất M2 đã lưu, sắp theo id (`reconcile` sinh)."""
+    suggestions_meta: SuggestionsMeta | None = None
+    suggestions_enabled: bool = False
+    """Lớp đề xuất có chạy ở tầng này không (§8 quyết định 1), **đã suy**: khoá `suggestionsEnabled` của tài liệu,
+    vắng thì `revision == 0` — tầng chưa từng ghi là tầng mới (bật), tầng đã có dữ liệu trước M2 thì tắt."""
 
 
 def empty_document(floor_pk: int) -> FloorDocument:
@@ -79,6 +86,7 @@ def empty_document(floor_pk: int) -> FloorDocument:
         last_body_sha256=None,
         last_base_revision=None,
         updated_at=None,
+        suggestions_enabled=True,
     )
 
 
@@ -104,6 +112,9 @@ def document_from_row(row: FloorDocumentRow) -> FloorDocument:
         axes=envelope.axes,
         dimensions=envelope.dimensions,
         origin=envelope.origin,
+        suggestions=envelope.suggestions,
+        suggestions_meta=envelope.suggestions_meta,
+        suggestions_enabled=row.revision == 0 if envelope.suggestions_enabled is None else envelope.suggestions_enabled,
         scale_mm_per_px=row.scale_mm_per_px,
         scale_source=scale_source_of(row.scale_source),
         scale_page_key=row.scale_page_key,

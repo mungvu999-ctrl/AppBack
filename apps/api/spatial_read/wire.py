@@ -19,13 +19,14 @@ Module này nằm trong nhóm được nhập `fastapi` (B3-02 [2]: trừ `route
 """
 
 from collections.abc import Sequence
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, JsonValue
 
 from apps.api.core.wire import WireDatetime, WireModel
 from packages.domain.spatial import Axis, Dimension, SpatialLayer, clear_area_m2
 from packages.domain.spatial.model import FurnitureVariant, RoomFinish
+from packages.domain.suggestions import Suggestion, SuggestionsMeta
 
 Millimetres = int
 """Mọi toạ độ và kích thước hình học là **số nguyên** milimét (`S:domain/spatial/types.ts`)."""
@@ -81,6 +82,14 @@ class FurnitureModelOut(WireModel):
 
     id: str
     src: str
+
+
+class FurnitureOriginOut(WireModel):
+    """Đề xuất M2 nguồn của một món đã nhận nuôi (`origin`, HOP-DONG-DU-LIEU-LOP-DE-XUAT §2.4)."""
+
+    suggestion_id: str
+    rule: str
+    rule_version: Annotated[int, Field(ge=1)]
 
 
 class WallOut(_ReviewedOut):
@@ -166,6 +175,8 @@ class FurnitureOut(_ReviewedOut):
     slots: dict[str, str] | None = None
     # Gợi ý của máy chưa nhận (B3); miền bỏ khoá khi `False`, dây vắng khoá theo W2.
     suggested: bool | None = None
+    origin: FurnitureOriginOut | None = None
+    """Món nhận nuôi từ đề xuất M2; vắng với đồ thường."""
 
 
 class RoofOut(_ReviewedOut):
@@ -296,6 +307,64 @@ class ReadinessOut(WireModel):
     thì hiện câu chung, nên không khai `Literal`."""
 
 
+SuggestionState = Literal["active", "disabled", "overridden", "adopted"]
+SuggestionKind = Literal[
+    "skirting",
+    "wallTile",
+    "cornice",
+    "casing",
+    "sash",
+    "railing",
+    "cabinetRun",
+    "curtain",
+    "rug",
+    "ceilingLight",
+    "item",
+    "modelPick",
+]
+
+
+class SuggestionHostRefOut(WireModel):
+    """`hostRef`: id W4 của chủ, hay id đề xuất chủ (P2 bám giường của P1); ít nhất một khoá."""
+
+    wall: str | None = None
+    room: str | None = None
+    opening: str | None = None
+    furniture: str | None = None
+    suggestion: str | None = None
+
+
+class SuggestionStaleOut(WireModel):
+    """`stale`: BE đặt khi luật thôi sinh bản ghi; tách khỏi `state` của người dùng."""
+
+    since: Annotated[int, Field(ge=0)]
+    reason_vi: str
+
+
+class SuggestionOut(WireModel):
+    """Một đề xuất đã lưu (§2.2). `params` theo lược đồ của `kind`, mm nguyên; `override` chỉ vô hướng."""
+
+    id: str
+    rule: str
+    rule_version: Annotated[int, Field(ge=1)]
+    kind: SuggestionKind
+    host_ref: SuggestionHostRefOut
+    params: dict[str, JsonValue]
+    state: SuggestionState
+    override: dict[str, str | bool | int | float] | None = None
+    created_revision: Annotated[int, Field(ge=0)]
+    stale: SuggestionStaleOut | None = None
+    adopted_as: str | None = None
+
+
+class SuggestionsMetaOut(WireModel):
+    """`suggestionsMeta`: bộ luật đã sinh danh sách và revision lớp làm nền."""
+
+    ruleset: str
+    ruleset_sha: str
+    basis_revision: Annotated[int, Field(ge=0)]
+
+
 class FloorLayerDocumentOut(WireModel):
     """N16 — lớp của một tầng; `scaleStatus` vắng khi tỉ lệ do người đặt hay chưa có (W24).
 
@@ -320,6 +389,20 @@ class FloorLayerDocumentOut(WireModel):
     dimensions: list[DimensionOut]
     origin: PointOut | None = None
     """Gốc toạ độ màn Trục (mm, G4b-17); vắng khi chưa đặt."""
+    suggestions: list[SuggestionOut] | None = None
+    """Lớp đề xuất M2 (HOP-DONG-DU-LIEU-LOP-DE-XUAT §2); vắng khi rỗng, cùng `suggestionsMeta`."""
+    suggestions_meta: SuggestionsMetaOut | None = None
+    suggestions_enabled: Literal[True] | None = None
+    """Lớp đề xuất đang bật ở tầng này; vắng = tắt (như `edited`)."""
+
+
+def suggestion_fields(items: Sequence[Suggestion], meta: SuggestionsMeta | None, *, enabled: bool) -> dict[str, Any]:
+    """Ba trường dây lớp đề xuất của N16 và kết quả #35: cùng luật "vắng khi rỗng" của tài liệu đã lưu."""
+    fields: dict[str, Any] = {"suggestions_enabled": True if enabled else None}
+    if items and meta is not None:
+        fields["suggestions"] = [SuggestionOut.model_validate(_dump(item)) for item in items]
+        fields["suggestions_meta"] = SuggestionsMetaOut.model_validate(_dump(meta))
+    return fields
 
 
 def layer_out(layer: SpatialLayer) -> SpatialLayerOut:

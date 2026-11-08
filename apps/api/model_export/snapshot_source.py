@@ -14,7 +14,13 @@ from typing import Any, Final
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.domain.model_export.snapshot import SCHEMA_VERSION, build_snapshot, fingerprint, snapshot_sha
+from packages.domain.model_export.snapshot import (
+    SCHEMA_VERSION,
+    build_snapshot,
+    fingerprint,
+    snapshot_sha,
+    suggestion_keys,
+)
 
 _COLUMNS: Final = (
     "s.scene_style, f.level_id, f.name, f.floor_order, f.elevation_mm, f.height_mm, f.hidden_in_3d, "
@@ -69,10 +75,15 @@ def _layer_of(document: Mapping[str, Any] | None) -> dict[str, Any]:
 
 
 async def take(db: AsyncSession, project_id: str, versions: Mapping[str, Any]) -> Snapshot:
-    """Dựng snapshot đầy đủ (kèm `layer` của từng tầng; tầng chưa có document → lớp rỗng)."""
+    """Dựng snapshot đầy đủ (kèm `layer` của từng tầng; tầng chưa có document → lớp rỗng).
+
+    Tầng có lớp đề xuất mang thêm `suggestions` + `suggestionsMeta`; tầng không có giữ nguyên dạng (và sha) M1."""
     rows = (await db.execute(_FULL, {"p": project_id})).mappings().all()
     scene_style = rows[0]["scene_style"]
-    floors = [{**_meta(row), "layer": _layer_of(row["document"])} for row in _floor_rows(rows)]
+    floors = [
+        {**_meta(row), "layer": _layer_of(row["document"]), **suggestion_keys(row["document"])}
+        for row in _floor_rows(rows)
+    ]
     body = build_snapshot(project_id, floors, versions, scene_style=scene_style)
     return Snapshot(
         body=body,

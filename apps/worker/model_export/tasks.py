@@ -68,6 +68,8 @@ SEVERITY_RANK: Final = {"critical": 0, "major": 1, "minor": 2, "info": 3}
 SUMMARY_RECORDS: Final = 50
 REPORT_MAX_BYTES: Final = 1024 * 1024
 LOG_TAIL_BYTES: Final = 2048
+PASCAL_LICENSE: Final = "LICENSE-PASCAL-MIT.txt"
+"""Nguyên văn giấy phép MIT của mẫu Pascal trong gói; MIT đòi kèm văn bản này khi phân phối mẫu."""
 _ENV_KEEP: Final = ("PATH", "LANG", "LC_ALL", "PYTHONPATH")
 """Không DSN, không khoá S3: Blender chỉ thấy thư mục tạm (như LB-01)."""
 
@@ -181,17 +183,25 @@ def _geometry_record(item: Mapping[str, Any], reason: str) -> dict[str, str]:
     }
 
 
-def _credits(plan: Mapping[str, Any], skipped: set[str]) -> str:
-    """`CREDITS.txt`: mỗi mẫu/vật liệu có giấy phép một dòng `tên: tác giả · giấy phép · nguồn`."""
+def _credits(plan: Mapping[str, Any], skipped: set[str], mit_text: str | None = None) -> str:
+    """`CREDITS.txt`: mỗi mẫu/vật liệu có giấy phép một dòng `tên: tác giả · giấy phép · nguồn`.
+
+    Có mẫu MIT được dựng và gói có `LICENSE-PASCAL-MIT.txt` → nối nguyên văn giấy phép vào cuối.
+    """
     lines = set()
+    mit = False
     for inst in plan.get("instances", []):
         props = inst.get("props") or {}
         if inst["name"] not in skipped and props.get("license"):
             lines.add(f"- {inst['model']}: {props.get('author', '')} · {props['license']} · {props.get('source', '')}")
+            mit = mit or "MIT" in props["license"]
     for key, spec in plan.get("materials", {}).items():
         if spec.get("license"):
             lines.add(f"- {key}: {spec.get('author', '')} · {spec['license']} · {spec.get('source', '')}")
-    return "\n".join(["Nguồn mẫu và vật liệu trong tệp:", *sorted(lines)]) + "\n"
+    body = "\n".join(["Nguồn mẫu và vật liệu trong tệp:", *sorted(lines)]) + "\n"
+    if mit and mit_text:
+        body += f"\nGiấy phép MIT của mẫu Pascal ({PASCAL_LICENSE}):\n\n{mit_text.rstrip()}\n"
+    return body
 
 
 def _report(
@@ -259,6 +269,8 @@ async def compile_model_export(
     pack = await load_pack(storage, str((snapshot.get("versions") or {}).get("pack", "")), cache_dir)
     plan = build(snapshot, pack.tables)
     missing = await fetch_files(storage, pack, plan_files(plan))
+    licence = pack.root / PASCAL_LICENSE
+    mit_text = None if await fetch_files(storage, pack, [PASCAL_LICENSE]) else licence.read_text(encoding="utf-8")
     if missing:
         _log.warning("model_export_pack_files_missing", extra={"export_id": export_id, "files": missing[:20]})
     max_bytes = settings.model_export_max_output_bytes
@@ -281,7 +293,7 @@ async def compile_model_export(
         report = _report(plan, records, geometry, stats)
         skipped = {r["id"] for r in blender_records if r.get("status") == "skipped"}
         (out / "report.json").write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
-        (out / "CREDITS.txt").write_text(_credits(plan, skipped), encoding="utf-8")
+        (out / "CREDITS.txt").write_text(_credits(plan, skipped, mit_text), encoding="utf-8")
         blocked = report["quality"] == "blocked"
         files = {"report.json": "application/json", "CREDITS.txt": "text/plain; charset=utf-8"}
         if not blocked:  # N51 không phục vụ GLB của lượt `blocked`: khỏi tốn kho

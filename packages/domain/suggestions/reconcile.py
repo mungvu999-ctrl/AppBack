@@ -100,6 +100,12 @@ def _stale_reason(
     return messages.NO_LONGER
 
 
+def _major_stale(prev: Suggestion, revision: int) -> Suggestion:
+    """A record of an older major line holding user data, rule without `migrate`: kept as is, stale "xem lại"."""
+    since = prev.stale.since if prev.stale else revision
+    return prev.model_copy(update={"stale": Stale(since=since, reason_vi=messages.MAJOR_STALE)})
+
+
 def _purge(items: list[Suggestion], limit: int | None, reason: str, notes: list[Note]) -> list[Suggestion]:
     """Drop stale records without user data, oldest first: all of them (`limit=None`) or until `limit` remain."""
     victims = sorted(
@@ -163,7 +169,11 @@ def reconcile(
                 if base is not None and base.rule_version < spec.major_since:
                     consumed.add(base.id)
                     if base.has_user_data():
-                        notes.append(Note(rule, base.id, "log", messages.MAJOR_RESET))
+                        # §3 "bản chính" không `migrate`: giữ bản cũ cùng trạng thái người dùng, đánh `stale` để xem
+                        # lại; người dùng trả về `active` không điều chỉnh thì lượt sau mới nhận bản sinh mới.
+                        out[base.id] = _major_stale(base, revision)
+                        notes.append(Note(rule, base.id, "log", messages.MAJOR_STALE))
+                        continue
                     base = None
             merged = _merge(draft, rule, spec, base, revision, notes)
             out[merged.id] = merged

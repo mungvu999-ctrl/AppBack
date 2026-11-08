@@ -19,7 +19,6 @@ ADOPTED_GONE: Final = "món nhận nuôi đã bị xoá: đề xuất chuyển s
 PURGED: Final = "gợi ý cũ không có dữ liệu người dùng: xoá khi đổi bộ luật"
 CAP_PURGED: Final = "vượt trần số đề xuất: xoá gợi ý cũ không có dữ liệu người dùng"
 MIGRATED: Final = "luật đổi bản chính: chuyển trạng thái sang id mới"
-MAJOR_RESET: Final = "luật đổi bản chính: điều chỉnh của người dùng không còn áp dụng"
 
 
 def dropped_override(keys: list[str]) -> str:

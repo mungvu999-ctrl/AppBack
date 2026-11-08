@@ -186,7 +186,9 @@ def test_minor_bump__unknown_override_keys_dropped_and_logged() -> None:
 
 
 def test_major_bump__migrate_map_carries_state() -> None:
-    """Major bump: `migrate` moves state to the new id; same id without a mapping resets; unmatched old ids go stale."""
+    """Major bump: `migrate` moves state to the new id; unmatched old ids go stale. Same id without a mapping: a record
+    with user data is kept (state, version) and marked stale "luật đã đổi, xem lại", never reset (§3, review F8);
+    once the user clears it, the next run takes the regenerated record."""
     base = run(flat_layer())
     old_c1 = get(base, C1).model_copy(update={"id": f"DRESS-casing-{WIN}", "state": "disabled"})
     orphan = get(base, C1).model_copy(update={"id": "DRESS-casing-old", "state": "disabled"})
@@ -206,11 +208,18 @@ def test_major_bump__migrate_map_carries_state() -> None:
     ids = {s.id for s in again.suggestions}
     assert f"DRESS-casing-{WIN}" not in ids
     assert (get(again, C1).state, get(again, C1).rule_version) == ("disabled", 2)
-    assert get(again, C2).state == "active"
+    kept = get(again, C2)
+    major = Stale(since=2, reason_vi=messages.MAJOR_STALE)
+    assert (kept.state, kept.rule_version, kept.stale) == ("disabled", 1, major)
     assert (get(again, curtain).state, get(again, LAMP).rule_version) == ("disabled", 2)
-    assert get(again, "DRESS-casing-old").stale == Stale(since=2, reason_vi=messages.MAJOR_STALE)
+    assert get(again, "DRESS-casing-old").stale == major
     logged = {(n.host, n.reason_vi) for n in again.notes if n.status == "log"}
-    assert logged == {(f"DRESS-casing-{WIN}", messages.MIGRATED), (C2, messages.MAJOR_RESET)}
+    assert logged == {(f"DRESS-casing-{WIN}", messages.MIGRATED), (C2, messages.MAJOR_STALE)}
+    later = run(flat_layer(), again.suggestions, ruleset_with(bump), revision=3)
+    assert get(later, C2) == kept
+    cleared = [s.model_copy(update={"state": "active"}) if s.id == C2 else s for s in again.suggestions]
+    fresh = get(run(flat_layer(), cleared, ruleset_with(bump), revision=4), C2)
+    assert (fresh.state, fresh.rule_version, fresh.stale, fresh.created_revision) == ("active", 2, None, 4)
 
 
 def stale_record(n: int, since: int, **over: Any) -> Suggestion:

@@ -669,7 +669,7 @@ def build_item(
         notes.append(f"mẫu {mid} chưa có kích thước trong gói, giữ cỡ thật")
     else:
         scale = round(min(t / m for t, m in zip(target, size, strict=True)), 4)
-        if abs(scale - 1) > defaults.SUGGESTION_SCALE_TOL + 1e-9:
+        if abs(round(scale, 3) - 1) > defaults.SUGGESTION_SCALE_TOL + 1e-9:  # rules round scale to 3 decimals
             pct = f"{scale * 100:.0f}"
             raise SkipError(f"mẫu {mid} phải co giãn {pct} % để vừa hộp (ngoài ±10 %)")
     x, y = to_m(p["centre"])

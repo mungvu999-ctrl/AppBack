@@ -145,6 +145,7 @@ export const SCHEMA_MAP: Readonly<Record<string, SchemaMapEntry>> = {
   model_export_start_export: object('@/api/schemas/modelExport', 'ModelExportSchema'), // N49 (M1-01)
   model_export_read_latest: object('@/api/schemas/modelExport', 'ModelExportSchema'), // N50 (M1-01)
   model_export_download_file: EMPTY, // N51 (M1-01) — thân nhị phân, miễn H1 (BE-00 §12 bước 7)
+  suggestion_rules_read: object('@/api/schemas/suggestionRules', 'SuggestionRulesWireSchema'), // N52 (M2-QL)
   spatial_read_dimension_strings: object('@/api/schemas/quality', 'DimensionStringsSchema'), // N45 (QT-SCALE-API)
   spatial_read_detected_geometry: object('@/api/schemas/quality', 'DetectedGeometrySchema'), // N46 (QT-SCALE-API)
   design_director_read_state: object('@/api/schemas/designConcept', 'DesignConceptStateSchema'), // N47 (AID-01)

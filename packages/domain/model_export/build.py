@@ -225,7 +225,7 @@ def _level(
     plan["prisms"] += prisms
     plan["cutters"] += _fan_cutters(cutters, wall_prisms)
     plan["assemblies"] += assemblies + (list(sp.assemblies) if sp else [])
-    _furniture(f, plan, assets, book, summary, wp.union)
+    _furniture(f, plan, assets, book, summary)
     suggestions_plan(f, wp, sl, mats, assets, book, plan, summary)
 
 
@@ -235,7 +235,6 @@ def _furniture(
     assets: AssetResolver,
     book: RecordBook,
     summary: Summary,
-    walls: Any = None,
 ) -> None:
     """Document furniture (F0/F4 in `assets`); a live base cabinetRun replaces its host box(es), a live modelPick picks
     the model of a host without `model` (records `suggestion:<rule>`, never above `minor`)."""
@@ -263,7 +262,7 @@ def _furniture(
                 pick = str(mid)
                 summary.counts["built"] += 1
                 book.add(lid, kind, s["id"], "built", "info", str(p.get("reasonVi") or ""))
-        inst = assets.resolve_furniture(item, lid, book, pick, walls)
+        inst = assets.resolve_furniture(item, lid, book, pick)
         if inst is None:
             continue
         if pick is not None and s is not None:

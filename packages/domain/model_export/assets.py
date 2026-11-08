@@ -7,10 +7,10 @@ Assumptions: `boundingBox` is the footprint before rotation (width along x, dept
 `at` z is level-local (`liftMm`).
 
 F0/F4 (M2-QL, KET-QUA-LOI §4-5): every instance is anchored by its model bbox (`anchor: "bbox"`, the worker puts the
-bbox bottom centre on `at`): bottom on the finish floor + `liftMm`, centre on the box centre. The model's long side
-follows the box's long side (turned 90° with its back towards the nearer wall), uniform scale = footprint ratio
-(`suggestions.rules.placement.footprint_ratio`, the rules' own fit) clamped to ±10 %; a box needing more →
-`degraded minor`, the model stays at the clamp (never shrunk further).
+bbox bottom centre on `at`): bottom on the finish floor + `liftMm`, centre on the box centre, `rotationDeg` as stored.
+The model is never turned to the box (review F13): the editor (`toPascal.ts` fit: box width ↔ model width) does not
+turn it either, so both show the same orientation. Uniform scale = `fit_scale` (box width/depth against model
+width/depth, clamped to ±10 %); a box needing more → `degraded minor`, the model stays at the clamp.
 """
 
 from __future__ import annotations
@@ -20,19 +20,13 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from shapely.geometry import Point
-from shapely.geometry.base import BaseGeometry
-
 from packages.domain.model_export.defaults import FINISH_FLOOR_M, SUGGESTION_SCALE_TOL
 from packages.domain.model_export.records import RecordBook, Status
 from packages.domain.model_export.units import to_m
-from packages.domain.suggestions.rules.placement import footprint_ratio
 
 _SRC = re.compile(r"^/items/([a-z0-9_-]+)/model\.glb$")
 ROUND_SLACK_MM = 0.5
 """Box sides are whole mm (rules store `js_round(model * scale)`): each side may have lost this much."""
-LONG_AXIS_RATIO = 1.2
-"""Model and box both at least this elongated, long sides crossed → turn the model 90° (B2 F4)."""
 
 
 def model_size_m(meta: Mapping[str, Any]) -> tuple[float, float, float] | None:
@@ -50,44 +44,23 @@ def model_size_m(meta: Mapping[str, Any]) -> tuple[float, float, float] | None:
     return (out[0], out[1], out[2]) if all(v > 0 for v in out) else None
 
 
+def footprint_ratio(box_mm: Sequence[float], model_mm: Sequence[float]) -> float:
+    """Uniform scale that fits a model footprint into a box, width on width and depth on depth (height ignored)."""
+    return min(box_mm[0] / model_mm[0], box_mm[1] / model_mm[1])
+
+
 def fit_scale(
     box_mm: Sequence[float], model_mm: Sequence[float], tol: float = SUGGESTION_SCALE_TOL
 ) -> tuple[float, bool]:
     """(scale, fits): footprint ratio at rule precision (3 decimals) clamped to ±`tol`; `fits` is False when the box
-    needs more. The test grants each box side `ROUND_SLACK_MM`, so a model the rules shrank by `tol` fits back."""
+    needs more. The test grants each box side `ROUND_SLACK_MM`, so a model the rules shrank by `tol` fits back.
+
+    Ratio = min(box width / model width, box depth / model depth), in the orientation the model is built (never
+    turned, review F12/F13): a model whose long side crosses the box's long side needs a small ratio, not 1."""
     ratio = footprint_ratio(box_mm, model_mm)
     padded = footprint_ratio([v + ROUND_SLACK_MM for v in box_mm[:2]], model_mm)
     lo, hi = 1 - tol, 1 + tol
     return min(max(round(ratio, 3), lo), hi), padded >= lo - 1e-9 and ratio <= hi + 1e-9
-
-
-def _front_mm(rotation_deg: float) -> tuple[float, float]:
-    """Unit direction (layer mm, y down) a model front (local +y) faces at `rotation_deg`."""
-    th = math.radians(rotation_deg)
-    return -math.sin(th), math.cos(th)
-
-
-def long_axis_rotation(
-    f: Mapping[str, Any], box: tuple[float, float], model: tuple[float, float], walls: BaseGeometry | None
-) -> float | None:
-    """New `rotationDeg` when the model's long side crosses the box's long side, else None. Of the two quarter turns
-    the one whose back (half the box's short side behind the centre) is nearer a wall wins; no walls → +90."""
-    (bw, bd), (mw, md) = box, model
-    if min(bw, bd) <= 0 or max(bw, bd) / min(bw, bd) < LONG_AXIS_RATIO or max(mw, md) / min(mw, md) < LONG_AXIS_RATIO:
-        return None
-    if (mw >= md) == (bw >= bd):
-        return None
-    rot, c, half = float(f.get("rotationDeg") or 0), f["centre"], min(bw, bd) / 2
-    cands = ((rot + 90) % 360, (rot - 90) % 360)
-    if walls is None or walls.is_empty:
-        return cands[0]
-    near = walls
-
-    def back_gap(cand: float) -> float:
-        nx, ny = _front_mm(cand)
-        return float(near.distance(Point((c["x"] - nx * half) / 1000, -(c["y"] - ny * half) / 1000)))
-
-    return min(cands, key=back_gap)
 
 
 class AssetResolver:
@@ -125,10 +98,9 @@ class AssetResolver:
         level: str,
         book: RecordBook,
         pick: str | None = None,
-        walls: BaseGeometry | None = None,
     ) -> dict[str, Any] | None:
-        """Instance dict, or None (recorded) when it can't be placed with its own model; `pick` = modelPick model;
-        `walls` (metres) choose the back side when the model is turned to the box's long axis."""
+        """Instance dict, or None (recorded) when it can't be placed with its own model; `pick` = modelPick model.
+        `rotationDeg` is the document's, as in the editor."""
         fid = f["id"]
         if f.get("suggested"):
             book.add(level, "furniture", fid, "skipped", "info", "gợi ý chưa được nhận, không dựng")
@@ -144,20 +116,16 @@ class AssetResolver:
         bb = f["boundingBox"]
         box = (bb["max"]["x"] - bb["min"]["x"], bb["max"]["y"] - bb["min"]["y"])
         size = model_size_m(meta)
-        rot, scale, notes = float(f.get("rotationDeg") or 0), 1.0, []
+        rot, scale, note = float(f.get("rotationDeg") or 0), 1.0, ""
         status: Status = "built"
         if size is not None and min(box) > 0:
             model = (size[0] * 1000, size[1] * 1000)
-            turned = long_axis_rotation(f, box, model, walls)
-            if turned is not None:
-                rot = turned
-                notes.append("xoay trục dài mẫu theo hộp bao")
             scale, fits = fit_scale(box, model)
             if not fits:
                 status = "degraded"
                 need = f"{footprint_ratio(box, model) * 100:.0f}"
-                notes.append(f"mẫu {mid} cần co giãn {need} % để vừa hộp bao, chỉ cho {scale * 100:.0f} %")
-        book.add(level, "furniture", fid, status, "minor" if status == "degraded" else "info", "; ".join(notes))
+                note = f"mẫu {mid} cần co giãn {need} % để vừa hộp bao, chỉ cho {scale * 100:.0f} %"
+        book.add(level, "furniture", fid, status, "minor" if status == "degraded" else "info", note)
         x, y = to_m(f["centre"])
         return {
             "name": f"Furniture_{fid}",

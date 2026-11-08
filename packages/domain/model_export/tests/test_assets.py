@@ -3,8 +3,6 @@
 import math
 from typing import Any
 
-from shapely.geometry import LineString
-
 from packages.domain.model_export.assets import AssetResolver, fit_scale, model_size_m
 from packages.domain.model_export.records import RecordBook
 
@@ -97,30 +95,32 @@ def test_resolve__scale_within_tolerance_and_height_ignored() -> None:
 def test_fit_scale__rules_rounding_and_bounds() -> None:
     """Rules store whole mm: vanity 917x636 at 90 % = 825x572 fits back at 0.9; 88 % does not; growth clamps at 1.1."""
     assert fit_scale((825, 572), (917, 636)) == (0.9, True)
-    assert fit_scale((572, 825), (917, 636)) == (0.9, True)
     assert fit_scale((807, 560), (917, 636)) == (0.9, False)
     assert fit_scale((1100, 700), (917, 636)) == (1.1, False)
     assert fit_scale((917, 636), (917, 636)) == (1.0, True)
 
 
-def test_resolve__long_axis_turns_back_to_wall() -> None:
-    """Box 900 wide x 2000 deep, sofa 2000 x 900: turned 90° so its back faces the nearer wall; no walls → +90."""
+def test_fit_scale__model_crossing_the_box_does_not_fit() -> None:
+    """Review F12: width on width, depth on depth. Long sides crossed (box 572 x 825, model 917 x 636) needs 62 %, not
+    90 %; the 1000 x 900 box with an 880 x 1000 model (too little elongated to have been turned) needs 90 % — fits
+    at the clamp instead of the old "1.0, lấn 100 mm"."""
+    assert fit_scale((572, 825), (917, 636)) == (0.9, False)
+    assert fit_scale((1000, 900), (880, 1000)) == (0.9, True)
+    assert fit_scale((1000, 890), (880, 1000)) == (0.9, False)
+
+
+def test_resolve__document_furniture_never_turned() -> None:
+    """Review F13: box 900 wide x 2000 deep, sofa 2000 x 900 → built at the document's rotation (as the editor), scale
+    clamped at 0.9 and `degraded minor` with the scale it needed; no "xoay trục dài" turn any more."""
     box = {"min": {"x": 0, "y": 0}, "max": {"x": 900, "y": 2000}}
     item = _f(model={"src": "/items/sofa/model.glb"}, rotationDeg=0, boundingBox=box)
-    r = AssetResolver(MODELS, DEFAULTS)
-    # wall at x = 0.2 m (left of the centre x = 1.0 m): the back must point to -x, front to +x → rotationDeg 270
-    left = r.resolve_furniture(item, "L", RecordBook(), walls=LineString([(0.2, 0), (0.2, -5)]))
-    right = r.resolve_furniture(item, "L", RecordBook(), walls=LineString([(1.8, 0), (1.8, -5)]))
-    bare_book = RecordBook()
-    bare = r.resolve_furniture(item, "L", bare_book)
-    assert left is not None
-    assert right is not None
-    assert bare is not None
-    assert left["rotZ"] == round(-math.radians(270), 6)
-    assert right["rotZ"] == round(-math.radians(90), 6)
-    assert bare["rotZ"] == round(-math.radians(90), 6)
-    assert bare["scale"] == [1.0, 1.0, 1.0]
-    assert bare_book.records[0].reason == "xoay trục dài mẫu theo hộp bao"
+    book = RecordBook()
+    inst = AssetResolver(MODELS, DEFAULTS).resolve_furniture(item, "L", book)
+    assert inst is not None
+    assert (inst["rotZ"], inst["scale"]) == (0.0, [0.9, 0.9, 0.9])
+    (rec,) = book.records
+    assert (rec.status, rec.severity) == ("degraded", "minor")
+    assert rec.reason == "mẫu sofa cần co giãn 45 % để vừa hộp bao, chỉ cho 90 %"
 
 
 def test_resolve__skips() -> None:

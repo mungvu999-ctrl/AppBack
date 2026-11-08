@@ -436,7 +436,7 @@ def rule_collisions(
 
 def check_collisions(layer: SpatialLayer, suggestions: Sequence[Suggestion]) -> list[CollisionNote]:
     """Every collision on the floor, labelled `doc` (between document boxes) or `rule` (involves an effective
-    suggestion). The writer logs them; nothing in the document changes. Pairs appear once, sorted."""
+    suggestion). `reconcile.flag_collisions` marks the `rule` ones stale. Pairs appear once, sorted."""
     site = Site(layer, [s for s in suggestions if s.is_effective()])
     notes: list[CollisionNote] = []
     doc = doc_collisions(site)

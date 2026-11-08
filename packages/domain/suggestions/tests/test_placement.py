@@ -6,7 +6,9 @@ import math
 import pytest
 from shapely.geometry import GeometryCollection, LineString, Point, Polygon
 
-from packages.domain.suggestions.model import HostRef, ItemParams, Suggestion, params_dict
+from packages.domain.suggestions import messages
+from packages.domain.suggestions.model import HostRef, ItemParams, Stale, Suggestion, params_dict
+from packages.domain.suggestions.reconcile import flag_collisions
 from packages.domain.suggestions.rules.placement import (
     BBOX_PATH,
     FINISH_FLOOR_MM,
@@ -165,3 +167,19 @@ def test_footprint_ratio__long_on_long_height_ignored() -> None:
     assert footprint_ratio((900, 1800), (2000, 900)) == pytest.approx(0.9)
     assert footprint_ratio((1800, 900, 10), (900, 2000, 5000)) == pytest.approx(0.9)
     assert footprint_ratio((2000, 450), (2000, 900)) == pytest.approx(0.5)
+
+
+def test_flag_collisions__switched_on_record_goes_stale_with_reason() -> None:
+    """Review F6: two effective items overlap → the one switched on by this write (`first`) goes stale with the reason
+    and a log note; without `first` the pair's first item is blamed; no `rule` collision → list unchanged."""
+    lay = flat_layer()
+    a, b = item(1, (700, 1200), (500, 500, 800)), item(2, (800, 1200), (500, 500, 800))
+
+    out, notes = flag_collisions([a, b], lay, 7, frozenset({b.id}))
+
+    reason = messages.collides_stale(["item-item"], [a.id])
+    assert [s.stale for s in out] == [None, Stale(since=7, reason_vi=reason)]
+    assert [(n.rule, n.host, n.status, n.reason_vi) for n in notes] == [("D5", b.id, "log", reason)]
+    default, _ = flag_collisions([a, b], lay, 7)
+    assert (default[0].stale is not None, default[1].stale) == (True, None)
+    assert flag_collisions([a], lay, 7) == ([a], [])

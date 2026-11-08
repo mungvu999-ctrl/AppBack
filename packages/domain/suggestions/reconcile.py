@@ -17,6 +17,7 @@ from packages.domain.suggestions import messages
 from packages.domain.suggestions.model import Stale, State, Suggestion, SuggestionsMeta
 from packages.domain.suggestions.rules import RULES
 from packages.domain.suggestions.rules.base import Draft, Note, RuleInput
+from packages.domain.suggestions.rules.placement import CollisionNote, check_collisions
 from packages.domain.suggestions.ruleset import Ruleset, RuleSpec
 
 SUGGESTIONS_CAP: Final = 2000
@@ -194,7 +195,8 @@ def reconcile(
         elif s.state == "adopted":
             out[sid] = s.model_copy(update={"state": "disabled", "adopted_as": None})
             notes.append(Note(s.rule, sid, "log", messages.ADOPTED_GONE))
-    result_list = sorted(out.values(), key=lambda s: s.id)
+    result_list, hits = flag_collisions(sorted(out.values(), key=lambda s: s.id), layer, revision)
+    notes.extend(hits)
     if prev_meta is not None and prev_meta.ruleset_sha != ruleset.sha:
         result_list = _purge(result_list, None, messages.PURGED, notes)
     if len(result_list) > cap:
@@ -203,6 +205,37 @@ def reconcile(
             raise SuggestionCapError(f"{len(result_list)} đề xuất > trần {cap}")
     meta = SuggestionsMeta(ruleset=ruleset.ruleset, ruleset_sha=ruleset.sha, basis_revision=revision)
     return Reconciled(result_list, meta, notes)
+
+
+def flag_collisions(
+    items: Sequence[Suggestion], layer: SpatialLayer, revision: int, first: frozenset[str] = frozenset()
+) -> tuple[list[Suggestion], list[Note]]:
+    """Mark stale every effective suggestion that adds a `rule` collision (invariant "va chạm rule = 0", review F6).
+
+    Rules never leave one, so on `reconcile` output this is a safety net that changes nothing. It bites when a write
+    only switches records back on (no rerun): of two colliding suggestions the one in `first` (switched on by this
+    write) is marked, with the reason; the next `reconcile` re-places it and clears `stale` (step 2).
+    """
+    blamed: dict[str, list[CollisionNote]] = {}
+    for note in check_collisions(layer, items):
+        if note.label != "rule":
+            continue
+        swap = note.other is not None and note.other in first and note.item not in first
+        blamed.setdefault(note.other if swap and note.other else note.item, []).append(note)
+    if not blamed:
+        return list(items), []
+    out: list[Suggestion] = []
+    notes: list[Note] = []
+    for s in items:
+        found = blamed.get(s.id)
+        if found is None:
+            out.append(s)
+            continue
+        partners = {n.item if n.item != s.id else n.other for n in found}
+        reason = messages.collides_stale(sorted({n.type for n in found}), sorted(p for p in partners if p))
+        out.append(s.model_copy(update={"stale": Stale(since=revision, reason_vi=reason)}))
+        notes.append(Note(s.rule, s.id, "log", reason))
+    return out, notes
 
 
 def apply_state(current: Sequence[Suggestion], rows: Iterable[Mapping[str, Any]], ruleset: Ruleset) -> list[Suggestion]:

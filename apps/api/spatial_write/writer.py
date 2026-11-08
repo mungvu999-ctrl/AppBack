@@ -85,6 +85,7 @@ from packages.domain.suggestions import (
     SuggestionCapError,
     SuggestionsMeta,
     apply_state,
+    flag_collisions,
     load_ruleset,
     reconcile,
 )
@@ -494,6 +495,8 @@ def _next_suggestions(request: _Request, current: FloorDocument, layer: SpatialL
     `reconcile` chỉ chạy khi lớp bật **và** `layer` đổi (người sửa, `merge` của pipeline, đổi tỉ lệ) hoặc lớp vừa
     được bật; còn lại giữ nguyên danh sách, nên gửi lại cùng thân hay chỉ đổi trạng thái không sinh lại gì, và bộ
     luật mới chỉ áp ở lượt đổi `layer` đầu tiên sau deploy (§8 quyết định 4). Tắt lớp giữ nguyên các bản đã lưu.
+    Lượt chỉ bật lại bản ghi thì không sinh lại, nên bản vừa bật mà va món luật đặt lúc nó tắt bị `flag_collisions`
+    đánh `stale` có lý do (review F6), không dựng chồng.
     """
     body = request.body
     ruleset = load_ruleset()
@@ -503,6 +506,14 @@ def _next_suggestions(request: _Request, current: FloorDocument, layer: SpatialL
     enabled = current.suggestions_enabled if body.suggestions_enabled is None else body.suggestions_enabled
     switched_on = enabled and not current.suggestions_enabled
     if not enabled or (layer == current.layer and not switched_on):
+        was_on = {item.id for item in current.suggestions if item.is_effective()}
+        first = frozenset(item.id for item in items if item.is_effective() and item.id not in was_on)
+        if enabled and first:
+            flagged, notes = flag_collisions(items, layer, current.revision + 1, first)
+            items = tuple(flagged)
+            if notes:
+                hosts = {note.host: note.reason_vi for note in notes}
+                _log.warning("suggestions_switched_on_collide", extra={"floor_pk": request.floor_pk, "notes": hosts})
         return _Suggestions(items, current.suggestions_meta, enabled)
     # Món mang `origin.suggestionId` → đề xuất ấy `adopted`, `adoptedAs` = id món (§3 bước 6).
     adopted = {item.origin.suggestion_id: item.id for item in layer.furniture if item.origin is not None}

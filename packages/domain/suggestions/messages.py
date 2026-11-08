@@ -122,3 +122,10 @@ def scaled(model_id: str, pct: int) -> str:
 def rug_inside(pct: int, need_pct: int) -> str:
     """D1: too little of the rug lies in the room."""
     return f"thảm chỉ còn {pct} % trong phòng (cần ≥ {need_pct} %)"
+
+
+def collides_stale(types: list[str], others: list[str]) -> str:
+    """An effective suggestion now lands on something (e.g. switched back on after a later rule used its spot)."""
+    what = ", ".join(COLLISION_VI.get(t, t) for t in types)
+    with_ids = f" ({', '.join(others)})" if others else ""
+    return f"đề xuất sẽ va {what}{with_ids}: tạm không dựng, xếp lại khi bản vẽ đổi"

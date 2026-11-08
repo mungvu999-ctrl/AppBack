@@ -14,6 +14,7 @@ from packages.domain.suggestions.reconcile import (
     SuggestionCapError,
     UnknownSuggestionError,
     apply_state,
+    flag_collisions,
     reconcile,
 )
 from packages.domain.suggestions.rules.base import Note
@@ -34,6 +35,7 @@ __all__ = [
     "check_collisions",
     "document_keys",
     "effective_params",
+    "flag_collisions",
     "load_ruleset",
     "model_origin",
     "reconcile",

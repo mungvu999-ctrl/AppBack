@@ -555,3 +555,50 @@ async def test_spatial_graph__floor_revisions_carry_suggestions(
     assert {key: first[key] for key in keys} == {key: layer.json()[key] for key in keys}
     assert first["suggestions"]
     assert second == {"floorId": off.level_id, "revision": 3}
+
+
+def _plant(sid: str, x: int, state: str = "active") -> dict[str, Any]:
+    """Đề xuất D5 (chậu cây 500 x 500 mm) dạng jsonb, tâm `(x, 2000)` trong phòng bếp của `_layer`."""
+    return {
+        "id": sid,
+        "rule": "D5",
+        "ruleVersion": 1,
+        "kind": "item",
+        "hostRef": {"room": ROOM_ID},
+        "params": {
+            "furnitureKind": "other",
+            "modelId": "plant-ph",
+            "centre": {"x": x, "y": 2000},
+            "sizeMm": [500, 500, 800],
+            "rotationDeg": 0,
+        },
+        "state": state,
+        "createdRevision": 1,
+    }
+
+
+async def test_switched_on_suggestion_colliding__stale_with_reason(
+    db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """F6: lượt chỉ bật lại một đề xuất (không sinh lại) mà nó chồng lên món luật đặt lúc nó tắt → bản vừa bật thành
+    `stale` có lý do va chạm, trạng thái người dùng giữ `active`; món kia không đổi. Không còn va chạm `rule` nào."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    await _write(db_session, floor, scene.owner, fake_clock, base=0, layer=_layer(floor.level_id))
+    raw = await _stored(db_session, floor.pk)
+    kept, back = f"DRESS-D5-{ROOM_ID}-a", f"DRESS-D5-{ROOM_ID}-b"
+    patched = {**raw, "suggestions": [*raw["suggestions"], _plant(kept, 2000), _plant(back, 2100, "disabled")]}
+    patched["suggestions"].sort(key=lambda item: item["id"])
+    await db_session.execute(
+        update(FloorDocumentRow).where(FloorDocumentRow.floor_pk == floor.pk).values(document=patched)
+    )
+
+    result = await _write(db_session, floor, scene.owner, fake_clock, base=1, state=[])
+
+    items = _by_id(result.suggestions)
+    assert (items[back].state, items[kept].stale) == ("active", None)
+    stale = items[back].stale
+    assert stale is not None
+    assert (stale.since, kept in stale.reason_vi) == (2, True)
+    assert result.suggestions_meta is not None
+    assert result.suggestions_meta.basis_revision == 1

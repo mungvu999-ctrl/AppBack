@@ -1,9 +1,10 @@
 """Nghiệp vụ N49-N51 (HOP-DONG-M1 §6). SQL thuần trên bảng `model_exports`.
 
-N49 theo thứ tự hợp đồng: dựng snapshot + dấu vân → dòng sống cùng dấu vân thì trả 200 (cache) →
-lượt `queued|running` khác thành `superseded` → ghi `snapshot.json` vào kho, chèn dòng `queued`,
-`send_task` sau commit → 202. Hai yêu cầu đua cùng dấu vân: unique partial
-`uq_model_exports_fingerprint` cho một lượt thắng; lượt thua xoá object của mình và trả dòng thắng.
+N49 theo thứ tự hợp đồng: khoá tư vấn theo dự án → dựng snapshot + dấu vân → dòng sống cùng dấu vân thì
+trả 200 (cache) → lượt `queued|running` khác thành `superseded` → ghi `snapshot.json` vào kho, chèn dòng
+`queued`, `send_task` sau commit → 202. Khoá tuần tự hoá mọi N49 của một dự án (cùng hay khác dấu vân):
+lượt sau thấy dòng của lượt trước, nên luôn chỉ còn một lượt sống; unique partial
+`uq_model_exports_fingerprint` chỉ còn là chốt chặn ở DB.
 
 Dòng `done` mà lịch quét đã dọn tệp (`report_summary.pruned`) không còn là cache: N49 chuyển nó sang
 `superseded` (ra khỏi chỉ mục partial) rồi mở lượt mới.
@@ -16,7 +17,6 @@ from pathlib import Path
 from typing import Any, Final
 
 from sqlalchemy import Row, text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import StreamingResponse
 
@@ -28,6 +28,7 @@ from apps.api.model_export.settings import ModelExportSettings
 from packages.core.clock import Clock
 from packages.core.ids import is_id, new_id
 from packages.db.hooks import on_after_commit
+from packages.db.locks import lock_project_scope
 from packages.domain.model_export.snapshot import canonical_json
 from packages.domain.model_export.version import compiler_version, normalized_bytes
 from packages.messaging import send_task
@@ -41,6 +42,7 @@ from packages.storage.keys import model_export_object
 from packages.storage.port import ObjectStorage, content_disposition
 
 CACHE_CONTROL: Final = "private, max-age=600"
+LOCK_SCOPE: Final = "model_export"
 GLB_NAME: Final = "model.glb"
 
 _SELECT: Final = (
@@ -120,6 +122,8 @@ async def start_export(
     settings: ModelExportSettings,
 ) -> tuple[ModelExport, int]:
     """N49 — trả `(lượt, mã HTTP)`: 200 khi đã có lượt sống cùng dấu vân, 202 khi mở lượt mới; tự `commit`."""
+    # ponytail: khoá giữ cả lúc ghi snapshot (≤ 64 MiB) — chỉ chặn N49 cùng dự án, đủ cho một nút bấm
+    await lock_project_scope(db, LOCK_SCOPE, project_id)
     snap = await snapshot_source.take(db, project_id, _versions(settings))
     existing = (await db.execute(_LIVE, {"p": project_id, "fp": snap.fingerprint})).first()
     if existing is not None and not (existing.report_summary or {}).get("pruned"):
@@ -146,11 +150,6 @@ async def start_export(
         await db.execute(_INSERT, params)
         on_after_commit(db, lambda: send_task(MODEL_EXPORT_TASK, ModelExportPayload(export_id=export_id)))
         await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        await storage.delete(key)
-        winner = (await db.execute(_LIVE, {"p": project_id, "fp": snap.fingerprint})).one()
-        return _wire(winner, snap.fingerprint), 200
     except BaseException:
         await storage.delete(key)
         raise

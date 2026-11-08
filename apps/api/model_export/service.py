@@ -10,6 +10,7 @@ Dòng `done` mà lịch quét đã dọn tệp (`report_summary.pruned`) không 
 `superseded` (ra khỏi chỉ mục partial) rồi mở lượt mới.
 """
 
+import functools
 import hashlib
 import json
 from collections import Counter
@@ -95,6 +96,12 @@ def _wire(row: Row[tuple[object, ...]], current: str) -> ModelExport:
     )
 
 
+@functools.cache
+def _reader_hash() -> str:
+    """Băm `snapshot_source.py` một lần mỗi tiến trình (mã không đổi khi đang chạy; N50 thăm dò 3 s/người)."""
+    return hashlib.sha256(normalized_bytes(Path(snapshot_source.__file__))).hexdigest()[:8]
+
+
 def _compiler(settings: ModelExportSettings) -> str:
     """Phiên bản bộ biên dịch: ghim tay qua cấu hình, không thì suy từ mã (đổi mã → cache cũ hết hiệu lực).
 
@@ -103,8 +110,7 @@ def _compiler(settings: ModelExportSettings) -> str:
     """
     if settings.model_export_compiler_version:
         return settings.model_export_compiler_version
-    reader = hashlib.sha256(normalized_bytes(Path(snapshot_source.__file__))).hexdigest()[:8]
-    return f"{compiler_version()}.{reader}"
+    return f"{compiler_version()}.{_reader_hash()}"
 
 
 def _versions(settings: ModelExportSettings) -> dict[str, Any]:

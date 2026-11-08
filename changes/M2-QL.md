@@ -41,9 +41,10 @@
   ở `docs/reviews/pending/charter-M2-QL.md`. Phụ thuộc cổng (như NO-M1-9): bước 7 và 5b đọc dòng N52 từ phụ lục máy
   đọc của tệp đó qua `tools.charter.pending_bind_rows`; #35/N15/N16 không cần dòng (không đổi `operationId`/đường).
   `docs/contracts/openapi.json` sinh lại theo route và trường M2 dù hiến chương chưa duyệt (cổng so `--compare`).
-  `schema-map.ts` có `suggestion_rules_read` → `@/api/schemas/suggestionRules` (`SuggestionRulesWireSchema`), tệp
-  chỉ có ở nhánh FE M2: bước 7 (Smoke, H1) và `test_real_repo_check_runs_through` chỉ đạt khi FE M2 được đẩy và
-  `APPFRONT_SHA` ghim tới đó (giờ giữ `6fbff729` của M1). Duyệt xong: chép dòng N52 vào BE-BIND, xoá tệp chờ; không
+  `schema-map.ts` **chưa** có `suggestion_rules_read`: tệp FE `suggestionRules.ts` chỉ có ở nhánh FE M2, thêm mục khi
+  ghim `6fbff729` làm Smoke hỏng mọi test dùng runner. Bước 7 "Bản đồ đủ" và `test_real_repo_check_runs_through` đỏ
+  một dòng cho tới khi FE M2 được đẩy: cùng commit ghim `APPFRONT_SHA` thêm
+  `suggestion_rules_read: object('@/api/schemas/suggestionRules', 'SuggestionRulesWireSchema')`. Duyệt xong: chép dòng N52 vào BE-BIND, xoá tệp chờ; không
   duyệt thì gỡ route N52 và mục bản đồ.
 - Chưa làm: 409 liệt kê đổi `state`/`override` (cần migration CHECK `entity_type` + lõi `VersionEntityType`);
   `refreshSuggestions`; concept AI vào `reconcile` (truyền `None`); phiên bản (`versions`) chưa chụp lớp đề xuất.

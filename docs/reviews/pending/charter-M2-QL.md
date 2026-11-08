@@ -109,9 +109,11 @@ Nguyên văn dòng N52 ở §1, đúng khuôn BE-BIND §2. `tools/charter.py` `p
 đồng (bước 7) và cổng case (5b) vẫn kiểm N52 khi `docs/charter/BE-BIND.md` chưa có dòng. Cổng chỉ cần dòng BE-BIND
 cho **thao tác mới**: phần thêm ở #35 (thân `suggestionState?`/`suggestionsEnabled?`, kết quả ba khoá) và khoá N15/N16
 không đổi `operationId`, đường hay khoá quyền, nên không cần dòng; chúng được H1 kiểm qua schema FE strict của
-#35/N15/N16 trên mẫu thật. Mục `suggestion_rules_read` của `tools/contract/schema-map.ts` trỏ
-`@/api/schemas/suggestionRules`, tệp chỉ có ở nhánh FE M2 — bước 7 (Smoke, H1) chỉ đạt khi FE M2 được đẩy và
-`tools/contract/APPFRONT_SHA` ghim tới đó. Duyệt xong: chép dòng vào BE-BIND, xoá tệp này (`changes/M2-QL.md`
+#35/N15/N16 trên mẫu thật. `tools/contract/schema-map.ts` **chưa** có mục `suggestion_rules_read`: mục đúng
+(`object('@/api/schemas/suggestionRules', 'SuggestionRulesWireSchema')`) trỏ tệp chỉ có ở nhánh FE M2, thêm vào khi
+AppFront `6fbff729` thì Smoke hỏng và kéo đỏ mọi test dùng runner. Vì vậy bước 7 "Bản đồ đủ" (và
+`test_real_repo_check_runs_through`) còn đỏ một dòng cho tới khi FE M2 được đẩy, `tools/contract/APPFRONT_SHA` ghim
+tới đó và mục trên được thêm cùng commit ghim. Duyệt xong: chép dòng vào BE-BIND, xoá tệp này (`changes/M2-QL.md`
 NO-M2-1).
 
 | # | Đường v1 | operationId | Schema (file) | Loại | Khoá | Nhật ký | Chủ BE | Nối FE |

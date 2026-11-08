@@ -28,7 +28,7 @@ SKIRT: dict[str, Any] = {
         "spansMm": [[0, 900]],
         "heightMm": 90,
         "thicknessMm": 12,
-        "material": "library:paint-white",
+        "material": "library:preset-white",
     },
     "createdRevision": 2,
 }

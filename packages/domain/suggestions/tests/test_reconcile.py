@@ -212,7 +212,7 @@ def stale_record(n: int, since: int, **over: Any) -> Suggestion:
             "ruleVersion": 1,
             "kind": "casing",
             "hostRef": {"opening": sid("D", 90 + n)},
-            "params": {"widthMm": 70, "thicknessMm": 16, "material": "library:paint-white"},
+            "params": {"widthMm": 70, "thicknessMm": 16, "material": "library:preset-white"},
             "createdRevision": 1,
             "stale": {"since": since, "reasonVi": messages.HOST_GONE},
             **over,

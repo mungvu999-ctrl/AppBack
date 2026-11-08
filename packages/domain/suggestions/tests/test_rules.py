@@ -46,7 +46,7 @@ def test_r1__faces_per_room_wall_cut_at_doors_with_casing_margin() -> None:
         f"DRESS-R1-{r3}-{sid('W', 6)}": ("right", [[3000, 4500]]),
     }
     params = by_id(run("R1", flat_layer()))[f"DRESS-R1-{r1}-{sid('W', 1)}"]
-    assert (params["heightMm"], params["thicknessMm"], params["material"]) == (90, 12, "library:paint-white")
+    assert (params["heightMm"], params["thicknessMm"], params["material"]) == (90, 12, "library:preset-white")
 
 
 def test_r1__wet_room_excluded_short_span_dropped() -> None:
@@ -120,7 +120,7 @@ def test_c1_c2__one_record_per_window_copied_params() -> None:
     """Doors get nothing; each window gets casing and sash with the table values."""
     win = sid("D", 2)
     assert by_id(run("C1", flat_layer())) == {
-        f"DRESS-C1-{win}": {"widthMm": 70, "thicknessMm": 16, "material": "library:paint-white"}
+        f"DRESS-C1-{win}": {"widthMm": 70, "thicknessMm": 16, "material": "library:preset-white"}
     }
     assert by_id(run("C2", flat_layer())) == {f"DRESS-C2-{win}": {"frameWidthMm": 40, "frameDepthMm": 45}}
 

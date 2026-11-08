@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from packages.core.case_names import split_case_test_name
-from tools.charter import BindRow, load_bind_rows
+from tools.charter import BindRow, load_bind_rows, pending_bind_rows
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 # junit bước 5 (addopts) và bước 5b; file nào có thì đọc
@@ -546,7 +546,7 @@ def _real_task_names() -> list[str]:
 
 def main() -> int:
     """Nối dữ liệu thật, in bảng thao tác và task, trả 0 khi đạt, 1 khi hỏng."""
-    bind_rows = load_bind_rows(REPO_ROOT / "docs" / "charter" / "BE-BIND.md")
+    bind_rows = [*load_bind_rows(REPO_ROOT / "docs" / "charter" / "BE-BIND.md"), *pending_bind_rows(REPO_ROOT)]
     cases_toml_paths = sorted((REPO_ROOT / "apps").glob("*/*/cases.toml"))
     overrides, task_requirements = load_cases_toml(cases_toml_paths)
 

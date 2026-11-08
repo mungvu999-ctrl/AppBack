@@ -67,7 +67,7 @@ def h1(build: Path, shapes: dict[str, str], data: check.Inputs) -> check.CheckRe
 
 
 def test_real_map_covers_every_contract_row(shapes: dict[str, str]) -> None:
-    """102 mục = 48 HTTP + 2 SSE của §1 + 52 của §2 (không v2).
+    """102 mục = 48 HTTP + 2 SSE của §1 + 49 của §2 (không v2) + 3 dòng chờ duyệt (N49-N51).
 
     N41 ở UX41 U05, N42-N44 nướng ánh sáng ở LB-01, N45-N46 màn tỉ lệ ở QT-SCALE-API,
     N47-N48 AI chọn phong cách ở AID-01, N49-N51 xuất GLB dựng trên máy chủ ở M1-01.

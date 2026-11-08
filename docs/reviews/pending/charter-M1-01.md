@@ -49,3 +49,17 @@ Cách trả lời đủ: "duyệt nguyên văn", hoặc liệt kê dòng cần s
 - `model.export` là quyền mới; cần chắc bảng vai trò đã có (reviewer độc lập sẽ kiểm).
 - N49 trả 200 khi trùng dấu vân và 202 khi tạo mới: khác với N48 (luôn 202). Nếu bạn muốn đồng nhất thì nói.
 - M2-QL sắp tới sẽ cần thêm trường cho lớp đề xuất (hợp đồng dữ liệu đang soạn); đó là một lần duyệt hiến chương khác, không gộp vào đây.
+
+---
+
+## Phụ lục — dòng BE-BIND máy đọc (cổng dùng trong lúc chờ duyệt)
+
+Nguyên văn ba dòng N49–N51 của `f4ae5ac6`, đúng khuôn BE-BIND §2. `tools/charter.py` `pending_bind_rows`
+đọc bảng này để cổng hợp đồng (bước 7) và cổng case (5b) vẫn kiểm N49–N51 khi `docs/charter/BE-BIND.md`
+chưa có dòng. Duyệt xong: chép ba dòng vào BE-BIND, xoá tệp này (`changes/M1-01.md` NO-M1-9).
+
+| # | Đường v1 | operationId | Schema (file) | Loại | Khoá | Nhật ký | Chủ BE | Nối FE |
+|---|---|---|---|---|---|---|---|---|
+| N49 | `POST /api/projects/{project_id}/model-exports` | `model_export_start_export` | `modelExport.ts` | G | `model.export` | — | M1-01 | màn Xuất, lựa chọn "GLB dựng trên máy chủ" (sau cờ `VITE_EXPORT_ENGINE=compiler`); thân `{}`; 202 job mới, 200 khi đã có job cùng dấu vân (cache) |
+| N50 | `GET /api/projects/{project_id}/model-exports/latest` | `model_export_read_latest` | `modelExport.ts` | Đ | thành viên | — | M1-01 | thăm dò mỗi 3 s; bỏ job `superseded`; `stale` khi tài liệu đổi sau lần xuất; chưa có → 404 |
+| N51 | `GET /api/projects/{project_id}/model-exports/{export_id}/files/{file_name}` | `model_export_download_file` | nhị phân | Đ | thành viên | — | M1-01 | model.glb / report.json / CREDITS.txt; model.glb chỉ khi `done` và `quality ≠ blocked` (409 `MODEL_EXPORT_NOT_READY`); miễn H1 (thân nhị phân) |

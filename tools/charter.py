@@ -144,6 +144,19 @@ def load_bind_rows(path: str | Path) -> list[BindRow]:
     return rows
 
 
+PENDING_CHARTER_GLOB = "docs/reviews/pending/charter-*.md"
+
+
+def pending_bind_rows(repo: str | Path) -> list[BindRow]:
+    """Dòng BE-BIND **chờ chủ dự án duyệt**: bảng khuôn BE-BIND trong `<repo>/docs/reviews/pending/charter-*.md`.
+
+    Cổng hợp đồng và cổng case đọc thêm các dòng này để route của nhánh vẫn được kiểm trong khi câu
+    chữ hiến chương chờ duyệt (BE-00 §2). Duyệt xong, người điều phối chép dòng vào BE-BIND và xoá
+    tệp chờ; dòng trùng `operationId` thì dòng BE-BIND thắng ở nơi gọi.
+    """
+    return [row for path in sorted(Path(repo).glob(PENDING_CHARTER_GLOB)) for row in load_bind_rows(path)]
+
+
 def merged_prompts(repo: str | Path) -> set[str]:
     """Mã prompt đã hợp nhất = tên file (không đuôi) dưới `<repo>/changes/*.md`."""
     changes_dir = Path(repo) / "changes"

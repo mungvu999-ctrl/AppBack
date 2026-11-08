@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.charter import _split_cells, load_bind_rows, merged_prompts
+from tools.charter import _split_cells, load_bind_rows, merged_prompts, pending_bind_rows
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 BE_BIND = REPO_ROOT / "docs" / "charter" / "BE-BIND.md"
@@ -22,14 +22,14 @@ def _write_table(tmp_path: Path, *rows: str) -> Path:
     return p
 
 
-def test_be_bind_thật_đọc_đủ_49_2_53_dòng() -> None:
+def test_be_bind_thật_đọc_đủ_49_2_50_dòng() -> None:
     rows = load_bind_rows(BE_BIND)
     numeric = [r for r in rows if r.row_id.isdigit()]
     s_rows = [r for r in rows if r.row_id.startswith("S")]
     n_rows = [r for r in rows if r.row_id.startswith("N")]
     assert len(numeric) == 49
     assert len(s_rows) == 2
-    assert len(n_rows) == 53
+    assert len(n_rows) == 50
 
 
 def test_query_bị_bỏ() -> None:
@@ -142,3 +142,16 @@ def test_split_cells_ô_không_mở_bằng_pipe() -> None:
 def test_split_cells_ô_không_đóng_bằng_pipe() -> None:
     """`_split_cells` bỏ qua việc cắt ký tự cuối khi dòng không đóng bằng `|`."""
     assert _split_cells("| a | b") == ["a", "b"]
+
+
+def test_dòng_chờ_duyệt_đọc_từ_docs_reviews_pending(tmp_path: Path) -> None:
+    """`pending_bind_rows` đọc bảng khuôn BE-BIND trong `docs/reviews/pending/charter-*.md`, không có → rỗng."""
+    assert pending_bind_rows(tmp_path) == []
+    pending = tmp_path / "docs" / "reviews" / "pending"
+    pending.mkdir(parents=True)
+    (pending / "charter-X-01.md").write_text(
+        "# chờ duyệt\n\n" + _TABLE_HEADER + "| N99 | `GET /api/x` | `x_read_item` | Đ | — | — | X-01 | |\n",
+        encoding="utf-8",
+    )
+    (pending / "ghi-chu.md").write_text(_TABLE_HEADER + "| N98 | `GET /api/y` | `y_read` | Đ | — | — | Y | |\n")
+    assert [row.operation_id for row in pending_bind_rows(tmp_path)] == ["x_read_item"]

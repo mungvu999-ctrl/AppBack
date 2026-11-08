@@ -25,7 +25,7 @@ from types import ModuleType
 from typing import Any, Final
 
 from apps.api.core.openapi import operations
-from tools.charter import BindRow, load_bind_rows, merged_prompts
+from tools.charter import BindRow, load_bind_rows, merged_prompts, pending_bind_rows
 from tools.contract import h3, h4
 from tools.contract.runner_client import (
     AppFrontMissingError,
@@ -47,7 +47,11 @@ REQUIRE_ALL_ENV: Final = "CONTRACT_REQUIRE_ALL"
 H1_EXEMPT: Final = frozenset(
     {"health_live", "health_ready", "files_read_object", "lighting_bake_download_file", "model_export_download_file"}
 )
-"""Miễn H1 **đóng** (B0-07 [2], K06): thêm tên vào đây là trái hiến chương."""
+"""Miễn H1 **đóng** (B0-07 [2], K06): thêm tên vào đây là trái hiến chương.
+
+`model_export_download_file` (N51) nằm trong câu chữ chờ duyệt `docs/reviews/pending/charter-M1-01.md`
+(BE-00 §12 bước 7 mới); bỏ khỏi đây nếu chủ dự án không duyệt (`changes/M1-01.md` NO-M1-9).
+"""
 PROGRESS_OP: Final = "drawings_read_progress"
 PROGRESS_BRANCHES: Final = ("pending", "running", "completed", "failed")
 STREAM_TYPE: Final = "S"
@@ -90,8 +94,9 @@ class Inputs:
 
 
 def contract_rows(bind_file: Path = BIND_FILE) -> dict[str, BindRow]:
-    """Dòng BE-BIND §1, §2 theo `operationId`; dòng v2 không có `operationId` nên tự rơi ra."""
-    return {row.operation_id: row for row in load_bind_rows(bind_file) if row.operation_id is not None}
+    """Dòng BE-BIND §1, §2 (+ dòng chờ duyệt) theo `operationId`; dòng v2 không có `operationId` nên tự rơi ra."""
+    rows = [*pending_bind_rows(REPO_ROOT), *load_bind_rows(bind_file)]
+    return {row.operation_id: row for row in rows if row.operation_id is not None}
 
 
 def mounted_operations() -> list[Mounted]:

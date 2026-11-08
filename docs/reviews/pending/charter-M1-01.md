@@ -52,6 +52,21 @@ Cách trả lời đủ: "duyệt nguyên văn", hoặc liệt kê dòng cần s
 
 ---
 
+## 4. Bổ sung đề nghị sau review lượt 1 (chưa có trong `f4ae5ac6`, cùng chờ duyệt)
+
+Theo phán quyết `docs/reviews/2026-11-08-feature-m1-01-model-export.md` (finding 4, 6, 9):
+
+- **HOP-DONG-MOI §13, `snapshotRevisions`** (F9): sửa `({levelId, revision}[])` thành
+  `({levelId, levelName, revision}[])`. Dây đã gửi `levelName` và FE strict đòi khoá này
+  (`AppFront src/api/schemas/modelExport.ts`, `SnapshotRevisionSchema`). Thêm câu: "`levelName` là tên tầng lúc
+  chụp, không nằm trong dấu vân: đổi tên tầng không làm lượt cũ `stale`, lượt cache giữ tên cũ."
+- **HOP-DONG-MOI §13, câu N49** (F4): sau "Cùng dấu vân đã có job `queued|running|done` → 200 job đó" thêm
+  "— trừ job `done` đã bị lịch quét dọn tệp (ngoài 5 bản mới nhất): job đó thành `superseded`, 202 job mới".
+- **BE-00 §13.1, bảng thư viện** (F6): dòng `packages/domain` thành `pydantic, shapely` (nhánh đã thêm
+  `shapely` vào `packages/domain/pyproject.toml`; `shapely` đã khoá sẵn trong `uv.lock`).
+
+---
+
 ## Phụ lục — dòng BE-BIND máy đọc (cổng dùng trong lúc chờ duyệt)
 
 Nguyên văn ba dòng N49–N51 của `f4ae5ac6`, đúng khuôn BE-BIND §2. `tools/charter.py` `pending_bind_rows`

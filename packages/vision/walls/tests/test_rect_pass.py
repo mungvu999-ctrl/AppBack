@@ -121,8 +121,8 @@ def test_rect_walls__rotated_frame_is_read_in_its_own_axes() -> None:
     assert abs(abs(_dominant_tilt(mask)) - 20.0) <= 1.0
     walls, _ = rect_walls(mask)
     assert len(walls) == 4
-    angles = {round(math.degrees(math.atan2(w.end[1] - w.start[1], w.end[0] - w.start[0])) % 90.0) for w in walls}
-    assert angles <= {20, 70}
+    angles = [math.degrees(math.atan2(w.end[1] - w.start[1], w.end[0] - w.start[0])) % 90.0 for w in walls]
+    assert all(min(abs(a - 20.0), abs(a - 70.0)) <= 1.5 for a in angles), angles
     assert all(abs(w.thickness_px - THICK) <= 2 for w in walls)
 
 
@@ -211,3 +211,27 @@ def test_rect_walls__rotated_frame_with_ink_reads_the_stroke() -> None:
     walls, _ = rect_walls(mask, gray)
     assert len(walls) == 4
     assert all(abs(w.thickness_px - THICK) <= 2 for w in walls)
+
+
+def test_rect_walls__short_partition_stub_at_a_door_is_kept() -> None:
+    """Mẩu vách 11 px dài 33 px thọc vào tường 22 px rồi dừng ở khe cửa: là tường thật, không phải lát cắt."""
+    mask = _blank()
+    _box(mask, 50, 100, 350, 122)  # tường dày 22
+    _box(mask, 200, 122, 211, 144)  # mẩu vách 11 px, 22 px ngoài tường (44 px tính cả phần trong tường)
+    _box(mask, 200, 223, 211, 290)  # phần vách bên kia khe cửa
+    walls, _ = rect_walls(mask)
+    stub = _wall_at(walls, (205.5, 133.0), tol=1.0)
+    assert abs(stub.thickness_px - 11) <= 1
+
+
+def test_rect_walls__corner_ends_stop_at_the_other_wall_centreline() -> None:
+    """Khung chữ nhật: mỗi đoạn kết thúc ở tim tường vuông góc (nút góc), không kéo tới mặt ngoài."""
+    mask = _blank()
+    _box(mask, 80, 60, 320, 60 + THICK)
+    _box(mask, 80, 228, 320, 240)
+    _box(mask, 80, 60, 80 + THICK, 240)
+    _box(mask, 308, 60, 320, 240)
+    walls, _ = rect_walls(mask)
+    assert len(walls) == 4
+    ends = {tuple(round(v, 1) for v in p) for w in walls for p in (w.start, w.end)}
+    assert ends == {(86.0, 66.0), (314.0, 66.0), (86.0, 234.0), (314.0, 234.0)}

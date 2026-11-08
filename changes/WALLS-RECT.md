@@ -15,3 +15,7 @@
   56 → 87 (mép răng cưa còn sinh dải nhỏ — nợ). 0,16 s/trang.
 - Cổng nhanh không chạy được vì container verify `m1-01` của phiên khác treo pytest > 5 h giữ khoá; thay bằng ruff/format/mypy/
   lint-imports/pytest (walls + ml/walls + vectorize, 145 test) + coverage `rect_pass` 99 % chạy thẳng trong `appback-verify:local`.
+- Sửa sau CI (`tests/e2e/test_pipeline_e2e.py::test_spatial_read_layer__C01_pipeline`, tỉ lệ lệch 32 %): run-length chạy
+  tới mặt ngoài tường vuông góc nên dải dài thêm nửa bề dày ở góc/nút T → nhịp ghép chữ kích thước sai, mẩu vách cạnh
+  cửa bị coi là lát cắt. `_trim_ends` kéo đầu dải về tim dải vuông góc (như nút xương) trước khi lọc lát cắt; đo lại
+  trang tổng hợp seed 7/5: tỉ lệ 10,0 / 12,502 (đáp án 10 / 12,5), bằng xương cũ.

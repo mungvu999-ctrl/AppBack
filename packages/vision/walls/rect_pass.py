@@ -111,31 +111,56 @@ def _rects(mask: NDArray[np.bool_], axis: Axis) -> list[tuple[int, int, int, int
     return [(r0, lo, r1 - r0, hi - lo) for lo, hi, r0, r1 in done]
 
 
-def _is_slice(rect: tuple[int, int, int, int], dist: NDArray[np.float32]) -> bool:
-    """Chữ nhật mỏng hơn `_SLICE_RATIO` lần bề dày mặt nạ thật dọc tim nó (2 x phân vị 80 của distance transform).
+def _is_slice(strip: _Strip, dist: NDArray[np.float32]) -> bool:
+    """Dải mỏng hơn `_SLICE_RATIO` lần bề dày mặt nạ thật dọc tim nó (2 x phân vị 80 của distance transform).
 
-    Chỉ xét chữ nhật ngắn hơn `_SLICE_MAX_LEN`: lát cắt của cung/chéo đều ngắn, còn nét mảnh 1-2 px chạy dài là vách
-    thật (bản CAD) — distance transform của nét 1 px là 1 nên không thể so bề dày.
+    Chỉ xét dải ngắn hơn `_SLICE_MAX_LEN`: lát cắt của cung/chéo đều ngắn, còn nét mảnh 1-2 px chạy dài là vách
+    thật (bản CAD) — distance transform của nét 1 px là 1 nên không thể so bề dày. Đo sau `_trim_ends`: phần dải nằm
+    trong tường vuông góc (nút T, góc) đã bị cắt, không làm bề dày đo được phình lên.
     """
-    x, y, w, h = rect
-    if max(w, h) >= _SLICE_MAX_LEN:
+    if strip.length() >= _SLICE_MAX_LEN:
         return False
-    if w >= h:
-        line = dist[min(dist.shape[0] - 1, y + h // 2), x : x + w]
-    else:
-        line = dist[y : y + h, min(dist.shape[1] - 1, x + w // 2)]
-    return min(w, h) < _SLICE_RATIO * 2.0 * float(np.percentile(line, 80))
+    lo, hi = math.floor(strip.lo), max(math.floor(strip.lo) + 1, math.ceil(strip.hi))
+    centre = min(dist.shape[0 if strip.axis == "h" else 1] - 1, math.floor(strip.value))
+    line = dist[centre, lo:hi] if strip.axis == "h" else dist[lo:hi, centre]
+    return strip.thick < _SLICE_RATIO * 2.0 * float(np.percentile(line, 80))
+
+
+def _trim_ends(strips: list[_Strip]) -> None:
+    """Đầu dải nằm trong thân dải vuông góc (góc L, nút T) kéo về tim dải đó, như nút của xương.
+
+    Run-length chạy tới mặt ngoài tường vuông góc nên dải dài thêm nửa bề dày ở mỗi góc; nhịp đo giữa hai tường
+    (ghép chữ kích thước) sẽ sai nửa bề dày. Dải vuông góc được ghi vào ô lưới theo dải bề dày của nó quanh tim.
+    """
+    grid: defaultdict[tuple[Axis, int], list[_Strip]] = defaultdict(list)
+    for o in strips:
+        half = o.thick / 2.0 + _EDGE_TOL_PX
+        for cell in _bins(o.value - half, o.value + half):
+            grid[(o.axis, cell)].append(o)
+    other: dict[Axis, Axis] = {"h": "v", "v": "h"}
+    for s in strips:
+        for end in ("lo", "hi"):
+            at = getattr(s, end)
+            hits = [
+                o
+                for o in grid[(other[s.axis], math.floor(at / _BIN_PX))]
+                if o.lo <= s.value <= o.hi and abs(at - o.value) <= o.thick / 2.0 + _EDGE_TOL_PX
+            ]
+            if hits:
+                node = min(hits, key=lambda o: abs(at - o.value)).value
+                if node > s.lo if end == "hi" else node < s.hi:
+                    setattr(s, end, node)
 
 
 def _strips(mask: NDArray[np.bool_]) -> list[_Strip]:
-    """Chữ nhật hai lượt quét → đoạn thẳng trục: bỏ ô vuông, lát cắt mỏng, hình tô thưa, hình đã bị hình lớn hơn phủ."""
+    """Chữ nhật hai lượt quét → đoạn thẳng trục: bỏ ô vuông, hình tô thưa, hình đã bị hình lớn hơn phủ; cắt đầu dải
+    về tim dải vuông góc rồi mới bỏ lát cắt mỏng."""
     dist = np.asarray(cv2.distanceTransform(mask.astype(np.uint8), cv2.DIST_L2, 5), np.float32)
     rects = [
         r
         for r in _rects(mask, "h") + _rects(mask, "v")
         if max(r[2], r[3]) >= _ASPECT_MIN * min(r[2], r[3])
         and mask[r[1] : r[1] + r[3], r[0] : r[0] + r[2]].mean() >= _FILL_MIN
-        and not _is_slice(r, dist)
     ]
     rects.sort(key=lambda r: -r[2] * r[3])
     cover = np.zeros(mask.shape, np.uint8)
@@ -148,7 +173,8 @@ def _strips(mask: NDArray[np.bool_]) -> list[_Strip]:
             out.append(_Strip("h", y + h / 2.0, float(x), float(x + w), float(h)))
         else:
             out.append(_Strip("v", x + w / 2.0, float(y), float(y + h), float(w)))
-    return out
+    _trim_ends(out)
+    return [s for s in out if not _is_slice(s, dist)]
 
 
 def _mergeable(kept: _Strip, new: _Strip) -> bool:

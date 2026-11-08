@@ -19,7 +19,7 @@ import json
 import math
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from functools import cache
+from functools import cache, cached_property
 from itertools import pairwise
 from pathlib import Path
 from typing import Any, Final, Literal
@@ -173,6 +173,11 @@ class Obstacle:
     host: str | None = None
     group: frozenset[str] = field(default_factory=frozenset)
 
+    @cached_property
+    def core(self) -> BaseGeometry:
+        """Footprint shrunk by `PEN_MM` (touching is not a collision), computed once."""
+        return self.poly.buffer(-PEN_MM, join_style="mitre")
+
 
 @dataclass(frozen=True)
 class CollisionNote:
@@ -185,11 +190,12 @@ class CollisionNote:
     area_mm2: int
 
 
-class Site:
-    """Per-floor geometry the placement rules share: wall union, room finish areas, opening zones, obstacles."""
+class LayerGeometry:
+    """What every placement rule of one `reconcile` call shares: wall union, room finish areas, opening zones,
+    document obstacles, plus lazily cached wall-backed edges, room containment tests and document collisions."""
 
-    def __init__(self, layer: SpatialLayer, items: Sequence[Suggestion] = ()) -> None:
-        """Build from the layer and the effective suggestions of earlier rules."""
+    def __init__(self, layer: SpatialLayer) -> None:
+        """Build once per layer (see `layer_geometry`)."""
         walls = {w.id: w for w in layer.walls}
         self.walls = shapely.union_all([_wall_rect(w) for _, w in sorted(walls.items())])
         self.wall_buf = self.walls.buffer(WALL_BUFFER_MM)
@@ -216,7 +222,7 @@ class Site:
                 self.windows.append((o.sill_height_mm, zone))
         self.openings = shapely.union_all(fps)
         self.doors = shapely.union_all(doors)
-        self.obstacles: list[Obstacle] = []
+        docs: list[Obstacle] = []
         for fur in sorted(layer.furniture, key=lambda x: x.id):
             if fur.suggested or fur.kind == "stair" or (fur.lift_mm or 0) >= FLOOR_ITEM_MAX_LIFT_MM:
                 continue
@@ -224,23 +230,39 @@ class Site:
             poly = rect((fur.centre.x, fur.centre.y), bb.max.x - bb.min.x, bb.max.y - bb.min.y, fur.rotation_deg)
             height = fur.height_mm or DEFAULT_HEIGHT_MM.get(fur.kind, DEFAULT_ITEM_HEIGHT_MM)
             rid = fur.room_id if fur.room_id in self.rooms else self.room_of(fur.centre.x, fur.centre.y)
-            self.obstacles.append(Obstacle(fur.id, poly, (fur.lift_mm or 0) + height, rid, doc=True))
-        for s in sorted(items, key=lambda x: x.id):
-            ob = suggestion_obstacle(self, s)
-            if ob is not None:
-                self.obstacles.append(ob)
+            docs.append(Obstacle(fur.id, poly, (fur.lift_mm or 0) + height, rid, doc=True))
+        self.docs = tuple(docs)
+        # Mutable caches, shared by reference with every `Site` built on this geometry.
+        self._edges: dict[str, list[Edge]] = {}
+        self._inside: dict[str, PreparedGeometry[BaseGeometry]] = {}
+        self._grown: dict[float, BaseGeometry] = {}
+        self._doc: list[dict[tuple[str, CollisionType, str], float]] = []
 
     def room_of(self, x: float, y: float) -> str | None:
         """Room whose outline contains the point."""
         room = room_at(self.rooms.values(), x, y)
         return room.id if room else None
 
+    def grown_docs(self, gap: float) -> BaseGeometry:
+        """Union of the document obstacles grown by `gap` (cached per gap)."""
+        if gap not in self._grown:
+            self._grown[gap] = shapely.union_all([o.poly.buffer(gap, join_style="mitre") for o in self.docs])
+        return self._grown[gap]
+
+    def inside(self, room_id: str) -> PreparedGeometry[BaseGeometry]:
+        """Prepared room finish area (grown 5 mm) for containment tests."""
+        if room_id not in self._inside:
+            self._inside[room_id] = prep(self.finish[room_id].buffer(5))
+        return self._inside[room_id]
+
     def wall_edges(self, room_id: str) -> list[Edge]:
-        """Parts of the room's finish edges with a wall right behind them, longest first.
+        """Parts of the room's finish edges with a wall right behind them, longest first (cached per room).
 
         Only the stretch that really has a wall counts (KET-QUA-LOI §6: a long open edge with a short stub at its
         middle used to pass as a full wall). Pieces under `MIN_EDGE_MM` are dropped.
         """
+        if room_id in self._edges:
+            return self._edges[room_id]
         out: list[Edge] = []
         for poly in polygons_of(self.finish[room_id]):
             poly = orient(poly, 1.0)
@@ -260,28 +282,15 @@ class Site:
                         ends = (seg.coords[0], seg.coords[-1])
                         s0, s1 = sorted((q[0] + nx * off - a[0]) * tx + (q[1] + ny * off - a[1]) * ty for q in ends)
                         out.append(Edge(a[0] + tx * s0, a[1] + ty * s0, tx, ty, nx, ny, s1 - s0))
-        return sorted(out, key=lambda e: (-round(e.length, 3), round(e.ax, 3), round(e.ay, 3)))
+        self._edges[room_id] = sorted(out, key=lambda e: (-round(e.length, 3), round(e.ax, 3), round(e.ay, 3)))
+        return self._edges[room_id]
 
-    def blocked(self, top: float, exclude: Iterable[str] = (), gap: float = 0.0) -> PreparedGeometry[BaseGeometry]:
-        """Everything a new item of height `top` must not touch: other obstacles (grown by `gap`), door clearance,
-        and window clearance where the item would rise above the sill."""
-        skip = set(exclude)
-        parts: list[BaseGeometry] = [
-            o.poly.buffer(gap, join_style="mitre") for o in self.obstacles if o.key not in skip
-        ]
-        parts.append(self.doors)
-        parts.extend(z for sill, z in self.windows if top > sill + WINDOW_SILL_SLACK_MM)
-        return prep(shapely.union_all(parts))
-
-    def fits(self, room_id: str, poly: Polygon, top: float, exclude: Iterable[str] = (), gap: float = 0.0) -> bool:
-        """`poly` lies in the room's finish area and touches nothing `blocked` names."""
-        return bool(self.finish[room_id].buffer(5).contains(poly)) and not self.blocked(top, exclude, gap).intersects(
-            poly
-        )
-
-    def hits(self, poly: Polygon, room_id: str | None, top: float) -> list[tuple[CollisionType, float]]:
-        """Collision types of one footprint against walls, its room, door and window clearance."""
-        core = poly.buffer(-PEN_MM, join_style="mitre")
+    def hits(
+        self, poly: Polygon, room_id: str | None, top: float, core: BaseGeometry | None = None
+    ) -> list[tuple[CollisionType, float]]:
+        """Collision types of one footprint (or its precomputed `core`) against walls, its room, door and window
+        clearance."""
+        core = poly.buffer(-PEN_MM, join_style="mitre") if core is None else core
         if core.is_empty:
             return []
         out: list[tuple[CollisionType, float]] = []
@@ -299,6 +308,52 @@ class Site:
         if area > AREA_MM2:
             out.append(("window", area))
         return out
+
+
+_LAST: list[tuple[SpatialLayer, LayerGeometry]] = []
+"""One-slot cache: every rule of a `reconcile` call gets the same layer object, so the geometry is built once."""
+
+
+def layer_geometry(layer: SpatialLayer) -> LayerGeometry:
+    """Shared geometry of `layer`, rebuilt only when a different layer object comes in (layers are frozen)."""
+    if not _LAST or _LAST[0][0] is not layer:
+        _LAST[:] = [(layer, LayerGeometry(layer))]
+    return _LAST[0][1]
+
+
+class Site(LayerGeometry):
+    """Per-rule view: the shared layer geometry plus the obstacles of earlier suggestions (and of items the rule
+    places itself, appended as it goes)."""
+
+    def __init__(self, layer: SpatialLayer, items: Sequence[Suggestion] = ()) -> None:
+        """Shared geometry of the layer (caches included, by reference), own obstacle list."""
+        self.__dict__.update(layer_geometry(layer).__dict__)
+        self.obstacles: list[Obstacle] = list(self.docs)
+        for s in sorted(items, key=lambda x: x.id):
+            ob = suggestion_obstacle(self, s)
+            if ob is not None:
+                self.obstacles.append(ob)
+
+    def blocked(self, top: float, exclude: Iterable[str] = (), gap: float = 0.0) -> PreparedGeometry[BaseGeometry]:
+        """Everything a new item of height `top` must not touch: other obstacles (grown by `gap`), door clearance,
+        and window clearance where the item would rise above the sill."""
+        skip = set(exclude)
+        if skip & {o.key for o in self.docs}:
+            parts: list[BaseGeometry] = [
+                o.poly.buffer(gap, join_style="mitre") for o in self.obstacles if o.key not in skip
+            ]
+        else:
+            parts = [self.grown_docs(gap)]
+            parts.extend(
+                o.poly.buffer(gap, join_style="mitre") for o in self.obstacles[len(self.docs) :] if o.key not in skip
+            )
+        parts.append(self.doors)
+        parts.extend(z for sill, z in self.windows if top > sill + WINDOW_SILL_SLACK_MM)
+        return prep(shapely.union_all(parts))
+
+    def fits(self, room_id: str, poly: Polygon, top: float, exclude: Iterable[str] = (), gap: float = 0.0) -> bool:
+        """`poly` lies in the room's finish area and touches nothing `blocked` names."""
+        return bool(self.inside(room_id).contains(poly)) and not self.blocked(top, exclude, gap).intersects(poly)
 
 
 def _wall_rect(wall: Any) -> Polygon:
@@ -326,24 +381,30 @@ def suggestion_obstacle(site: Site, s: Suggestion) -> Obstacle | None:
 
 
 def _overlap(a: Obstacle, b: Obstacle) -> float:
-    """Overlap area of two footprints after shrinking both by `PEN_MM`."""
-    return float(
-        a.poly.buffer(-PEN_MM, join_style="mitre").intersection(b.poly.buffer(-PEN_MM, join_style="mitre")).area
-    )
+    """Overlap area of two footprints after shrinking both by `PEN_MM` (0 when their bounds are apart)."""
+    ax0, ay0, ax1, ay1 = a.poly.bounds
+    bx0, by0, bx1, by1 = b.poly.bounds
+    if ax0 > bx1 or bx0 > ax1 or ay0 > by1 or by0 > ay1:
+        return 0.0
+    return float(a.core.intersection(b.core).area)
 
 
 def doc_collisions(site: Site) -> dict[tuple[str, CollisionType, str], float]:
-    """Collisions already present between document boxes: (id, type, other id or '') → area (pairs both ways)."""
-    docs = [o for o in site.obstacles if o.doc]
+    """Collisions already present between document boxes: (id, type, other id or '') → area (pairs both ways).
+    Computed once per layer geometry."""
+    if site._doc:
+        return site._doc[0]
+    docs = site.docs
     out: dict[tuple[str, CollisionType, str], float] = {}
     for o in docs:
-        for typ, area in site.hits(o.poly, o.room, o.top):
+        for typ, area in site.hits(o.poly, o.room, o.top, o.core):
             out[(o.key, typ, "")] = area
     for i, a in enumerate(docs):
         for b in docs[i + 1 :]:
             area = _overlap(a, b)
             if area > AREA_MM2:
                 out[(a.key, "item-item", b.key)] = out[(b.key, "item-item", a.key)] = area
+    site._doc.append(out)
     return out
 
 
@@ -352,7 +413,9 @@ def rule_collisions(
 ) -> list[tuple[CollisionType, str | None, float]]:
     """Collisions a suggestion's footprint adds: (type, other key, area). What its host box already had is `doc`."""
     out: list[tuple[CollisionType, str | None, float]] = [
-        (typ, None, area) for typ, area in site.hits(ob.poly, ob.room, ob.top) if (ob.host or "", typ, "") not in doc
+        (typ, None, area)
+        for typ, area in site.hits(ob.poly, ob.room, ob.top, ob.core)
+        if (ob.host or "", typ, "") not in doc
     ]
     mine = ob.host or ob.key
     for o in others:
@@ -411,7 +474,7 @@ def place(
     `SOLID_BACK_MM` of their back. Scale tries 1, then -tol/2, then -tol (B2 F4 clamp); never smaller: `None`.
     """
     w, d, h = model_size(model_id)
-    room = prep(site.finish[room_id].buffer(5))
+    room = site.inside(room_id)
     blocked = site.blocked(h, gap=gap)
     openings = prep(site.openings)
     edges = site.wall_edges(room_id)

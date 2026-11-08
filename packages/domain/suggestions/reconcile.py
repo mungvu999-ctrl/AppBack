@@ -94,7 +94,7 @@ def _stale_reason(
         return messages.MAJOR_STALE
     if any(i not in host_ids for i in prev.host_ref.ids()):
         return messages.HOST_GONE
-    for host in (*prev.host_ref.ids(), "/".join(prev.host_ref.ids())):
+    for host in (prev.id, *prev.host_ref.ids(), "/".join(prev.host_ref.ids())):
         if (prev.rule, host) in why:
             return why[(prev.rule, host)]
     return messages.NO_LONGER
@@ -166,7 +166,7 @@ def reconcile(
                     base = None
             merged = _merge(draft, rule, spec, base, revision, notes)
             out[merged.id] = merged
-            if merged.kind == "item" and merged.is_effective():
+            if merged.is_effective():
                 items.append(merged)
     host_ids = frozenset(e.id for e in layer.entities())
     for s in sorted(prev, key=lambda x: x.id):

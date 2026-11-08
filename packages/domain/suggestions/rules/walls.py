@@ -7,7 +7,14 @@ from collections import defaultdict
 
 from packages.domain.spatial.model import Point, Room, SpatialLayer, Wall
 from packages.domain.suggestions import messages
-from packages.domain.suggestions.model import HostRef, RailingParams, SkirtingParams, params_dict
+from packages.domain.suggestions.model import (
+    CorniceParams,
+    HostRef,
+    RailingParams,
+    SkirtingParams,
+    WallTileParams,
+    params_dict,
+)
 from packages.domain.suggestions.rules.base import Draft, Note, RuleInput, RuleOutput
 from packages.domain.suggestions.rules.geom import (
     Frame,
@@ -108,6 +115,82 @@ def r1_skirting(inp: RuleInput, spec: RuleSpec) -> RuleOutput:
                 )
             )
     return out
+
+
+def _window_cuts(layer: SpatialLayer, below: int) -> dict[str, list[tuple[float, float, int]]]:
+    """Per wall: windows whose sill is under `below` as (from, to, sill)."""
+    cuts: dict[str, list[tuple[float, float, int]]] = defaultdict(list)
+    for o in layer.openings:
+        if o.kind == "window" and o.sill_height_mm < below:
+            cuts[o.wall_id].append((o.offset_mm, o.offset_mm + o.width_mm, o.sill_height_mm))
+    return cuts
+
+
+def r2_wall_tile(inp: RuleInput, spec: RuleSpec) -> RuleOutput:
+    """R2: wet-room wall tile on every room face along a wall, up to min(`heightMm`, wall height), cut at doors and
+    windows; under a window with a sill ≥ `minSillMm` the tile runs from the floor up to the sill."""
+    p = spec.params
+    out = RuleOutput()
+    min_span, tol = int(p["minSpanMm"]), int(p["faceToleranceMm"])
+    doors = _door_cuts(inp.layer, 0)
+    walls = {w.id: w for w in inp.layer.walls}
+    straight = [(w, frame(w)) for _, w in sorted(walls.items()) if not w.curve_offset_mm]
+    curved = [(w, frame(w)) for _, w in sorted(walls.items()) if w.curve_offset_mm]
+    for room in sorted(inp.layer.rooms, key=lambda r: r.id):
+        if room.usage not in p["usages"]:
+            continue
+        for wall_id, _ in sorted(_faces(room, curved, tol)):
+            out.notes.append(Note("R2", f"{room.id}/{wall_id}", "skipped", messages.CURVED_WALL_TILE))
+        faces: dict[str, dict[str, tuple[list[Interval], list[Interval], int]]] = defaultdict(dict)
+        for (wall_id, side), spans in sorted(_faces(room, straight, tol).items()):
+            height = min(int(p["heightMm"]), walls[wall_id].height_mm)
+            windows = [(lo, hi) for lo, hi, _ in _window_cuts(inp.layer, height).get(wall_id, [])]
+            kept = subtract(union(spans), [*doors.get(wall_id, ()), *windows])
+            if _rounded(kept, min_span):
+                faces[wall_id][side] = (union(spans), kept, height)
+        for wall_id, by_side in sorted(faces.items()):
+            side = max(by_side, key=lambda s: (sum(hi - lo for lo, hi in by_side[s][1]), s == "left"))
+            if len(by_side) > 1:
+                out.notes.append(Note("R2", f"{room.id}/{wall_id}", "skipped", messages.OTHER_FACE))
+            face, kept, height = by_side[side]
+            sills = [
+                (js_round(max(lo, flo)), js_round(min(hi, fhi)), sill)
+                for lo, hi, sill in _window_cuts(inp.layer, height).get(wall_id, [])
+                if sill >= p["minSillMm"]
+                for flo, fhi in face
+                if min(hi, fhi) - max(lo, flo) >= min_span
+            ]
+            params = WallTileParams(
+                side=side,
+                spans_mm=_rounded(kept, min_span),
+                sill_spans_mm=tuple(sills) or None,
+                height_mm=height,
+                thickness_mm=p["thicknessMm"],
+                tile_mm=p["tileMm"],
+                material=p["material"],
+            )
+            out.drafts.append(
+                Draft(
+                    f"DRESS-R2-{room.id}-{wall_id}",
+                    "wallTile",
+                    HostRef(room=room.id, wall=wall_id),
+                    params_dict(params),
+                )
+            )
+    return out
+
+
+def r3_cornice(inp: RuleInput, spec: RuleSpec) -> RuleOutput:
+    """R3: ceiling cornice in every room with a dry ceiling (not in `skipUsages`); material = the room ceiling."""
+    p = spec.params
+    params = params_dict(CorniceParams(height_mm=p["heightMm"], depth_mm=p["depthMm"]))
+    return RuleOutput(
+        drafts=[
+            Draft(f"DRESS-R3-{r.id}", "cornice", HostRef(room=r.id), dict(params))
+            for r in sorted(inp.layer.rooms, key=lambda r: r.id)
+            if r.usage not in p["skipUsages"]
+        ]
+    )
 
 
 def r4_railing(inp: RuleInput, spec: RuleSpec) -> RuleOutput:

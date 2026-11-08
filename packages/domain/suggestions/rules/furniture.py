@@ -86,8 +86,9 @@ def f1_model_pick(inp: RuleInput, spec: RuleSpec) -> RuleOutput:
 def missing_primary_slots(layer: SpatialLayer, room: Room, spec: RuleSpec) -> list[str]:
     """P1 precondition: role slots of `room.usage` not yet furnished by a real item of the room.
 
-    An item fills a slot by `kind` or `variant`; B3 `suggested` items do not count. Slots with `minAreaM2` above the
-    room area are not wanted at all.
+    An item fills a slot by `kind`, by `variant`, or (slots with `boxKinds`) by a box of that kind at least
+    `boxMinLongMm` x `boxMinShortMm` (the sofa F1 would pick for a large chair box); B3 `suggested` items do not count.
+    Slots with `minAreaM2` above the room area are not wanted at all.
     """
     pts = ring(room.outline)
     present = [
@@ -99,5 +100,11 @@ def missing_primary_slots(layer: SpatialLayer, room: Room, spec: RuleSpec) -> li
         slot["slot"]
         for slot in spec.params["roles"].get(room.usage, [])
         if slot.get("minAreaM2", 0) <= room.area_m2
-        and not any(f.kind in slot["kinds"] or f.variant in slot["variants"] for f in present)
+        and not any(f.kind in slot["kinds"] or f.variant in slot["variants"] or _box_fills(f, slot) for f in present)
     ]
+
+
+def _box_fills(f: Furniture, slot: dict[str, Any]) -> bool:
+    """A box of a `boxKinds` kind big enough for the slot's model."""
+    long, short = _box(f)
+    return f.kind in slot.get("boxKinds", ()) and long >= slot["boxMinLongMm"] and short >= slot["boxMinShortMm"]

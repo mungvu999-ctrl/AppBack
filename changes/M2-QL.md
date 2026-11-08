@@ -24,3 +24,17 @@
   tầng (ngoài phạm vi tệp của lượt này).
 - Cổng áp dụng: ruff, mypy, pytest `packages/domain/model_export` + `apps/worker/model_export/tests` (độ phủ 99 %).
   Migration/openapi/hợp đồng FE–BE: không đổi.
+
+## M2-QL — luật va chạm và đặt đồ (`packages/domain/suggestions`)
+
+- `rules/placement.py`: vết chân theo bbox mẫu (`data/model_bbox.json`, chép từ thí nghiệm B2), `place` áp tường
+  (chỉ đoạn cạnh có tường thật phía sau, tỉ lệ ±10 % rồi bỏ), `check_collisions(layer, suggestions)` gắn nhãn `doc`
+  (có sẵn giữa hộp document, chỉ ghi nhật ký) / `rule` (luật không để lại), `model_origin` (F0).
+- Luật mới: R2 gạch ốp phòng ướt (cắt cửa, phần dưới bậu), R3 phào, F2 dãy tủ dưới (gộp hộp trùng ≥ 50 %, cổng công
+  năng phòng và áp tường ≥ 80 % trong 0,15 m), F3 tủ trên (bỏ khi vướng ô mở), P1 đồ chính, P2 tab đầu giường, D1 thảm,
+  P3 bàn trà (đứng trên thảm), D3 bình, D4 tranh, D5 cây. Mọi bỏ/giảm có ghi chú tiếng Việt.
+- Luật sau thấy mọi đề xuất hiệu lực của luật trước; `params` thêm `cabinetRun.start/end/mergedIds/degradedVi`,
+  `wallTile.sillSpansMm`, `item.variant`; `rule_params.json` thêm tham số (đổi `rulesetSha`).
+- Ca vàng: ch-04, ch-06 mở rộng (`serverSuggestions`, `collisions`), thêm `syn-penthouse`; 0 va chạm `rule` trên cả 3.
+- Cổng áp dụng: ruff, mypy, pytest `packages/domain/suggestions` (độ phủ 100 % dòng/nhánh). Migration/openapi/hợp đồng
+  FE–BE: không đổi.

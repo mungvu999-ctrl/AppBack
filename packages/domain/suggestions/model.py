@@ -31,6 +31,7 @@ SuggestionId = Annotated[StrictStr, Field(pattern=SUGGESTION_ID_PATTERN)]
 State = Literal["active", "disabled", "overridden", "adopted"]
 Scalar = StrictStr | StrictBool | StrictInt | StrictFloat
 Span = tuple[NonNegativeMm, NonNegativeMm]
+SillSpan = tuple[NonNegativeMm, NonNegativeMm, PositiveMm]
 OVERRIDE_MAX: Final = 16
 
 
@@ -45,10 +46,14 @@ class SkirtingParams(DomainModel):
 
 
 class WallTileParams(DomainModel):
-    """R2: wet-room wall tile on one face of a wall."""
+    """R2: wet-room wall tile on one face of a wall, full height on `spansMm` (doors and windows cut out).
+
+    `sillSpansMm` = `(from, to, topMm)` pieces under windows, tiled from the floor up to the sill.
+    """
 
     side: Literal["left", "right"]
     spans_mm: tuple[Span, ...]
+    sill_spans_mm: tuple[SillSpan, ...] | None = None
     height_mm: PositiveMm
     thickness_mm: PositiveMm
     tile_mm: PositiveMm
@@ -94,9 +99,13 @@ class RailingParams(DomainModel):
 
 
 class CabinetRunParams(DomainModel):
-    """F2/F3: parametric kitchen run along a furniture box."""
+    """F2/F3: parametric kitchen run on the back line `start`→`end` (against the wall); the run lies on the side
+    of the left normal (-dy, dx) of that line, `depthMm` deep. `mergedIds` = duplicate boxes folded into this run
+    (their models are not built either)."""
 
     slot: Literal["base", "upper"]
+    start: Point
+    end: Point
     length_mm: PositiveMm
     depth_mm: PositiveMm
     bottom_mm: NonNegativeMm
@@ -104,6 +113,8 @@ class CabinetRunParams(DomainModel):
     module_mm: PositiveMm
     material: MaterialRef | None = None
     countertop_material: MaterialRef | None = None
+    merged_ids: tuple[FurnitureIdStr, ...] | None = None
+    degraded_vi: Annotated[StrictStr, Field(min_length=1)] | None = None
 
 
 class CurtainParams(DomainModel):
@@ -139,9 +150,14 @@ class CeilingLightParams(DomainModel):
 
 
 class ItemParams(DomainModel):
-    """P1-P3, D3-D5, AID: a furniture item not yet touched by the user."""
+    """P1-P3, D3-D5, AID: a furniture item not yet touched by the user.
+
+    `centre` is the footprint (model bbox) centre and `sizeMm` the placed bbox (model x scale), not the model origin:
+    `rules.placement.model_origin` converts. `liftMm` is above the finish floor (floor items 0).
+    """
 
     furniture_kind: Annotated[StrictStr, Field(min_length=1)]
+    variant: FurnitureVariant | None = None
     model_id: Annotated[StrictStr, Field(min_length=1)]
     centre: Point
     size_mm: tuple[PositiveMm, PositiveMm, PositiveMm]

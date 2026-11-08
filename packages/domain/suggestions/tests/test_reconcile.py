@@ -273,7 +273,7 @@ def test_earlier_items_feed_later_rules(monkeypatch: pytest.MonkeyPatch) -> None
 
     def p2(inp: RuleInput, __: RuleSpec) -> RuleOutput:
         """Fake P2: records what it saw."""
-        seen.append(tuple(s.id for s in inp.items))
+        seen.append(tuple(s.id for s in inp.items if s.kind == "item"))
         return RuleOutput()
 
     monkeypatch.setitem(RULES, "P1", p1)

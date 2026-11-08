@@ -17,10 +17,12 @@ from packages.domain.suggestions.reconcile import (
     reconcile,
 )
 from packages.domain.suggestions.rules.base import Note
+from packages.domain.suggestions.rules.placement import CollisionNote, check_collisions, model_origin
 from packages.domain.suggestions.ruleset import Ruleset, load_ruleset
 
 __all__ = [
     "SUGGESTIONS_CAP",
+    "CollisionNote",
     "Note",
     "Reconciled",
     "Ruleset",
@@ -29,9 +31,11 @@ __all__ = [
     "SuggestionsMeta",
     "UnknownSuggestionError",
     "apply_state",
+    "check_collisions",
     "document_keys",
     "effective_params",
     "load_ruleset",
+    "model_origin",
     "reconcile",
     "suggestions_from_json",
     "suggestions_to_json",

@@ -195,11 +195,10 @@ def test_l1__pendant_panel_and_open_air() -> None:
 # ---------------------------------------------------------------- pending rules, geometry helpers
 
 
-@pytest.mark.parametrize("rule", ["R2", "R3", "F2", "F3", "P1", "P2", "P3", "D1", "D3", "D4", "D5", "AID"])
-def test_pending_rules__registered_produce_nothing(rule: str) -> None:
-    """Rules waiting for the collision model are registered and silent."""
-    assert RULES[rule] is pending
-    assert run(rule, flat_layer()) == RuleOutput()
+def test_pending_rules__registered_produce_nothing() -> None:
+    """AID waits for the concept wiring: registered and silent."""
+    assert RULES["AID"] is pending
+    assert run("AID", flat_layer()) == RuleOutput()
 
 
 def test_polylabel__l_shape_degenerate_and_zero_area() -> None:

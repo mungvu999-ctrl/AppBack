@@ -35,7 +35,7 @@ class Note:
 
 @dataclass(frozen=True)
 class RuleInput:
-    """What a rule sees: the layer, earlier effective items and the selected design concept (AID)."""
+    """What a rule sees: the layer, the effective suggestions of earlier rules (any kind) and the design concept."""
 
     layer: SpatialLayer
     items: tuple[Suggestion, ...] = ()

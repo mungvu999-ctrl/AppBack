@@ -25,6 +25,23 @@
 - Cổng áp dụng: ruff, mypy, pytest `packages/domain/model_export` + `apps/worker/model_export/tests` (độ phủ 99 %).
   Migration/openapi/hợp đồng FE–BE: không đổi.
 
+## M2-QL — writer, wire đọc, bảng luật (`apps/api/spatial_write`, `spatial_read`, `suggestion_rules`)
+
+- `write_layer`: `suggestionState` (thưa) kiểm rồi áp bằng `apply_state` **trước** `reconcile`; `reconcile` chạy trong
+  `_attempt` cùng revision khi lớp bật và `layer` đổi (sửa tay, `merge`, đổi tỉ lệ) hoặc lớp vừa bật. Lỗi 422
+  `SUGGESTION_UNKNOWN`, `SUGGESTION_OVERRIDE_INVALID`, `SUGGESTION_CAP`; id trùng → `VALIDATION`. C09b/bước 10 không
+  sinh lại. Đổi `rulesetSha` → log `suggestions_ruleset_changed` (sha cũ → mới).
+- Tài liệu: khoá `suggestions`/`suggestionsMeta` (vắng khi rỗng) + `suggestionsEnabled: true` (vắng = tắt; tầng
+  revision 0 suy là bật, §8.1). `Furniture.origin?` ở miền. Id đề xuất không vào `floor_entity_ids`.
+- Dây: N16 và kết quả #35 thêm `suggestions?`, `suggestionsMeta?`, `suggestionsEnabled?`; `FurnitureOut.origin?`.
+- Route mới `GET /api/suggestion-rules` (`suggestion_rules_read`, Đ\*, ETag = `rulesetSha`, 304).
+- Hiến chương **chưa duyệt**: `docs/reviews/pending/charter-M2-QL.md` (N52, #35, N16, HOP-DONG-MOI §14). Cổng
+  bước 7 (H1, BE-BIND) và FE strict sẽ đỏ cho tới khi duyệt + FE thêm zod.
+- Chưa làm: 409 liệt kê đổi `state`/`override` (cần migration CHECK `entity_type` + lõi `VersionEntityType`);
+  `refreshSuggestions`; concept AI vào `reconcile` (truyền `None`); phiên bản (`versions`) chưa chụp lớp đề xuất.
+- Cổng áp dụng: ruff, mypy, pytest đích `spatial_write`, `spatial_read`, `suggestion_rules`, `packages/domain/spatial`,
+  `versions`, `core`. Migration: không. openapi/hợp đồng FE–BE: đổi, chờ duyệt.
+
 ## M2-QL — luật va chạm và đặt đồ (`packages/domain/suggestions`)
 
 - `rules/placement.py`: vết chân theo bbox mẫu (`data/model_bbox.json`, chép từ thí nghiệm B2), `place` áp tường

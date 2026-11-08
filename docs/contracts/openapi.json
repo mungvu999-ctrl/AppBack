@@ -1913,6 +1913,11 @@
             "type": "string"
           },
           "severity": {
+            "enum": [
+              "minor",
+              "major",
+              "critical"
+            ],
             "title": "Severity",
             "type": "string"
           }

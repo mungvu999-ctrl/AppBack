@@ -37,6 +37,14 @@
 - Route mới `GET /api/suggestion-rules` (`suggestion_rules_read`, Đ\*, ETag = `rulesetSha`, 304).
 - Hiến chương **chưa duyệt**: `docs/reviews/pending/charter-M2-QL.md` (N52, #35, N16, HOP-DONG-MOI §14). Cổng
   bước 7 (H1, BE-BIND) và FE strict sẽ đỏ cho tới khi duyệt + FE thêm zod.
+- NO-M2-1 (CHARTER) **[merge]**: câu chữ BE-BIND N52, #35, N15/N16, HOP-DONG-MOI §14 chờ chủ dự án duyệt; nguyên văn
+  ở `docs/reviews/pending/charter-M2-QL.md`. Phụ thuộc cổng (như NO-M1-9): bước 7 và 5b đọc dòng N52 từ phụ lục máy
+  đọc của tệp đó qua `tools.charter.pending_bind_rows`; #35/N15/N16 không cần dòng (không đổi `operationId`/đường).
+  `docs/contracts/openapi.json` sinh lại theo route và trường M2 dù hiến chương chưa duyệt (cổng so `--compare`).
+  `schema-map.ts` có `suggestion_rules_read` → `@/api/schemas/suggestionRules` (`SuggestionRulesWireSchema`), tệp
+  chỉ có ở nhánh FE M2: bước 7 (Smoke, H1) và `test_real_repo_check_runs_through` chỉ đạt khi FE M2 được đẩy và
+  `APPFRONT_SHA` ghim tới đó (giờ giữ `6fbff729` của M1). Duyệt xong: chép dòng N52 vào BE-BIND, xoá tệp chờ; không
+  duyệt thì gỡ route N52 và mục bản đồ.
 - Chưa làm: 409 liệt kê đổi `state`/`override` (cần migration CHECK `entity_type` + lõi `VersionEntityType`);
   `refreshSuggestions`; concept AI vào `reconcile` (truyền `None`); phiên bản (`versions`) chưa chụp lớp đề xuất.
 - Cổng áp dụng: ruff, mypy, pytest đích `spatial_write`, `spatial_read`, `suggestion_rules`, `packages/domain/spatial`,

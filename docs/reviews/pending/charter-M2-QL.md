@@ -22,7 +22,7 @@ Cách trả lời đủ: "duyệt nguyên văn", hoặc liệt kê dòng cần s
 
 | N | Đường | operationId | Schema FE | Loại | Khoá | Prompt | Ghi chú |
 |---|---|---|---|---|---|---|---|
-| N52 | `GET /api/suggestion-rules` | `suggestion_rules_read` | `suggestions.ts` (`SuggestionRules`) | Đ\* | — | M2-QL | editor: bảng tham số luật lớp đề xuất; `ETag` = `"<rulesetSha>"`, `If-None-Match` khớp → 304 |
+| N52 | `GET /api/suggestion-rules` | `suggestion_rules_read` | `suggestionRules.ts` (`SuggestionRulesWireSchema`) | Đ\* | — | M2-QL | editor: bảng tham số luật lớp đề xuất; `ETag` = `"<rulesetSha>"`, `If-None-Match` khớp → 304 |
 
 ## 2. `docs/charter/HOP-DONG-MOI.md`
 
@@ -77,7 +77,7 @@ Cách trả lời đủ: "duyệt nguyên văn", hoặc liệt kê dòng cần s
 >   khi `adopted`). Danh sách sắp theo `id`.
 > - `SuggestionsMetaSchema` (strict): `ruleset`, `rulesetSha` (64 hex), `basisRevision` (int ≥ 0).
 > - `suggestionsEnabled`: `true` hoặc vắng khoá (vắng = tắt).
-> - N52 `SuggestionRulesSchema` (strict): `ruleset`, `rulesetSha`, `rules: {id, version, majorSince, kind, nameVi,
+> - N52 `SuggestionRulesWireSchema` (strict, tệp `suggestionRules.ts`): `ruleset`, `rulesetSha`, `rules: {id, version, majorSince, kind, nameVi,
 >   editor: render|mirror|list, params: Record<string, Json>, overridable: string[]}[]` theo thứ tự tệp
 >   `packages/domain/suggestions/rule_params.json`. `ETag: "<rulesetSha>"`, `Cache-Control: private, no-cache`;
 >   `If-None-Match` khớp → 304 không thân.
@@ -105,6 +105,15 @@ Cách trả lời đủ: "duyệt nguyên văn", hoặc liệt kê dòng cần s
 
 ## Phụ lục — dòng BE-BIND máy đọc (khuôn BE-BIND §2)
 
+Nguyên văn dòng N52 ở §1, đúng khuôn BE-BIND §2. `tools/charter.py` `pending_bind_rows` đọc bảng này để cổng hợp
+đồng (bước 7) và cổng case (5b) vẫn kiểm N52 khi `docs/charter/BE-BIND.md` chưa có dòng. Cổng chỉ cần dòng BE-BIND
+cho **thao tác mới**: phần thêm ở #35 (thân `suggestionState?`/`suggestionsEnabled?`, kết quả ba khoá) và khoá N15/N16
+không đổi `operationId`, đường hay khoá quyền, nên không cần dòng; chúng được H1 kiểm qua schema FE strict của
+#35/N15/N16 trên mẫu thật. Mục `suggestion_rules_read` của `tools/contract/schema-map.ts` trỏ
+`@/api/schemas/suggestionRules`, tệp chỉ có ở nhánh FE M2 — bước 7 (Smoke, H1) chỉ đạt khi FE M2 được đẩy và
+`tools/contract/APPFRONT_SHA` ghim tới đó. Duyệt xong: chép dòng vào BE-BIND, xoá tệp này (`changes/M2-QL.md`
+NO-M2-1).
+
 | # | Đường v1 | operationId | Schema (file) | Loại | Khoá | Nhật ký | Chủ BE | Nối FE |
 |---|---|---|---|---|---|---|---|---|
-| N52 | `GET /api/suggestion-rules` | `suggestion_rules_read` | `suggestions.ts` (`SuggestionRules`) | Đ\* | — | — | M2-QL | editor: bảng tham số luật lớp đề xuất; `ETag` = `"<rulesetSha>"`, `If-None-Match` khớp → 304 |
+| N52 | `GET /api/suggestion-rules` | `suggestion_rules_read` | `suggestionRules.ts` (`SuggestionRulesWireSchema`) | Đ\* | — | — | M2-QL | editor: bảng tham số luật lớp đề xuất; `ETag` = `"<rulesetSha>"`, `If-None-Match` khớp → 304 |

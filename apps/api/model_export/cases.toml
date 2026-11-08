@@ -3,6 +3,6 @@
 
 [[endpoint]]
 op = "model_export_start_export"
-# C14: hai yêu cầu song song cùng dấu vân → một dòng, một task (unique partial `uq_model_exports_fingerprint`).
+# C14: hai yêu cầu song song cùng dấu vân → một dòng, một task (khoá tư vấn theo dự án trong N49).
 extra = ["C14"]
 waive = { C16 = "thân rỗng `{}`, không có trường để kiểm" }

@@ -10,6 +10,7 @@ from typing import Final
 import pytest
 
 from apps.api.model_export import cli
+from apps.api.model_export.settings import ModelExportSettings
 from packages.core.settings import reset_settings_cache
 from packages.storage.keys import model_export_pack_object
 from packages.storage.local import LocalDiskStorage
@@ -38,6 +39,13 @@ async def test_import_pack__ok(tmp_path: Path, local_storage: LocalDiskStorage) 
 
     for rel in ("textures/a.jpg", "editor-defaults.json", "manifest.json"):
         assert await local_storage.stat(model_export_pack_object("v1", rel)) is not None
+
+
+def test_default_pack_version__valid_key() -> None:
+    """Gói mặc định `m1-01-pack-r1` là một đoạn khoá hợp lệ của `model-export-packs/{version}/`."""
+    version = ModelExportSettings().model_export_pack_version
+    assert version == "m1-01-pack-r1"
+    assert model_export_pack_object(version, "manifest.json") == "model-export-packs/m1-01-pack-r1/manifest.json"
 
 
 def test_main__bad_sha(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

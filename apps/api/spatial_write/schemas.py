@@ -14,13 +14,16 @@ một tên; khác quy ước `…In`/`…Out` của các module ghi khác là c�
 """
 
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Annotated, Any, Final, Self
+from typing import Annotated, Any, Final, Literal, Self
 
-from pydantic import BeforeValidator, Field, model_validator
+from pydantic import BeforeValidator, Field, JsonValue, StrictBool, StrictFloat, StrictInt, StrictStr, model_validator
 
 from apps.api.core.wire import WireModel, WireRequest
-from apps.api.spatial_read.wire import SpatialLayerOut
+from apps.api.spatial_read.wire import SpatialLayerOut, SuggestionOut, SuggestionsMetaOut
 from packages.domain.spatial import Axis, Dimension, Point, SpatialLayer
+from packages.domain.suggestions import SUGGESTIONS_CAP
+from packages.domain.suggestions.model import OVERRIDE_MAX, SUGGESTION_ID_PATTERN
+from packages.domain.suggestions.ruleset import ParamKey
 
 SCALE_PLACES: Final = 6
 """Số chữ số thập phân của `floor_documents.scale_mm_per_px` (`Numeric(12,6)`, B3-02)."""
@@ -58,10 +61,40 @@ type LayerScaleMmPerPx = Annotated[Decimal, BeforeValidator(_scale), Field(gt=0,
 `apps__api__…__ScaleMmPerPx` và đổi luôn schema của prompt khác."""
 
 
+class SuggestionStateRowSchema(WireRequest):
+    """Một dòng `suggestionState` (M2 §4): trạng thái người dùng của **một** đề xuất.
+
+    `params`, `stale`, `createdRevision` là trường máy chủ sở hữu: FE gửi lại nguyên bản ghi thì nhận và bỏ qua (W18),
+    không 422. Id lạ hay khoá `override` ngoài `overridable` của luật do `write_layer` kiểm (cần tài liệu đã lưu).
+    """
+
+    id: Annotated[StrictStr, Field(pattern=SUGGESTION_ID_PATTERN)]
+    state: Literal["active", "disabled", "overridden", "adopted"]
+    override: (
+        Annotated[
+            dict[ParamKey, StrictStr | StrictBool | StrictInt | StrictFloat],
+            Field(min_length=1, max_length=OVERRIDE_MAX),
+        ]
+        | None
+    ) = None
+    params: JsonValue = None
+    stale: JsonValue = None
+    created_revision: JsonValue = None
+
+    def as_state(self) -> dict[str, object]:
+        """Phần người dùng sở hữu, đúng dạng `apply_state` nhận (`override` vắng khi không có)."""
+        row: dict[str, object] = {"id": self.id, "state": self.state}
+        if self.override is not None:
+            row["override"] = self.override
+        return row
+
+
 class FloorLayerWriteBodySchema(WireRequest):
-    """`body` của #35: lớp, tỉ lệ, kích thước, trục, gốc toạ độ — ít nhất một khoá (FE `refine` ≥ 1 khoá).
+    """`body` của #35: lớp, tỉ lệ, kích thước, trục, gốc toạ độ, lớp đề xuất — ít nhất một khoá (FE `refine` ≥ 1).
 
     `axes` thay nguyên danh sách trục như `dimensions`; `origin` là gốc toạ độ màn Trục (mm, G4b-17).
+    `suggestionState` là trạng thái **thưa** cả tầng của lớp đề xuất M2, `suggestionsEnabled` bật/tắt lớp ấy.
+    `suggestions` (danh sách đề xuất) do máy chủ sinh: client gửi lên thì nhận và bỏ qua (W18), không tính là khoá.
     """
 
     layer: SpatialLayer | None = None
@@ -69,13 +102,27 @@ class FloorLayerWriteBodySchema(WireRequest):
     dimensions: list[Dimension] | None = None
     axes: list[Axis] | None = None
     origin: Point | None = None
+    suggestion_state: Annotated[list[SuggestionStateRowSchema], Field(max_length=SUGGESTIONS_CAP)] | None = None
+    suggestions_enabled: StrictBool | None = None
+    suggestions: JsonValue = None
 
     @model_validator(mode="after")
     def _at_least_one_key(self) -> Self:
         """`body: {}` là lượt ghi không nói gì → 422 `field:"body"`, không phải 200 im lặng."""
-        keys = (self.layer, self.scale_millimetres_per_pixel, self.dimensions, self.axes, self.origin)
+        keys = (
+            self.layer,
+            self.scale_millimetres_per_pixel,
+            self.dimensions,
+            self.axes,
+            self.origin,
+            self.suggestion_state,
+            self.suggestions_enabled,
+        )
         if all(key is None for key in keys):
-            raise ValueError("body phải có layer, dimensions, axes, origin hoặc scaleMillimetresPerPixel")
+            raise ValueError(
+                "body phải có layer, dimensions, axes, origin, scaleMillimetresPerPixel, suggestionState "
+                "hoặc suggestionsEnabled"
+            )
         return self
 
 
@@ -87,7 +134,13 @@ class FloorLayerWriteSchema(WireRequest):
 
 
 class FloorLayerWriteResultSchema(WireModel):
-    """200 của #35: bản ghi mới và lớp đã lưu — nguồn thay store của F-04b."""
+    """200 của #35: bản ghi mới, lớp đã lưu và lớp đề xuất M2 cùng revision — nguồn thay store của F-04b.
+
+    Ba trường đề xuất vắng khi rỗng/tắt, đúng như N16 (`suggestion_fields`).
+    """
 
     revision: Annotated[int, Field(ge=0)]
     layer: SpatialLayerOut
+    suggestions: list[SuggestionOut] | None = None
+    suggestions_meta: SuggestionsMetaOut | None = None
+    suggestions_enabled: Literal[True] | None = None

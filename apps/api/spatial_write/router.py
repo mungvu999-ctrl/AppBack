@@ -19,7 +19,7 @@ from apps.api.core.deps import ClockDep, DbSession
 from apps.api.core.routing import protected_router, route_options
 from apps.api.floors.lookup import get_floor
 from apps.api.projects.access import ProjectAccess, require_project
-from apps.api.spatial_read.wire import layer_out
+from apps.api.spatial_read.wire import layer_out, suggestion_fields
 from apps.api.spatial_write.schemas import FloorLayerWriteResultSchema, FloorLayerWriteSchema
 from apps.api.spatial_write.writer import LayerWrite, actor_name, write_layer
 from packages.core.error_codes import NOT_FOUND
@@ -41,7 +41,7 @@ async def spatial_write_layer(
     db: DbSession,
     clock: ClockDep,
 ) -> FloorLayerWriteResultSchema:
-    """#35 — ghi lớp và/hoặc tỉ lệ một tầng: base cũ → 409 W20, lượt lặp của chính mình → 200."""
+    """#35 — ghi lớp, tỉ lệ và/hoặc lớp đề xuất một tầng: base cũ → 409 W20, lượt lặp của chính mình → 200."""
     floor = await get_floor(db, project_id=access.project_id, level_id=floor_id)
     if floor is None:
         raise NOT_FOUND.error(resource="floor")
@@ -55,6 +55,10 @@ async def spatial_write_layer(
             dimensions=None if body.body.dimensions is None else tuple(body.body.dimensions),
             axes=None if body.body.axes is None else tuple(body.body.axes),
             origin=body.body.origin,
+            suggestion_state=None
+            if body.body.suggestion_state is None
+            else tuple(row.as_state() for row in body.body.suggestion_state),
+            suggestions_enabled=body.body.suggestions_enabled,
         ),
         actor_id=access.principal.user_id,
         actor_name=await actor_name(db, access.principal.user_id),
@@ -62,4 +66,8 @@ async def spatial_write_layer(
         may_approve=can(access.role, "qc.approve"),
         check_spans=True,
     )
-    return FloorLayerWriteResultSchema(revision=result.revision, layer=layer_out(result.layer))
+    return FloorLayerWriteResultSchema(
+        revision=result.revision,
+        layer=layer_out(result.layer),
+        **suggestion_fields(result.suggestions, result.suggestions_meta, enabled=result.suggestions_enabled),
+    )

@@ -34,12 +34,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.drawings.drawings import current_drawing
 from apps.api.projects.summaries import set_layer_counts, touch_project
 from apps.api.spatial_read.assemble import scale_status
-from apps.api.spatial_read.codec import document_to_json, entity_ids
+from apps.api.spatial_read.codec import document_to_json, entity_ids, suggestion_keys
 from apps.api.spatial_read.counts import layer_counts
 from apps.api.spatial_read.documents import FloorDocument, ScaleSource, ensure_document, load_document
 from apps.api.spatial_read.entity_ids import claim_entity_ids
 from apps.api.spatial_write.changes import remote_changes_since
-from apps.api.spatial_write.errors import LAYER_INTEGRITY_BROKEN, LAYER_LEVEL_MISMATCH, REVIEW_BY_AI_FORBIDDEN
+from apps.api.spatial_write.errors import (
+    LAYER_INTEGRITY_BROKEN,
+    LAYER_LEVEL_MISMATCH,
+    REVIEW_BY_AI_FORBIDDEN,
+    SUGGESTION_CAP,
+    SUGGESTION_OVERRIDE_INVALID,
+    SUGGESTION_UNKNOWN,
+)
 from apps.api.spatial_write.settings import get_spatial_write_settings
 from packages.core.clock import Clock
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, FORBIDDEN, NOT_FOUND, VALIDATION
@@ -71,6 +78,15 @@ from packages.domain.spatial import (
     mark_edited,
     mark_edited_dimensions,
     polygon_area_m2,
+)
+from packages.domain.suggestions import (
+    Ruleset,
+    Suggestion,
+    SuggestionCapError,
+    SuggestionsMeta,
+    apply_state,
+    load_ruleset,
+    reconcile,
 )
 
 _log: Final = logging.getLogger(__name__)
@@ -134,6 +150,9 @@ class LayerWrite:
     """Thân một lượt ghi. `dimensions`/`axes`: thay nguyên danh sách; `None` = giữ như cũ.
 
     `axes` và `origin` (gốc toạ độ mm) là dữ liệu màn Trục (G4b-17), chỉ người gửi qua #35.
+
+    `suggestion_state`: trạng thái **thưa** của lớp đề xuất M2 (`[{id, state, override?}]`, cả tầng); `None` = giữ.
+    `suggestions_enabled`: bật/tắt lớp đề xuất của tầng (§8 quyết định 1); `None` = giữ.
     """
 
     layer: SpatialLayer | None
@@ -141,6 +160,8 @@ class LayerWrite:
     dimensions: tuple[Dimension, ...] | None = None
     axes: tuple[Axis, ...] | None = None
     origin: Point | None = None
+    suggestion_state: tuple[Mapping[str, object], ...] | None = None
+    suggestions_enabled: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -150,6 +171,18 @@ class WriteResult:
     revision: int
     layer: SpatialLayer
     applied: bool
+    suggestions: tuple[Suggestion, ...] = ()
+    suggestions_meta: SuggestionsMeta | None = None
+    suggestions_enabled: bool = False
+
+
+@dataclass(frozen=True)
+class _Suggestions:
+    """Lớp đề xuất sắp ghi (M2): danh sách sắp theo id, meta của lượt `reconcile` gần nhất, cờ bật."""
+
+    items: tuple[Suggestion, ...]
+    meta: SuggestionsMeta | None
+    enabled: bool
 
 
 @dataclass(frozen=True)
@@ -212,7 +245,7 @@ def body_sha256(body: LayerWrite) -> str:
     quantize nếu muốn C09b khớp, không thì lượt gửi lại chỉ **trượt** C09b rồi rơi vào phép
     kiểm xung đột — hướng an toàn.
     """
-    payload = {
+    payload: dict[str, object] = {
         "layer": None if body.layer is None else _wire(body.layer),
         "dimensions": None if body.dimensions is None else [_wire(item) for item in body.dimensions],
         "scaleMillimetresPerPixel": None if body.scale_mm_per_px is None else str(body.scale_mm_per_px),
@@ -222,6 +255,11 @@ def body_sha256(body: LayerWrite) -> str:
         payload["axes"] = [_wire(item) for item in body.axes]
     if body.origin is not None:
         payload["origin"] = _wire(body.origin)
+    # Hai khoá M2 cũng chỉ vào vân tay khi có mặt; dòng gửi lại khác thứ tự khoá vẫn cùng vân tay (`sort_keys`).
+    if body.suggestion_state is not None:
+        payload["suggestionState"] = [dict(row) for row in body.suggestion_state]
+    if body.suggestions_enabled is not None:
+        payload["suggestionsEnabled"] = body.suggestions_enabled
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return sha256(canonical.encode()).hexdigest()
 
@@ -419,12 +457,106 @@ async def _attempt(db: AsyncSession, request: _Request) -> WriteResult | None:
         (*current.layer.entities(), *current.dimensions, *current.axes), (*nxt.layer.entities(), *dimensions, *axes)
     ):
         raise FORBIDDEN.error()
-    document = document_to_json(nxt.layer, axes, dimensions, origin)
+    suggestions = _next_suggestions(request, current, nxt.layer)
+    keys = suggestion_keys(suggestions.items, suggestions.meta, enabled=suggestions.enabled)
+    document = document_to_json(nxt.layer, axes, dimensions, origin, keys)
     if _unchanged(current, document, scale):
-        return WriteResult(current.revision, current.layer, applied=False)
+        return _unapplied(current)
     return await _commit(
-        db, request, current, expected=settled, nxt=nxt, document=document, scale=scale, dimensions=dimensions
+        db,
+        request,
+        current,
+        expected=settled,
+        nxt=nxt,
+        document=document,
+        scale=scale,
+        dimensions=dimensions,
+        suggestions=suggestions,
     )
+
+
+def _unapplied(current: FloorDocument) -> WriteResult:
+    """Kết quả của lượt không ghi gì (C09b, bước 10): đúng tài liệu đang lưu, kể cả lớp đề xuất."""
+    return WriteResult(
+        current.revision,
+        current.layer,
+        applied=False,
+        suggestions=current.suggestions,
+        suggestions_meta=current.suggestions_meta,
+        suggestions_enabled=current.suggestions_enabled,
+    )
+
+
+def _next_suggestions(request: _Request, current: FloorDocument, layer: SpatialLayer) -> _Suggestions:
+    """Bước 9b (M2, HOP-DONG-DU-LIEU-LOP-DE-XUAT §4): lớp đề xuất đi cùng revision của lượt ghi này.
+
+    `suggestionState` (nếu gửi) áp **trước** `reconcile`, để trạng thái người dùng vừa đặt sống qua lượt sinh lại.
+    `reconcile` chỉ chạy khi lớp bật **và** `layer` đổi (người sửa, `merge` của pipeline, đổi tỉ lệ) hoặc lớp vừa
+    được bật; còn lại giữ nguyên danh sách, nên gửi lại cùng thân hay chỉ đổi trạng thái không sinh lại gì, và bộ
+    luật mới chỉ áp ở lượt đổi `layer` đầu tiên sau deploy (§8 quyết định 4). Tắt lớp giữ nguyên các bản đã lưu.
+    """
+    body = request.body
+    ruleset = load_ruleset()
+    items = current.suggestions
+    if body.suggestion_state is not None:
+        items = _applied_state(items, body.suggestion_state, ruleset)
+    enabled = current.suggestions_enabled if body.suggestions_enabled is None else body.suggestions_enabled
+    switched_on = enabled and not current.suggestions_enabled
+    if not enabled or (layer == current.layer and not switched_on):
+        return _Suggestions(items, current.suggestions_meta, enabled)
+    adopted = {item.origin.suggestion_id for item in layer.furniture if item.origin is not None}
+    try:
+        result = reconcile(
+            items,
+            layer,
+            ruleset,
+            None,
+            revision=current.revision + 1,
+            adopted=adopted,
+            prev_meta=current.suggestions_meta,
+        )
+    except SuggestionCapError as error:
+        raise SUGGESTION_CAP.error(count=len(items)) from error
+    previous = current.suggestions_meta
+    if previous is not None and previous.ruleset_sha != result.meta.ruleset_sha:
+        # §8 quyết định 4: bộ luật mới áp ở lượt đổi `layer` này; một dòng đủ để tra tầng nào đổi bộ luật lúc nào.
+        _log.info(
+            "suggestions_ruleset_changed",
+            extra={
+                "floor_pk": request.floor_pk,
+                "ruleset_from": previous.ruleset_sha,
+                "ruleset_to": result.meta.ruleset_sha,
+                "notes": [note.reason_vi for note in result.notes if note.status == "log"],
+            },
+        )
+    return _Suggestions(tuple(result.suggestions), result.meta, enabled)
+
+
+def _applied_state(
+    items: Sequence[Suggestion], rows: Sequence[Mapping[str, object]], ruleset: Ruleset
+) -> tuple[Suggestion, ...]:
+    """`suggestionState` đã kiểm rồi áp bằng `apply_state`; `field` của lỗi trỏ dòng lỗi đầu tiên.
+
+    Id trùng → `VALIDATION`, id lạ → `SUGGESTION_UNKNOWN`, khoá `override` ngoài `overridable` của luật →
+    `SUGGESTION_OVERRIDE_INVALID`. Kiểm ở đây chứ không bắt `UnknownSuggestionError` của `apply_state`: lỗi ấy gộp
+    hai trường hợp FE xử lý khác nhau (id lạ là danh sách cũ, phải tải lại; khoá sai là lỗi của form "Điều chỉnh").
+    """
+    by_id = {item.id: item for item in items}
+    seen: set[object] = set()
+    for index, row in enumerate(rows):
+        sid = row["id"]
+        if sid in seen:
+            raise VALIDATION.error(field=f"body.suggestionState.{index}.id")
+        seen.add(sid)
+        item = by_id.get(str(sid))
+        if item is None:
+            raise SUGGESTION_UNKNOWN.error(field=f"body.suggestionState.{index}.id")
+        spec = ruleset.rules.get(item.rule)
+        allowed = () if spec is None else spec.overridable
+        override = row.get("override")
+        if isinstance(override, Mapping) and any(key not in allowed for key in override):
+            raise SUGGESTION_OVERRIDE_INVALID.error(field=f"body.suggestionState.{index}.override")
+    return tuple(apply_state(items, rows, ruleset))
 
 
 def _check_opening_spans(sent: SpatialLayer, stored: SpatialLayer) -> None:
@@ -488,7 +620,7 @@ async def _settle_base(db: AsyncSession, request: _Request, current: FloorDocume
         and current.last_body_sha256 == body_sha256(request.body)
         and current.last_base_revision == request.base_revision
     ):
-        return WriteResult(current.revision, current.layer, applied=False)
+        return _unapplied(current)
     remote = await remote_changes_since(
         db,
         floor_pk=request.floor_pk,
@@ -657,9 +789,14 @@ def _drop_missing_refs(dimensions: tuple[Dimension, ...], live: frozenset[str]) 
 
 
 def _unchanged(current: FloorDocument, document: Mapping[str, object], scale: _Scale) -> bool:
-    """Bước 10: jsonb, tỉ lệ, nguồn và trang đều như cũ → không `UPDATE`, không nhật ký, không đếm."""
+    """Bước 10: jsonb, tỉ lệ, nguồn và trang đều như cũ → không `UPDATE`, không nhật ký, không đếm.
+
+    Tài liệu hiện tại dựng lại với cờ lớp đề xuất **đã suy** (`suggestions_enabled`): tầng mới (revision 0) chưa
+    lưu khoá `suggestionsEnabled`, và lượt ghi không đổi gì không được tăng revision chỉ để ghi khoá ấy.
+    """
+    stored = suggestion_keys(current.suggestions, current.suggestions_meta, enabled=current.suggestions_enabled)
     return (
-        document == document_to_json(current.layer, current.axes, current.dimensions, current.origin)
+        document == document_to_json(current.layer, current.axes, current.dimensions, current.origin, stored)
         and scale.value == current.scale_mm_per_px
         and scale.source == current.scale_source
         and scale.page_key == current.scale_page_key
@@ -676,6 +813,7 @@ async def _commit(
     document: Mapping[str, object],
     scale: _Scale,
     dimensions: tuple[Dimension, ...],
+    suggestions: _Suggestions,
 ) -> WriteResult | None:
     """Bước 11-15 trong một SAVEPOINT; `None` = `UPDATE` ăn 0 dòng, lượt này thua đua."""
     async with db.begin_nested() as savepoint:
@@ -694,7 +832,14 @@ async def _commit(
             area_m2=counts.area_m2,
         )
         await touch_project(db, project_id=request.project_id, clock=request.clock)
-    return WriteResult(expected + 1, nxt.layer, applied=True)
+    return WriteResult(
+        expected + 1,
+        nxt.layer,
+        applied=True,
+        suggestions=suggestions.items,
+        suggestions_meta=suggestions.meta,
+        suggestions_enabled=suggestions.enabled,
+    )
 
 
 async def _bump(

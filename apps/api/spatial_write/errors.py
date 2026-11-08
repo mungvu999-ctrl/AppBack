@@ -15,3 +15,12 @@ LAYER_LEVEL_MISMATCH = ERRORS.define("LAYER_LEVEL_MISMATCH", 422)
 
 LAYER_INTEGRITY_BROKEN = ERRORS.define("LAYER_INTEGRITY_BROKEN", 422)
 """Toàn vẹn mức `critical`, hoặc id đã thuộc tầng khác cùng dự án; ném kèm `count`."""
+
+SUGGESTION_UNKNOWN = ERRORS.define("SUGGESTION_UNKNOWN", 422)
+"""`suggestionState` nêu một id đề xuất tầng không có (M2); ném kèm `field` trỏ dòng đầu tiên."""
+
+SUGGESTION_OVERRIDE_INVALID = ERRORS.define("SUGGESTION_OVERRIDE_INVALID", 422)
+"""Khoá `override` ngoài danh sách `overridable` của luật (M2); ném kèm `field` trỏ dòng đầu tiên."""
+
+SUGGESTION_CAP = ERRORS.define("SUGGESTION_CAP", 422)
+"""Tầng vượt trần 2 000 đề xuất kể cả sau khi dọn bản cũ không có dữ liệu người dùng (M2 §3 bước 5); kèm `count`."""

@@ -128,6 +128,9 @@ def f2_base_run(inp: RuleInput, spec: RuleSpec) -> RuleOutput:
             bottom_mm=0,
             top_mm=p["heightMm"],
             module_mm=p["moduleMm"],
+            gap_mm=p["gapMm"],
+            plinth_mm=p["plinthMm"],
+            countertop_mm=p["countertopMm"],
             merged_ids=tuple(merged) or None,
             degraded_vi=messages.merged_boxes(merged) if merged else None,
         )
@@ -159,6 +162,7 @@ def f3_upper_run(inp: RuleInput, spec: RuleSpec) -> RuleOutput:
             bottom_mm=p["bottomMm"],
             top_mm=p["topMm"],
             module_mm=p["moduleMm"],
+            gap_mm=p["gapMm"],
         )
         out.drafts.append(
             Draft(

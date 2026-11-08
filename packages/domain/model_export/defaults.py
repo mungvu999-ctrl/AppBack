@@ -111,12 +111,6 @@ NEUTRAL_PBR = {
 SUGGESTION_SCALE_TOL = 0.10
 """F4: co giãn đều theo vết chân tối đa ±10 %. Món `item` đề xuất cần hơn → bỏ; đồ của document → kẹp ở ±10 %
 + `degraded minor`."""
-CABINET_PLINTH_M = 0.1
-CABINET_COUNTERTOP_M = 0.04
-CABINET_GAP_M = 0.004
-"""Chân tủ 100 mm, mặt đá 40 mm, khe cánh 4 mm (F2 trong `rule_params.json` 2026.11-1)."""
-CABINET_DUP_OVERLAP = 0.5
-"""Hai dãy tủ cùng tầng (dưới/trên) chồng ≥ 50 % hộp nhỏ hơn → một dãy (lỗi hai mặt đá lệch 4,5 mm, B2)."""
 CURTAIN_AMP_M = 0.03
 CURTAIN_T_M = 0.012
 CURTAIN_BOTTOM_M = 0.04

@@ -179,7 +179,6 @@ class LevelCtx:
             if x["roomId"] in self.rooms and not mats.is_outdoor(self.rooms[x["roomId"]])
         }
         self.assembly_names = {a["name"] for a in plan["assemblies"]}
-        self.runs: list[tuple[str, Polygon]] = []
 
     def wall(self, s: Mapping[str, Any]) -> tuple[dict[str, Any], Frame]:
         """Tường chủ thẳng của đề xuất + khung của nó."""
@@ -469,24 +468,19 @@ def build_cabinet_run(
 ) -> Parts:
     """F2/F3: dãy tủ trên đường lưng `start`→`end`, nằm phía pháp tuyến trái, sâu `depthMm`.
 
-    Tủ dưới: chân + cánh theo mô-đun + mặt đá (mặt đá trùm 20 mm ra trước, chỉ một tấm mỗi dãy). Hai dãy cùng tầng
-    chồng ≥ 50 % → dãy sau bị bỏ (lỗi hai mặt đá lệch 4,5 mm của thí nghiệm B)."""
+    Tủ dưới: chân + cánh theo mô-đun + mặt đá (mặt đá trùm 20 mm ra trước, chỉ một tấm mỗi dãy). Chân, mặt đá, khe
+    cánh đọc từ bản ghi (`plinthMm`, `countertopMm`, `gapMm` chép từ bảng luật F2/F3), không hằng riêng của compiler.
+    Không tự lọc dãy trùng: F2 đã gộp hộp trùng, và `flag_collisions` đánh `stale` bản đề xuất va nhau (review F7)."""
     fr = line_frame(p["start"], p["end"])
     length, depth = p["lengthMm"], p["depthMm"]
     mid = fr.length / 2
-    fp = fr.rect_m(mid - length / 2, mid + length / 2, 0, depth)
     slot = p["slot"]
-    for other_slot, other in ctx.runs:
-        if other_slot == slot and fp.intersection(other).area >= defaults.CABINET_DUP_OVERLAP * min(
-            fp.area, other.area
-        ):
-            raise SkipError("hộp trùng với một dãy tủ khác cùng tầng")
     z0, z1 = FIN + p["bottomMm"] / 1000, FIN + p["topMm"] / 1000
     angle = math.atan2(-fr.dy, fr.dx)
     root = short_name("CabinetRun", s["id"])
     cab = ctx.mat(p.get("material"), "frame", s["id"], book, fallback=ctx.mats.family("cabinetry"))
     lm, dm = length / 1000, depth / 1000
-    gap = defaults.CABINET_GAP_M
+    gap = p["gapMm"] / 1000
     modules = max(1, round(length / p["moduleMm"]))
     mw = lm / modules
 
@@ -495,7 +489,7 @@ def build_cabinet_run(
 
     boxes: list[dict[str, Any]] = []
     if slot == "base":
-        plinth, top_t = defaults.CABINET_PLINTH_M, defaults.CABINET_COUNTERTOP_M
+        plinth, top_t = p["plinthMm"] / 1000, p["countertopMm"] / 1000
         hh = (z1 - z0) - plinth - top_t
         if hh <= 0:
             raise SkipError("tủ dưới thấp hơn chân + mặt đá")
@@ -533,7 +527,6 @@ def build_cabinet_run(
             boxes.append(
                 _box(f"{root}_Upper{k}", root, (*c, (z0 + z1) / 2), (mw - gap, dm, z1 - z0), angle, cab, props)
             )
-    ctx.runs.append((slot, fp))
     parts = Parts(assemblies=[_assembly(root, ctx, props, boxes)])
     if p.get("degradedVi"):
         parts.notes.append(str(p["degradedVi"]))

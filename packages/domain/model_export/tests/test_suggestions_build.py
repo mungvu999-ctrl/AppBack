@@ -69,6 +69,8 @@ CABINET = {
     "rotationDeg": 0,
     "boundingBox": {"min": {"x": 400, "y": 3300}, "max": {"x": 2400, "y": 3900}},
 }
+BASE_RUN = {"gapMm": 4, "plinthMm": 100, "countertopMm": 40}
+"""F2 params copied into every base run record (rule_params.json 2026.11-1)."""
 LINE = {"start": {"x": 2400, "y": 3900}, "end": {"x": 400, "y": 3900}}
 """Back line of the kitchen run: direction -x, left normal (0, -1) points into the room."""
 
@@ -125,14 +127,14 @@ def suggestions() -> list[dict[str, Any]]:
             "F2",
             "cabinetRun",
             {"furniture": "F-2"},
-            {"slot": "base", "depthMm": 600, "bottomMm": 0, "topMm": 860, "mergedIds": ["F-3"], **run},
+            {"slot": "base", "depthMm": 600, "bottomMm": 0, "topMm": 860, "mergedIds": ["F-3"], **run, **BASE_RUN},
         ),
         _s(
             "F3-F-2-upper",
             "F3",
             "cabinetRun",
             {"furniture": "F-2"},
-            {"slot": "upper", "depthMm": 350, "bottomMm": 1450, "topMm": 2150, **run},
+            {"slot": "upper", "depthMm": 350, "bottomMm": 1450, "topMm": 2150, "gapMm": 4, **run},
         ),
         *[
             _s(
@@ -510,18 +512,23 @@ def test_geometry_of_kinds() -> None:
     assert all(b["c"][1] == pytest.approx(-0.03) for b in rail["boxes"])
 
 
-def test_cabinet_duplicate_run_skipped_and_degraded_note() -> None:
-    """Two base runs on the same line → the second is skipped minor; `degradedVi` → degraded minor, still built."""
+def test_cabinet_run_built_from_record_params_and_degraded_note() -> None:
+    """Review F7: plinth, countertop and door gap come from the record (`plinthMm`, `countertopMm`, `gapMm`), not from
+    compiler constants; a second stored run is never filtered out by the compiler; `degradedVi` → degraded minor."""
     items = [s for s in suggestions() if s["id"] == "DRESS-F2-F-2-base"]
+    items[0]["params"].update(plinthMm=150, countertopMm=30, gapMm=10, degradedVi="dãy tủ ngắn lại")
     twin = copy.deepcopy(items[0])
     twin["id"] = "DRESS-F2-F-3-base"
     twin["hostRef"] = {"furniture": "F-3"}
-    items[0]["params"]["degradedVi"] = "dãy tủ ngắn lại"
-    recs = _sug_records(_plan([*items, twin]))
-    assert recs["DRESS-F2-F-2-base"]["status"] == "degraded"
-    assert recs["DRESS-F2-F-2-base"]["reason"] == "dãy tủ ngắn lại"
-    assert recs["DRESS-F2-F-3-base"]["status"] == "skipped"
-    assert recs["DRESS-F2-F-3-base"]["severity"] == "minor"
+    plan = _plan([*items, twin])
+    recs = _sug_records(plan)
+    assert (recs["DRESS-F2-F-2-base"]["status"], recs["DRESS-F2-F-2-base"]["reason"]) == ("degraded", "dãy tủ ngắn lại")
+    assert recs["DRESS-F2-F-3-base"]["status"] == "degraded"
+    base = next(n for n in _by_sid(plan)["DRESS-F2-F-2-base"] if n.get("boxes"))
+    boxes = {b["name"].rsplit("_", 1)[1]: b for b in base["boxes"]}
+    assert boxes["Plinth"]["size"][2] == pytest.approx(0.15)
+    assert boxes["Top"]["size"][2] == pytest.approx(0.03)
+    assert boxes["Door0"]["size"][0] == pytest.approx(2.0 / 3 - 0.01)
 
 
 def test_item_without_size_and_pendant_without_size() -> None:
@@ -633,7 +640,8 @@ def test_global_material_defaults() -> None:
 def test_skip_reasons() -> None:
     """Each guard gives its own minor reason: curved host, zero height/size, empty spans, unbuilt window, low base."""
     sk = {"side": "left", "spansMm": [[100, 900]], "heightMm": 90, "thicknessMm": 12}
-    cab = {"slot": "base", "lengthMm": 2000, "depthMm": 600, "bottomMm": 0, "topMm": 100, "moduleMm": 600, **LINE}
+    cab = {"slot": "base", "lengthMm": 2000, "depthMm": 600, "bottomMm": 0, "topMm": 100, "moduleMm": 600, **BASE_RUN}
+    cab = {**cab, **LINE}
     rail = {
         "start": {"x": 0, "y": 0},
         "end": {"x": 4000, "y": 0},

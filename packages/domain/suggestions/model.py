@@ -101,7 +101,8 @@ class RailingParams(DomainModel):
 class CabinetRunParams(DomainModel):
     """F2/F3: parametric kitchen run on the back line `start`→`end` (against the wall); the run lies on the side
     of the left normal (-dy, dx) of that line, `depthMm` deep. `mergedIds` = duplicate boxes folded into this run
-    (their models are not built either)."""
+    (their models are not built either). `gapMm` (door gap), and for a base run `plinthMm`/`countertopMm`, are
+    copied from the rule table so the compiler builds from the record, not from its own constants (review F7)."""
 
     slot: Literal["base", "upper"]
     start: Point
@@ -111,10 +112,20 @@ class CabinetRunParams(DomainModel):
     bottom_mm: NonNegativeMm
     top_mm: PositiveMm
     module_mm: PositiveMm
+    gap_mm: NonNegativeMm
+    plinth_mm: NonNegativeMm | None = None
+    countertop_mm: PositiveMm | None = None
     material: MaterialRef | None = None
     countertop_material: MaterialRef | None = None
     merged_ids: tuple[FurnitureIdStr, ...] | None = None
     degraded_vi: Annotated[StrictStr, Field(min_length=1)] | None = None
+
+    @model_validator(mode="after")
+    def _base_has_plinth_and_top(self) -> CabinetRunParams:
+        """A base run is built with a plinth and a countertop; an upper run has neither."""
+        if (self.slot == "base") != (self.plinth_mm is not None and self.countertop_mm is not None):
+            raise ValueError("plinthMm/countertopMm chỉ (và luôn) đi cùng tủ dưới")
+        return self
 
 
 class CurtainParams(DomainModel):

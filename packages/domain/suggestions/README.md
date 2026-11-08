@@ -22,15 +22,21 @@ Gói **chưa** được nối vào `apps/api/spatial_write/writer.py`, compiler 
 
 ```python
 from packages.domain.suggestions import (
-    load_ruleset, reconcile, apply_state, document_keys, suggestions_from_json, effective_params,
-    SuggestionCapError, UnknownSuggestionError,
+    load_ruleset,
+    reconcile,
+    apply_state,
+    document_keys,
+    suggestions_from_json,
+    effective_params,
+    SuggestionCapError,
+    UnknownSuggestionError,
 )
 
 rs = load_ruleset()
 result = reconcile(prev, layer, rs, concept=None, revision=new_revision, adopted=ids, prev_meta=meta)
-result.suggestions   # list[Suggestion], sắp theo id, tất định
-result.meta          # SuggestionsMeta(ruleset, rulesetSha, basisRevision=new_revision)
-result.notes         # list[Note(rule, host, status: skipped|degraded|log, reason_vi)]
+result.suggestions  # list[Suggestion], sắp theo id, tất định
+result.meta  # SuggestionsMeta(ruleset, rulesetSha, basisRevision=new_revision)
+result.notes  # list[Note(rule, host, status: skipped|degraded|log, reason_vi)]
 ```
 
 - `reconcile` làm đúng §3 bước 1–6: chạy luật theo thứ tự `RULES`; id có ở cả hai bên thì thay `params`,

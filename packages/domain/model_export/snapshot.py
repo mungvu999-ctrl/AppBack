@@ -8,6 +8,8 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 SCHEMA_VERSION = 1
+SUGGESTION_KEYS = ("suggestions", "suggestionsMeta")
+"""Khoá lớp đề xuất (HOP-DONG-DU-LIEU-LOP-DE-XUAT §2.1) chép từ document sang tầng của snapshot."""
 
 
 def canonical_json(obj: Any) -> bytes:
@@ -47,13 +49,25 @@ def fingerprint(
     return _sha(payload)
 
 
+def suggestion_keys(document: Mapping[str, Any] | None) -> dict[str, Any]:
+    """`suggestions` + `suggestionsMeta` của document đã lưu, chỉ khi có (danh sách rỗng → không khoá nào).
+
+    Document không có lớp đề xuất cho dict rỗng, nên tầng của snapshot và `snapshotSha` giữ nguyên như trước M2.
+    Dấu vân không đổi: `revision` đã bao cả hai khoá (§4)."""
+    doc = document or {}
+    if not doc.get("suggestions"):
+        return {}
+    return {k: doc[k] for k in SUGGESTION_KEYS if doc.get(k) is not None}
+
+
 def build_snapshot(
     project_id: str,
     floors: Iterable[Mapping[str, Any]],
     versions: Mapping[str, Any],
     scene_style: str | None = None,
 ) -> dict[str, Any]:
-    """Snapshot dict (schemaVersion 1); floors already carry `layer`, sorted by order then levelId.
+    """Snapshot dict (schemaVersion 1); floors already carry `layer` (+ `suggestion_keys` when present),
+    sorted by order then levelId.
     `sceneStyle` = project style from settings (null = editor default style)."""
     return {
         "schemaVersion": SCHEMA_VERSION,

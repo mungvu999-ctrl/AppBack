@@ -32,7 +32,7 @@ def test_resolve__no_ref_is_neutral_default() -> None:
     assert not book.records
     entry = mr.materials_table()[key]
     assert entry["prov"] == "default"
-    assert entry["transmission"] == 0.9
+    assert entry["transmission"] == 1.0  # M1 (M2-QL): glass transmits fully
     assert entry["editorRef"] is None
 
 

@@ -120,9 +120,9 @@ def test_build_plan__full_snapshot_valid() -> None:
     assert (slab["z0"], slab["z1"]) == (-0.15, 0.0)
     w1 = next(p for p in plan["prisms"] if p["name"] == "Wall_W-1")
     assert w1["faceMaterials"]["side"] == "scene:wood"
-    assert {s["material"] for s in w1["faceMaterials"]["sideByRoom"]} == {"library:oak"}
+    assert {s["material"] for s in w1["faceMaterials"]["sideByRoom"]} == {"library:oak@R-1"}
     floor = next(p for p in plan["prisms"] if p["kind"] == "floor")
-    assert floor["faceMaterials"]["top"] == "default:floor"
+    assert floor["faceMaterials"]["top"] == "default:floor@R-1"
     assert plan["cutters"]
     assert plan["cutters"][0]["target"] == "Wall_W-1"
     assert plan["instances"][0]["model"] == "models/sofa.glb"
@@ -215,7 +215,7 @@ def test_build_plan__editor_defaults_default_style() -> None:
     plan = build_plan(snap, {**PACK, "editorDefaults": ED})
     validate_plan(plan)
     by_name = {p["name"]: p for p in plan["prisms"]}
-    assert by_name["Floor_R-1"]["faceMaterials"]["top"] == "library:oak"
+    assert by_name["Floor_R-1"]["faceMaterials"]["top"] == "library:oak@R-1"
     assert by_name["Ceiling_R-1"]["faceMaterials"]["top"] == "scene:wood"
     assert by_name["Wall_W-1"]["faceMaterials"]["side"] == "library:oak"
     assert by_name["Wall_W-2"]["faceMaterials"]["side"] == "library:oak"
@@ -243,7 +243,7 @@ def test_build_plan__outdoor_no_ceiling_and_style_choice() -> None:
     assert any(r["kind"] == "ceiling" and r["status"] == "skipped" for r in plan["records"])
     assert not any(r["kind"] == "style" for r in plan["records"])
     floor = next(p for p in plan["prisms"] if p["kind"] == "floor")
-    assert floor["faceMaterials"]["top"] == "default:floor"
+    assert floor["faceMaterials"]["top"] == "default:floor@R-1"
     other = build_plan(build_snapshot("p", floors, VERSIONS, scene_style="nope"), pack)
     rec = next(r for r in other["records"] if r["kind"] == "style")
     assert rec["severity"] == "minor"

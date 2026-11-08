@@ -106,3 +106,35 @@ NEUTRAL_PBR = {
     "stone": (0.5, 0.0, 0.0),
 }
 """(roughness, metallic, transmission) khác mặc định (0.9, 0, 0) cho kính và kim loại."""
+
+# Lớp đề xuất (HOP-DONG-DU-LIEU-LOP-DE-XUAT §2.5): hằng dựng hình mà `params` không mang
+SUGGESTION_SCALE_TOL = 0.10
+"""Món `item` phải co giãn quá ±10 % để vừa hộp → bỏ (F4 của §5, không âm thầm kẹp)."""
+CABINET_PLINTH_M = 0.1
+CABINET_COUNTERTOP_M = 0.04
+CABINET_GAP_M = 0.004
+"""Chân tủ 100 mm, mặt đá 40 mm, khe cánh 4 mm (F2 trong `rule_params.json` 2026.11-1)."""
+CABINET_DUP_OVERLAP = 0.5
+"""Hai dãy tủ cùng tầng (dưới/trên) chồng ≥ 50 % hộp nhỏ hơn → một dãy (lỗi hai mặt đá lệch 4,5 mm, B2)."""
+CURTAIN_AMP_M = 0.03
+CURTAIN_T_M = 0.012
+CURTAIN_BOTTOM_M = 0.04
+CURTAIN_ROD_M = 0.022
+CEILING_GAP_M = 0.07
+"""Rèm: nếp lượn ±30 mm, vải 12 mm, cách sàn 40 mm, thanh treo 22 mm, đỉnh rèm cách trần ≥ 70 mm."""
+RAILING_INSET_M = 0.03
+RAILING_GLASS_BOTTOM_M = 0.1
+RAILING_POST_M = 0.04
+"""Lan can: lùi 30 mm vào trong mép sàn, kính cách sàn 100 mm, trụ 40 x 40 mm."""
+CORNICE_TOP_GAP_M = 0.0005
+"""Phào hạ 0,5 mm dưới mặt trần để hai mặt không trùng nhau."""
+
+# Vật liệu toàn cục (M1-M3 của §5), theo `compiler_version`
+GLASS_TRANSMISSION = 1.0
+GLASS_MAX_ROUGHNESS = 0.05
+FABRIC_SHEEN = 0.6
+"""KHR_materials_sheen trong khoảng 0,5-0,7 cho vải."""
+ROUGHNESS_NOISE = 0.06
+ROUGHNESS_NOISE_MIN = 0.3
+"""Nhiễu độ nhám ±0,06 (ảnh 128 px lặp được, theo khoá vật liệu) cho vật liệu phi kim, không có ảnh độ nhám,
+độ nhám ≥ 0,3 (bóng hơn thì nhiễu lộ rõ, thí nghiệm `F:/runs/abc/rules`)."""

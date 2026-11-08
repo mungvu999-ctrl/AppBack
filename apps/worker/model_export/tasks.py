@@ -169,7 +169,17 @@ def geometry_records(geometry: Mapping[str, Any]) -> list[dict[str, str]]:
 
 
 def _geometry_record(item: Mapping[str, Any], reason: str) -> dict[str, str]:
-    """Một bản ghi `geometry` cho đối tượng `item`."""
+    """Một bản ghi `geometry` cho đối tượng `item`; hình của đề xuất M2 (`suggestionId`) → `suggestion:<rule>`
+    `minor`: đề xuất hỏng không kéo bản xuất về `degraded` (HOP-DONG-DU-LIEU-LOP-DE-XUAT §2.5)."""
+    if item.get("suggestionId"):
+        return {
+            "level": "",
+            "kind": f"suggestion:{item.get('rule')}",
+            "id": item["suggestionId"],
+            "status": "degraded",
+            "severity": "minor",
+            "reason": reason,
+        }
     severity = "critical" if item.get("kind") in CRITICAL_KINDS else "major"
     return {
         "level": "",

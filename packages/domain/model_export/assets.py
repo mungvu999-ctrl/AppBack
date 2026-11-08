@@ -39,23 +39,36 @@ class AssetResolver:
         self._models = models_json
         self._defaults = furniture_defaults
 
-    def _pick(self, f: Mapping[str, Any]) -> tuple[str | None, str]:
-        """(model id, prov_model) from `model.src`, else editor default by kind|variant then kind."""
+    def has_model(self, mid: str) -> bool:
+        """`mid` is in the pack's `models.json`."""
+        return mid in self._models
+
+    def model(self, mid: str) -> Mapping[str, Any]:
+        """Pack metadata of `mid` (empty when absent)."""
+        return self._models.get(mid) or {}
+
+    def _pick(self, f: Mapping[str, Any], pick: str | None = None) -> tuple[str | None, str]:
+        """(model id, prov_model) from `model.src`, else a `modelPick` suggestion, else editor default by
+        kind|variant then kind (contract M2 §3: `model.src` > modelPick > editor default)."""
         src = (f.get("model") or {}).get("src", "")
         m = _SRC.match(src)
         if m:
             return m.group(1), "document"
+        if pick:
+            return pick, "suggested"
         kind = f.get("kind")
         mid = self._defaults.get(f"{kind}|{f.get('variant')}") or self._defaults.get(str(kind))
         return mid, "editor-default"
 
-    def resolve_furniture(self, f: Mapping[str, Any], level: str, book: RecordBook) -> dict[str, Any] | None:
-        """Instance dict, or None (recorded) when it can't be placed with its own model."""
+    def resolve_furniture(
+        self, f: Mapping[str, Any], level: str, book: RecordBook, pick: str | None = None
+    ) -> dict[str, Any] | None:
+        """Instance dict, or None (recorded) when it can't be placed with its own model; `pick` = modelPick model."""
         fid = f["id"]
         if f.get("suggested"):
             book.add(level, "furniture", fid, "skipped", "info", "gợi ý chưa được nhận, không dựng")
             return None
-        mid, prov = self._pick(f)
+        mid, prov = self._pick(f, pick)
         if mid is None:
             book.add(level, "furniture", fid, "skipped", "major", f"chưa có mẫu mặc định cho loại {f.get('kind')}")
             return None

@@ -489,3 +489,30 @@ def test_blender_argv_shape() -> None:
     assert argv[-4:] == ["--", "p.json", "pack", "out"]
     assert str(COMPILE_SCRIPT) in argv
     assert COMPILE_SCRIPT.is_file()
+
+
+def test_geometry_records__J01_suggestion_minor() -> None:
+    """Hình đề xuất M2 hở/suy biến → `suggestion:<rule>` `minor` (không kéo chất lượng); kiến trúc giữ mức cũ."""
+    geometry = {
+        "open": [
+            {
+                "name": "Skirting_ab",
+                "appId": "DRESS-R1-x",
+                "kind": "skirting",
+                "boundary": 2,
+                "nonManifold": 0,
+                "suggestionId": "DRESS-R1-x",
+                "rule": "R1",
+            },
+            {"name": "Wall_W-1", "appId": "W-1", "kind": "wall", "boundary": 1, "nonManifold": 0},
+        ],
+        "degenerateObjects": [
+            {"name": "Rug_cd", "kind": "rug", "faces": 1, "suggestionId": "DRESS-D1-y", "rule": "D1"}
+        ],
+    }
+    out = tasks.geometry_records(geometry)
+    assert [(r["kind"], r["id"], r["severity"]) for r in out] == [
+        ("suggestion:R1", "DRESS-R1-x", "minor"),
+        ("geometry", "W-1", "critical"),
+        ("suggestion:D1", "DRESS-D1-y", "minor"),
+    ]

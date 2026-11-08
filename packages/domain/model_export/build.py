@@ -18,6 +18,14 @@ from packages.domain.model_export.materials import MaterialResolver, Role
 from packages.domain.model_export.plan.openings import openings_plan
 from packages.domain.model_export.plan.slabs import slab_plan
 from packages.domain.model_export.plan.stairs import stairs_plan
+from packages.domain.model_export.plan.suggestions import (
+    Summary,
+    effective,
+    model_picks,
+    node_props,
+    replaced_furniture,
+    suggestions_plan,
+)
 from packages.domain.model_export.plan.walls import wall_plan
 from packages.domain.model_export.records import RecordBook
 from packages.domain.model_export.snapshot import fingerprint, snapshot_sha
@@ -53,27 +61,32 @@ def _prisms(
     return out
 
 
-def _side_by_room(ring: list[Any], room_polys: list[Polygon], material: str) -> list[dict[str, Any]]:
-    """Outer-ring edges whose outside neighbour (5 cm probe) is a room get `material`."""
+def _side_by_room(
+    ring: list[Any], room_polys: list[tuple[str, Polygon]], material: str, mats: MaterialResolver
+) -> list[dict[str, Any]]:
+    """Outer-ring edges whose outside neighbour (5 cm probe) is a room get that room's own instance of `material`
+    (`<key>@<roomId>`, M2: recolour one room without touching the others)."""
     out: list[dict[str, Any]] = []
     for i, (a, b) in enumerate(zip(ring, ring[1:] + ring[:1], strict=False)):
         dx, dy = b[0] - a[0], b[1] - a[1]
         length = (dx * dx + dy * dy) ** 0.5 or 1.0
         probe = Point((a[0] + b[0]) / 2 + dy / length * 0.05, (a[1] + b[1]) / 2 - dx / length * 0.05)
-        if any(p.contains(probe) for p in room_polys):
-            out.append({"edgeIndex": i, "ring": 0, "material": material})
+        rid = next((rid for rid, p in room_polys if p.contains(probe)), None)
+        if rid is not None:
+            out.append({"edgeIndex": i, "ring": 0, "material": mats.room_instance(material, rid)})
     return out
 
 
 def _wall_prisms(
     wp: Any,
     walls: list[dict[str, Any]],
-    room_polys: list[Polygon],
+    room_polys: list[tuple[str, Polygon]],
     level: str,
     mats: MaterialResolver,
     book: RecordBook,
 ) -> list[dict[str, Any]]:
-    """Wall prisms; envelope walls take exterior paint with interior paint on room-facing edges."""
+    """Wall prisms; envelope walls take exterior paint; room-facing edges of every wall take the room's own
+    instance of the interior paint."""
     by_id = {w["id"]: w for w in walls}
     out: list[dict[str, Any]] = []
     for piece in wp.pieces:
@@ -95,9 +108,8 @@ def _wall_prisms(
             piece["heightM"],
             {"side": side, "top": cap, "bottom": cap},
         )
-        if envelope:
-            for p in prisms:
-                p["faceMaterials"]["sideByRoom"] = _side_by_room(p["rings"][0], room_polys, inner)
+        for p in prisms:
+            p["faceMaterials"]["sideByRoom"] = _side_by_room(p["rings"][0], room_polys, inner, mats)
         if prisms:
             book.add(level, "wall", wid, "built", "info")
         out.extend(prisms)
@@ -145,6 +157,7 @@ def _level(
     book: RecordBook,
     sp: Any,
     holes: list[Any],
+    summary: Summary,
 ) -> None:
     """Append one visible level's prisms/cutters/assemblies/instances to `plan`."""
     lid, layer, height = f["levelId"], f["layer"], f["heightMm"] / 1000
@@ -155,7 +168,9 @@ def _level(
     if not wp.pieces:
         book.add(lid, "level", lid, "skipped", "critical", "tầng không có tường")
         return
-    room_polys = [Polygon([to_m(p) for p in r["outline"]]) for r in rooms if len(r.get("outline") or ()) >= 3]
+    room_polys = [
+        (r["id"], Polygon([to_m(p) for p in r["outline"]])) for r in rooms if len(r.get("outline") or ()) >= 3
+    ]
     wall_prisms = _wall_prisms(wp, walls, room_polys, lid, mats, book)
     sl = slab_plan(rooms, wp.union, lid, height, book, holes)
     slab = mats.resolve(None, "slab", lid, lid, book)
@@ -175,6 +190,7 @@ def _level(
         rid = fin["roomId"]
         room = by_room[rid]
         key = mats.resolve(room.get("floorMaterial"), "floor", lid, rid, book, fallback=mats.floor_default(room))
+        key = mats.room_instance(key, rid)
         prisms += _prisms(
             fin["geom"],
             f"Floor_{rid}",
@@ -209,11 +225,45 @@ def _level(
     plan["prisms"] += prisms
     plan["cutters"] += _fan_cutters(cutters, wall_prisms)
     plan["assemblies"] += assemblies + (list(sp.assemblies) if sp else [])
-    for item in layer.get("furniture", []):
-        if item.get("kind") != "stair":
-            inst = assets.resolve_furniture(item, lid, book)
-            if inst is not None:
-                plan["instances"].append(inst)
+    _furniture(f, plan, assets, book, summary)
+    suggestions_plan(f, wp, sl, mats, assets, book, plan, summary)
+
+
+def _furniture(
+    f: Mapping[str, Any], plan: dict[str, Any], assets: AssetResolver, book: RecordBook, summary: Summary
+) -> None:
+    """Document furniture; a live base cabinetRun replaces its host box(es), a live modelPick picks the model
+    of a host without `model` (records `suggestion:<rule>`, never above `minor`)."""
+    lid = f["levelId"]
+    picks, replaced = model_picks(f), replaced_furniture(f)
+    for item in f["layer"].get("furniture", []):
+        fid = item.get("id")
+        if item.get("kind") == "stair":
+            continue
+        if fid in replaced:
+            book.add(lid, "furniture", fid, "skipped", "info", f"thay bằng dãy tủ đề xuất {replaced[fid]}")
+            continue
+        s = picks.get(fid)
+        pick = None
+        if s is not None:
+            p, kind = effective(s), f"suggestion:{s['rule']}"
+            mid = p.get("modelId")
+            if (item.get("model") or {}).get("src"):
+                summary.counts["skipped"] += 1
+                book.add(lid, kind, s["id"], "skipped", "info", "đồ chủ đã có mẫu người chọn")
+            elif not mid or not assets.has_model(str(mid)):
+                summary.counts["skipped"] += 1
+                book.add(lid, kind, s["id"], "skipped", "minor", f"mẫu {mid} chưa có trong gói xuất")
+            else:
+                pick = str(mid)
+                summary.counts["built"] += 1
+                book.add(lid, kind, s["id"], "built", "info", str(p.get("reasonVi") or ""))
+        inst = assets.resolve_furniture(item, lid, book, pick)
+        if inst is None:
+            continue
+        if pick is not None and s is not None:
+            inst["props"].update(node_props(s))
+        plan["instances"].append(inst)
 
 
 def build_plan(snapshot: Mapping[str, Any], pack: Mapping[str, Any]) -> dict[str, Any]:
@@ -233,6 +283,7 @@ def build_plan(snapshot: Mapping[str, Any], pack: Mapping[str, Any]) -> dict[str
         book.add("", "style", str(mats.style_id), "built", "minor" if style else "info", reason)
     assets = AssetResolver(pack.get("models", {}), pack.get("furnitureDefaults", {}))
     floors = sorted(snapshot["floors"], key=lambda f: (f["order"], f["levelId"]))
+    summary = Summary()
     plan: dict[str, Any] = {
         "schemaVersion": SCHEMA_VERSION,
         "units": "m",
@@ -260,10 +311,13 @@ def build_plan(snapshot: Mapping[str, Any], pack: Mapping[str, Any]) -> dict[str
         if f["hiddenIn3d"]:
             book.add(lid, "level", lid, "skipped", "info", "tầng đang ẩn trong 3D, không dựng")
         else:
-            _level(f, plan, mats, assets, book, stair_plans.get(lid), upper_holes.get(lid, []))
+            _level(f, plan, mats, assets, book, stair_plans.get(lid), upper_holes.get(lid, []), summary)
     versions = snapshot["versions"]
     plan["materials"] = mats.materials_table()
     plan["records"] = book.to_dicts()
+    extras = summary.extras()
+    if extras is not None:
+        plan["appSuggestions"] = extras
     plan["stamps"] = {
         "snapshotSha": snapshot_sha(snapshot),
         "fingerprint": fingerprint(floors, versions, scene_style=style),

@@ -8,12 +8,19 @@ của `Level_<id>` đặt ở `elevation`. Phân cấp `Building › Level › G
 ra custom props (→ glTF extras). Sau dựng kiểm từng đối tượng kiến trúc (prism + hộp của bộ cửa): cạnh
 biên, cạnh không-manifold, mặt diện tích < 1e-8 m² → `geometry.json`. Lỗi Python → mã thoát 1.
 Như `lighting_bake/bake_glb.bpy`: không tính độ phủ, giữ mỏng.
+
+M2 (HOP-DONG-DU-LIEU-LOP-DE-XUAT §2.5, §5): vật liệu `sheen` → KHR_materials_sheen, `roughVar` → ảnh nhiễu độ nhám
+128 px lặp được theo khoá vật liệu; ảnh trong gói nạp một lần (bản vật liệu theo phòng dùng chung ảnh); vật liệu
+vải của mẫu đồ nhận sheen; instance `anchor: "bbox"` đặt tâm đáy hộp bao mẫu ở `at`; `appSuggestions` → extras
+scene; hình của đề xuất hở/thiếu mẫu chỉ ghi `minor` (đề xuất không kéo chất lượng bản xuất).
 """
 
 import json
 import math
 import os
+import re
 import sys
+import zlib
 
 import bmesh
 import bpy
@@ -69,9 +76,37 @@ def image_node(tree, rel, colorspace, key):
                         "reason": f"thiếu ảnh vật liệu {rel} trong gói xuất"})
         return None
     node = tree.nodes.new("ShaderNodeTexImage")
-    node.image = bpy.data.images.load(path)
+    node.image = bpy.data.images.load(path, check_existing=True)
     node.image.colorspace_settings.name = colorspace
     return node
+
+
+def rough_noise(tree, key, base, var, size=128):
+    """Ảnh nhiễu tần thấp lặp được quanh `base` ±`var` (M3 của §5), tất định theo khoá vật liệu."""
+    import numpy as np
+
+    rng = np.random.default_rng(zlib.crc32(key.encode("utf-8")))
+    a = rng.random((size, size))
+    for _ in range(6):  # làm mờ hộp quấn biên → lặp được, tần thấp
+        a = (a + np.roll(a, 3, 0) + np.roll(a, -3, 0) + np.roll(a, 3, 1) + np.roll(a, -3, 1)) / 5
+    a = (a - a.min()) / max(a.max() - a.min(), 1e-6) * 2 - 1
+    v = np.clip(base + var * a, 0.02, 1.0).astype(np.float32)
+    img = bpy.data.images.new(f"rough_{key}", size, size, alpha=False)
+    img.colorspace_settings.name = "Non-Color"
+    px = np.ones((size, size, 4), np.float32)
+    px[..., 0] = px[..., 1] = px[..., 2] = v
+    img.pixels.foreach_set(px.ravel())
+    img.pack()
+    node = tree.nodes.new("ShaderNodeTexImage")
+    node.image = img
+    return node
+
+
+def set_sheen(bsdf, weight):
+    """KHR_materials_sheen: trọng số `weight`, nhám 0,5, màu trắng."""
+    bsdf.inputs["Sheen Weight"].default_value = float(weight)
+    bsdf.inputs["Sheen Roughness"].default_value = 0.5
+    bsdf.inputs["Sheen Tint"].default_value = (1.0, 1.0, 1.0, 1.0)
 
 
 for key, spec in plan.get("materials", {}).items():
@@ -94,11 +129,17 @@ for key, spec in plan.get("materials", {}).items():
         normal = tree.nodes.new("ShaderNodeNormalMap")
         tree.links.new(node.outputs["Color"], normal.inputs["Color"])
         tree.links.new(normal.outputs["Normal"], bsdf.inputs["Normal"])
+    if spec.get("sheen"):
+        set_sheen(bsdf, spec["sheen"])
+    if spec.get("roughVar") and not maps.get("rough"):
+        noise = rough_noise(tree, key, spec.get("roughness", 0.9), float(spec["roughVar"]))
+        tree.links.new(noise.outputs["Color"], bsdf.inputs["Roughness"])
     set_props(mat, {"editorRef": spec.get("editorRef"), "prov": spec.get("prov"), "label": spec.get("label")})
     MATS[key], SIZES[key] = mat, float(spec.get("sizeM") or 1.0)
 
 # ---------------------------------------------------------------- phân cấp
 building = empty("Building", props={"kind": "building", "unit": "metre", **plan.get("stamps", {})})
+set_props(scene, {"appSuggestions": plan.get("appSuggestions")})
 LEVELS, GROUPS = {}, {}
 for lv in plan.get("levels", []):
     LEVELS[lv["id"]] = empty(f"Level_{lv['id']}", building, (0.0, 0.0, lv["elevation"]),
@@ -271,6 +312,29 @@ for asm in plan.get("assemblies", []):
 
 # ---------------------------------------------------------------- mẫu đồ (nhập một lần, bản sao dùng chung mesh)
 TEMPLATES = {}
+FABRIC = re.compile(r"fabric|cloth|linen|cushion|pillow|sofa|textile|velvet|wool|curtain|carpet|rug|blanket|sheet|duvet")
+SHEENED = set()
+
+
+def sheen_fabrics(parts):
+    """M2 trên mẫu đồ: vật liệu tên như vải mà chưa có sheen nhận sheen 0,5."""
+    for mesh, _ in parts:
+        for m in mesh.materials:
+            if m and m.use_nodes and FABRIC.search(m.name.lower()):
+                b = next((n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
+                if b and b.inputs["Sheen Weight"].default_value == 0:
+                    set_sheen(b, 0.5)
+                    SHEENED.add(m.name)
+
+
+def bbox_offset(parts):
+    """Dịch (x, y, z) đưa tâm đáy hộp bao của mẫu về gốc (neo `bbox`)."""
+    pts = [matrix @ v.co for mesh, matrix in parts for v in mesh.vertices]
+    if not pts:
+        return Vector((0.0, 0.0, 0.0))
+    lo = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
+    hi = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
+    return Vector((-(lo.x + hi.x) / 2, -(lo.y + hi.y) / 2, -lo.z))
 
 
 def template(rel):
@@ -284,6 +348,7 @@ def template(rel):
             bpy.ops.import_scene.gltf(filepath=path)
             bpy.context.view_layer.update()
             TEMPLATES[rel] = [(o.data, o.matrix_world.copy()) for o in bpy.data.objects if o not in before and o.type == "MESH"]
+            sheen_fabrics(TEMPLATES[rel])
             for o in [o for o in bpy.data.objects if o not in before]:
                 bpy.data.objects.remove(o)
     return TEMPLATES[rel]
@@ -292,10 +357,15 @@ def template(rel):
 INSTANCES = set()
 for inst in plan.get("instances", []):
     parts = template(inst["model"])
+    iprops = inst.get("props") or {}
     if parts is None:
-        records.append({"level": inst["level"], "kind": "furniture", "id": inst["name"], "status": "skipped",
-                        "severity": "major", "reason": f"mẫu {inst['model']} chưa có trong gói xuất"})
+        suggested = iprops.get("prov") == "suggested"
+        records.append({"level": inst["level"], "kind": f"suggestion:{iprops['rule']}" if suggested else "furniture",
+                        "id": iprops.get("suggestionId") or inst["name"], "status": "skipped",
+                        "severity": "minor" if suggested else "major",
+                        "reason": f"mẫu {inst['model']} chưa có trong gói xuất"})
         continue
+    shift = Matrix.Translation(bbox_offset(parts)) if inst.get("anchor") == "bbox" else Matrix()
     root = empty(inst["name"], group(inst["level"], inst.get("group", "Furniture")), inst["at"], inst.get("rotZ", 0.0),
                  {"model": inst["model"], **(inst.get("props") or {})})
     root.scale = inst.get("scale", [1, 1, 1])
@@ -303,7 +373,7 @@ for inst in plan.get("instances", []):
         part = bpy.data.objects.new(f"{inst['name']}_{k}", mesh)
         scene.collection.objects.link(part)
         part.parent = root
-        part.matrix_basis = matrix
+        part.matrix_basis = shift @ matrix
         INSTANCES.add(part.name)
 
 
@@ -334,7 +404,8 @@ for obj in ARCH:
     world_uv(obj)
 
 # ---------------------------------------------------------------- kiểm hình học + xuất
-geometry = {"objects": 0, "open": [], "degenerate": 0, "degenerateObjects": [], "tris": 0, "records": records}
+geometry = {"objects": 0, "open": [], "degenerate": 0, "degenerateObjects": [], "tris": 0, "records": records,
+            "sheenedModelMaterials": sorted(SHEENED)}
 for obj in ARCH:
     bm = bmesh.new()
     bm.from_mesh(obj.data)
@@ -345,6 +416,8 @@ for obj in ARCH:
     geometry["tris"] += sum(len(f.verts) - 2 for f in bm.faces)
     bm.free()
     info = {"name": obj.name, "appId": obj.get("appId"), "kind": obj.get("kind")}
+    if obj.get("prov") == "suggested":
+        info.update(suggestionId=obj.get("suggestionId"), rule=obj.get("rule"))
     if boundary or non_manifold:
         geometry["open"].append({**info, "boundary": boundary, "nonManifold": non_manifold})
     if degenerate:

@@ -33,6 +33,8 @@ Scalar = StrictStr | StrictBool | StrictInt | StrictFloat
 Span = tuple[NonNegativeMm, NonNegativeMm]
 SillSpan = tuple[NonNegativeMm, NonNegativeMm, PositiveMm]
 OVERRIDE_MAX: Final = 16
+OVERRIDE_MM_MAX: Final = 10_000
+"""Trần một giá trị mm điều chỉnh (10 m, cao hơn mọi tầng): lớn hơn là lỗi nhập, không phải ý người dùng (R-17)."""
 
 
 class SkirtingParams(DomainModel):
@@ -208,6 +210,24 @@ def params_dict(model: DomainModel) -> dict[str, JsonValue]:
     return dumped
 
 
+def check_override(kind: Kind, params: Mapping[str, Any], override: Mapping[str, Any]) -> None:
+    """Validate an override against its kind (review F9): keys must be params of `kind`, the values must keep
+    `{**params, **override}` valid for the kind schema (type, sign, pattern) and an mm value stays ≤ `OVERRIDE_MM_MAX`.
+
+    Raises `ValueError` (pydantic `ValidationError` included); the writer turns it into 422
+    `SUGGESTION_OVERRIDE_INVALID`, so a bad value never reaches the compiler as a negative or huge prism.
+    """
+    schema = PARAMS_BY_KIND[kind]
+    allowed = {f.alias or name for name, f in schema.model_fields.items()}
+    unknown = sorted(set(override) - allowed)
+    if unknown:
+        raise ValueError(f"override có khoá không thuộc {kind}: {', '.join(unknown)}")
+    schema.model_validate({**params, **override})
+    huge = sorted(k for k, v in override.items() if k.endswith("Mm") and isinstance(v, int) and v > OVERRIDE_MM_MAX)
+    if huge:
+        raise ValueError(f"override vượt {OVERRIDE_MM_MAX} mm: {', '.join(huge)}")
+
+
 class HostRef(DomainModel):
     """W4 ids of the host entity (or the host suggestion, e.g. a nightstand next to a P1 bed)."""
 
@@ -253,14 +273,10 @@ class Suggestion(DomainModel):
 
     @model_validator(mode="after")
     def _check(self) -> Suggestion:
-        """`params` must match the schema of `kind`; override keys must be params of that kind."""
-        schema = PARAMS_BY_KIND[self.kind]
-        schema.model_validate(self.params)
+        """`params` must match the schema of `kind`; the override must pass `check_override`."""
+        PARAMS_BY_KIND[self.kind].model_validate(self.params)
         if self.override:
-            allowed = {f.alias or name for name, f in schema.model_fields.items()}
-            unknown = sorted(set(self.override) - allowed)
-            if unknown:
-                raise ValueError(f"override có khoá không thuộc {self.kind}: {', '.join(unknown)}")
+            check_override(self.kind, self.params, self.override)
         if self.adopted_as is not None and self.state != "adopted":
             raise ValueError("adoptedAs chỉ đi cùng state=adopted")
         return self

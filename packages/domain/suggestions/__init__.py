@@ -3,6 +3,7 @@
 from packages.domain.suggestions.model import (
     Suggestion,
     SuggestionsMeta,
+    check_override,
     document_keys,
     effective_params,
     suggestions_from_json,
@@ -33,6 +34,7 @@ __all__ = [
     "UnknownSuggestionError",
     "apply_state",
     "check_collisions",
+    "check_override",
     "document_keys",
     "effective_params",
     "flag_collisions",

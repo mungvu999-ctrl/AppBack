@@ -85,6 +85,7 @@ from packages.domain.suggestions import (
     SuggestionCapError,
     SuggestionsMeta,
     apply_state,
+    check_override,
     flag_collisions,
     load_ruleset,
     reconcile,
@@ -550,8 +551,9 @@ def _applied_state(
     """`suggestionState` đã kiểm rồi áp bằng `apply_state`; `field` của lỗi trỏ dòng lỗi đầu tiên.
 
     Id trùng → `VALIDATION`, id lạ → `SUGGESTION_UNKNOWN`, khoá `override` ngoài `overridable` của luật →
-    `SUGGESTION_OVERRIDE_INVALID`. Kiểm ở đây chứ không bắt `UnknownSuggestionError` của `apply_state`: lỗi ấy gộp
-    hai trường hợp FE xử lý khác nhau (id lạ là danh sách cũ, phải tải lại; khoá sai là lỗi của form "Điều chỉnh").
+    `SUGGESTION_OVERRIDE_INVALID`, giá trị sai lược đồ `kind` (âm, sai kiểu, quá trần — `check_override`) cũng vậy.
+    Kiểm ở đây chứ không bắt `UnknownSuggestionError` của `apply_state`: lỗi ấy gộp hai trường hợp FE xử lý khác nhau
+    (id lạ là danh sách cũ, phải tải lại; khoá sai là lỗi của form "Điều chỉnh").
     """
     by_id = {item.id: item for item in items}
     seen: set[object] = set()
@@ -566,9 +568,20 @@ def _applied_state(
         spec = ruleset.rules.get(item.rule)
         allowed = () if spec is None else spec.overridable
         override = row.get("override")
-        if isinstance(override, Mapping) and any(key not in allowed for key in override):
+        if isinstance(override, Mapping) and not _override_ok(item, override, allowed):
             raise SUGGESTION_OVERRIDE_INVALID.error(field=f"body.suggestionState.{index}.override")
     return tuple(apply_state(items, rows, ruleset))
+
+
+def _override_ok(item: Suggestion, override: Mapping[str, object], allowed: Sequence[str]) -> bool:
+    """Khoá trong `overridable` của luật và giá trị hợp lược đồ `kind` của bản ghi (`check_override`)."""
+    if any(key not in allowed for key in override):
+        return False
+    try:
+        check_override(item.kind, item.params, override)
+    except ValueError:
+        return False
+    return True
 
 
 def _check_opening_spans(sent: SpatialLayer, stored: SpatialLayer) -> None:

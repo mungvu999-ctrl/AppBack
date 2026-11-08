@@ -294,6 +294,24 @@ async def test_unknown_suggestion_id__422(api_client: httpx.AsyncClient, db_sess
     assert (await reread(db_session, floor.pk)).revision == 1
 
 
+async def test_override_value_invalid__422(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+    """F9: giá trị `override` kiểm theo lược đồ `kind` ngay ở biên: chiều cao âm, quá trần 10 m, vật liệu sai mẫu →
+    422 `SUGGESTION_OVERRIDE_INVALID` trỏ đúng dòng; không lượt nào ghi. Giá trị hợp lệ vẫn ghi được."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    put = functools.partial(put_layer, api_client, scene.project.id, floor.level_id, scene.owner)
+    assert (await put({"baseVersion": 0, "body": {"layer": wire(_layer(floor.level_id))}})).status_code == 200
+    for override in ({"heightMm": -500}, {"heightMm": 1_000_000_000_000}, {"material": "x"}):
+        rows = [{"id": L1_ID, "state": "disabled"}, {"id": R1_ID, "state": "overridden", "override": override}]
+        response = await put({"baseVersion": 1, "body": {"suggestionState": rows}})
+        assert response.status_code == 422, override
+        body = response.json()
+        assert (body["code"], body["field"]) == ("SUGGESTION_OVERRIDE_INVALID", "body.suggestionState.1.override")
+    assert (await reread(db_session, floor.pk)).revision == 1
+    ok = [{"id": R1_ID, "state": "overridden", "override": {"heightMm": 120}}]
+    assert (await put({"baseVersion": 1, "body": {"suggestionState": ok}})).status_code == 200
+
+
 async def test_pipeline_merge__user_state_survives(db_session: AsyncSession, fake_clock: FakeClock) -> None:
     """Trạng thái người dùng đặt (tắt L1, chỉnh R1) sống qua lượt `merge` của pipeline đổi `layer` (§3 bước 2)."""
     scene = await make_scene(db_session)

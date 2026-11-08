@@ -55,3 +55,37 @@
 - Ca vàng: ch-04, ch-06 mở rộng (`serverSuggestions`, `collisions`), thêm `syn-penthouse`; 0 va chạm `rule` trên cả 3.
 - Cổng áp dụng: ruff, mypy, pytest `packages/domain/suggestions` (độ phủ 100 % dòng/nhánh). Migration/openapi/hợp đồng
   FE–BE: không đổi.
+
+## M2-QL — Tích hợp (snapshot, vật liệu mặc định, một luật tỉ lệ, F0/F4 cho đồ của document)
+
+- **Nối snapshot:** `snapshot_source.take` ghép `**suggestion_keys(row["document"])` vào từng tầng. Tầng có đề xuất
+  mang `suggestions` + `suggestionsMeta`; tầng không có giữ đúng dạng M1 nên `snapshotSha` không đổi (test
+  `apps/api/model_export/tests/test_snapshot_source.py`). Dấu vân không đổi (đã gồm `revision`).
+- **Vật liệu mặc định:** R1/C1 dùng `library:preset-white` (có trong gói m1-01-pack-2) thay `library:paint-white`
+  (không có, sinh 37 bản ghi `degraded minor` trên ch-04). Ca vàng sinh lại, **`rulesetSha` mới
+  `8d81d381b90256a6c9f477243fc76cc2da4b2b523908d2a3018d2a1ec8932f60`**: ca vàng mirror của AppFront phải chép lại.
+- **Một luật tỉ lệ:** `suggestions.rules.placement.footprint_ratio` (vết chân, cạnh dài theo cạnh dài, bỏ chiều cao)
+  là luật duy nhất: F1 gọi nó, compiler gọi qua `model_export.assets.fit_scale` (làm tròn 3 số như luật, kẹp ±10 %;
+  phép thử cho mỗi cạnh hộp 0,5 mm vì luật lưu mm nguyên). Lavabo ch-04 (917x636 co 90 % → 825x572) giờ dựng ở 0,9
+  thay vì bị bỏ "89,9 %". Compiler vẫn đọc cỡ mẫu từ gói (`models.json`), luật đọc `data/model_bbox.json`; hai bảng
+  trùng số với gói hiện tại. Giới hạn: `compiler_version` chỉ băm `model_export`, sửa `footprint_ratio` không tự đổi
+  phiên bản bộ biên dịch.
+- **F0/F4 cho mọi đồ:** đồ của document cũng neo hộp bao (`anchor: "bbox"`): đáy trên sàn hoàn thiện (+20 mm) +
+  `liftMm`, tâm ở tâm hộp; cạnh dài mẫu cắt cạnh dài hộp (cả hai dài ≥ 1,2 lần) → xoay 90°, lưng về tường gần hơn;
+  tỉ lệ = `fit_scale`, cần quá ±10 % → kẹp ở ±10 % + `degraded minor` có lý do ("mẫu toilet cần co giãn 43 %… chỉ
+  cho 90 %"). Đề xuất `item` ngoài ±10 % vẫn bị bỏ (luật không bao giờ để vậy). Không áp lưng mẫu vào tường khi mẫu
+  sâu hơn hộp (B2 có; ở đây tâm luôn ở tâm hộp). `model_size_m` chuyển sang `assets`; `assets._size_mm` để nguyên
+  (sửa ở nhánh M1) và không còn được gọi — xoá khi gộp M1.
+- **ch-04 dựng lại** (`appback-bake:f14`, mã worktree): 83 đề xuất dựng hết, 0 bỏ; bản ghi `degraded minor` 40 → 15
+  (3 đề xuất: rèm 2, gộp tủ 1; 12 đồ document theo F4: hộp tài liệu nhỏ/lớn hơn mẫu); `major` 3 (tường chồng, như
+  trước); chất lượng `degraded` như trước; plan tất định; không hình hở/suy biến.
+- **Khronos glTF-Validator** (ch-04 trước → sau): lỗi 0 → 0; cảnh báo 46 → 46 (đều
+  `MESH_PRIMITIVE_GENERATED_TANGENT_SPACE`); info 56 → 56 (`UNUSED_OBJECT` TEXCOORD_0); vật liệu 59 → 58; 46 699 tam
+  giác, 441 draw call.
+- **Nợ còn mở:** 409 `remoteChanges` chưa liệt kê đổi `state`/`override` của đề xuất (cần migration CHECK
+  `entity_type` + `VersionEntityType`); concept AI truyền `None` vào `reconcile`; `versions` chưa chụp lớp đề xuất;
+  FE strict (zod) và hiến chương `docs/reviews/pending/charter-M2-QL.md` chưa duyệt → cổng bước 7 đỏ tới khi duyệt;
+  `_size_mm` chết chờ gộp M1; ca vàng FE mirror theo `rulesetSha` mới.
+- Cổng áp dụng: ruff, mypy, lint-imports, pytest `packages/domain/suggestions`, `packages/domain/model_export`,
+  `apps/worker/model_export/tests`, `apps/api/model_export/tests/test_snapshot_source.py`. Migration/openapi/hợp đồng
+  FE–BE: không đổi thêm.

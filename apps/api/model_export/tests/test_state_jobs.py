@@ -133,6 +133,32 @@ async def test_sweep_model_exports__J06(
     assert glb.scalar_one() is None
 
 
+async def test_sweep_model_exports__superseded_snapshot(
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    local_storage: LocalDiskStorage,
+    messaging_env: None,
+) -> None:
+    """Lượt bị thay khi còn `queued` để lại `snapshot.json`: quét dọn sau trần `running`, một lần.
+
+    Lượt vừa bị thay chưa dọn.
+    """
+    p = await _project_id(db_session)
+    an_hour_ago = CLOCK.now() - timedelta(hours=1)
+    old = await make_model_export(db_session, project_id=p, status="superseded", created_at=an_hour_ago)
+    fresh = await make_model_export(db_session, project_id=p, status="superseded")
+    for row in (old, fresh):
+        await _put(local_storage, p, row.id, "snapshot.json")
+
+    result = await run_model_export_sweep(db_sessionmaker, local_storage, CLOCK)
+    again = await run_model_export_sweep(db_sessionmaker, local_storage, CLOCK)
+
+    assert (result.pruned, again.pruned) == (1, 0)
+    assert await _objects(local_storage, p, old.id) == []
+    assert await _objects(local_storage, p, fresh.id) != []
+    assert await _status(db_session, old.id) == ("superseded", None)
+
+
 @pytest.fixture
 def process_env(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, storage_env: None) -> Iterator[None]:
     """Môi trường của tiến trình beat: DB test riêng, kho local `tmp_path` (như test khói LB-01)."""

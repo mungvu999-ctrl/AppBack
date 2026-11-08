@@ -248,8 +248,9 @@ def test_cap__purges_only_stale_without_user_data() -> None:
     assert {f"DRESS-C1-{sid('D', 91)}", f"DRESS-C1-{sid('D', 94)}"} <= ids
     assert not ids & {f"DRESS-C1-{sid('D', 92)}", f"DRESS-C1-{sid('D', 93)}"}
     assert [n.reason_vi for n in capped.notes if n.status == "log"] == [messages.CAP_PURGED] * 2
-    with pytest.raises(SuggestionCapError):
+    with pytest.raises(SuggestionCapError) as over:
         run(flat_layer(), prev, revision=4, cap=live)
+    assert over.value.count == live + 1
 
 
 def test_ruleset_change__purges_stale_without_user_data() -> None:

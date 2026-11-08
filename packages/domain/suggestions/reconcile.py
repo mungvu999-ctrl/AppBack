@@ -25,7 +25,15 @@ SUGGESTIONS_CAP: Final = 2000
 
 
 class SuggestionCapError(ValueError):
-    """Even after purging stale records without user data the floor holds more than the cap (writer → 422)."""
+    """Even after purging stale records without user data the floor holds more than the cap (writer → 422).
+
+    `count` is the real number after this run (generated + kept), which the 422 reports (review F11).
+    """
+
+    def __init__(self, count: int, cap: int) -> None:
+        """Message in Vietnamese; `count` kept for `SUGGESTION_CAP`."""
+        super().__init__(f"{count} đề xuất > trần {cap}")
+        self.count = count
 
 
 class UnknownSuggestionError(ValueError):
@@ -202,7 +210,7 @@ def reconcile(
     if len(result_list) > cap:
         result_list = _purge(result_list, cap, messages.CAP_PURGED, notes)
         if len(result_list) > cap:
-            raise SuggestionCapError(f"{len(result_list)} đề xuất > trần {cap}")
+            raise SuggestionCapError(len(result_list), cap)
     meta = SuggestionsMeta(ruleset=ruleset.ruleset, ruleset_sha=ruleset.sha, basis_revision=revision)
     return Reconciled(result_list, meta, notes)
 

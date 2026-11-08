@@ -1,4 +1,4 @@
-"""`suggestion_rules_read` qua app thật: C01 (thân, `ETag` = `rulesetSha`) và 304 khi `If-None-Match` khớp."""
+"""`suggestion_rules_read` qua app thật: C01 (thân, `ETag` = `rulesetSha`), 304 khi `If-None-Match` khớp, C04 401."""
 
 from typing import Final
 
@@ -43,3 +43,10 @@ async def test_suggestion_rules_read__not_modified(api_client: httpx.AsyncClient
     fresh = await api_client.get(PATH, headers={**headers_of(user), "If-None-Match": '"0"'})
     assert fresh.status_code == 200
     assert fresh.json()["rulesetSha"] == load_ruleset().sha
+
+
+async def test_suggestion_rules_read__C04(api_client: httpx.AsyncClient) -> None:
+    """Không có token → 401 `UNAUTHENTICATED` (N52 gắn `protected_router`, Đ*): bảng luật không lộ cho người lạ."""
+    response = await api_client.get(PATH)
+
+    assert (response.status_code, response.json()["code"]) == (401, "UNAUTHENTICATED")

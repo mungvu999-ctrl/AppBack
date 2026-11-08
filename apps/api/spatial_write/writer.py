@@ -529,7 +529,7 @@ def _next_suggestions(request: _Request, current: FloorDocument, layer: SpatialL
             prev_meta=current.suggestions_meta,
         )
     except SuggestionCapError as error:
-        raise SUGGESTION_CAP.error(count=len(items)) from error
+        raise SUGGESTION_CAP.error(count=error.count) from error
     previous = current.suggestions_meta
     if previous is not None and previous.ruleset_sha != result.meta.ruleset_sha:
         # §8 quyết định 4: bộ luật mới áp ở lượt đổi `layer` này; một dòng đủ để tra tầng nào đổi bộ luật lúc nào.

@@ -1,7 +1,6 @@
 """Placement core and collision classifier (`rules/placement.py`, KET-QUA-LOI §4-6)."""
 
 import json
-import math
 
 import pytest
 from shapely.geometry import GeometryCollection, LineString, Point, Polygon
@@ -11,7 +10,6 @@ from packages.domain.suggestions.model import HostRef, ItemParams, Stale, Sugges
 from packages.domain.suggestions.reconcile import flag_collisions
 from packages.domain.suggestions.rules.placement import (
     BBOX_PATH,
-    FINISH_FLOOR_MM,
     Site,
     _lines,
     check_collisions,
@@ -19,7 +17,6 @@ from packages.domain.suggestions.rules.placement import (
     footprint_ratio,
     front,
     known_model,
-    model_origin,
     model_size,
     place,
     polygons_of,
@@ -57,20 +54,6 @@ def test_bbox_table__provenance_and_every_rule_model_known() -> None:
     ids |= {p[k]["modelId"] for k in ("P2", "P3", "D3", "D4", "D5")} | set(p["F1"]["models"]) | {p["L1"]["lampModelId"]}
     assert all(known_model(m) for m in ids), sorted(m for m in ids if not known_model(m))
     assert model_size("bed-sf") == (1800, 2252, 938)
-
-
-@pytest.mark.parametrize("rot", [0, 90, 33.5])
-def test_model_origin__bbox_centre_and_bottom_land_where_asked(rot: float) -> None:
-    """F0: an off-centre pack origin (shower-square: origin at a corner) is shifted so the bbox centre sits on the
-    requested footprint centre and the bbox bottom on the finish floor + lift."""
-    ox, oy, oz = model_origin("shower-square", (1000.0, 2000.0), rot, 12)
-    raw = json.loads(BBOX_PATH.read_text(encoding="utf-8"))["models"]["shower-square"]
-    cx, cy = (raw["min"][0] + raw["max"][0]) / 2 * 1000, -(raw["min"][1] + raw["max"][1]) / 2 * 1000
-    th = math.radians(rot)
-    assert ox + cx * math.cos(th) - cy * math.sin(th) == pytest.approx(1000, abs=0.1)
-    assert oy + cx * math.sin(th) + cy * math.cos(th) == pytest.approx(2000, abs=0.1)
-    assert oz == pytest.approx(FINISH_FLOOR_MM + 12 - raw["min"][2] * 1000, abs=0.1)
-    assert (ox, oy) != (1000.0, 2000.0)
 
 
 def test_frame_helpers__facing_front_rect_run() -> None:

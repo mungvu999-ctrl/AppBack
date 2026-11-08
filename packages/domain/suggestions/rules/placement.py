@@ -35,8 +35,6 @@ from packages.domain.suggestions.model import Suggestion
 from packages.domain.suggestions.rules.geom import XY, frame, js_round, ring, room_at
 
 BBOX_PATH: Final = Path(__file__).parents[1] / "data" / "model_bbox.json"
-FINISH_FLOOR_MM: Final = 20
-"""Finish floor above the slab in every room (compiler `FINISH_FLOOR_M`); `liftMm` counts from it."""
 FLOOR_ITEM_MAX_LIFT_MM: Final = 300
 """Items lifted less than this stand on the floor and take part in collisions."""
 DOOR_CLEAR_MM: Final = 800
@@ -80,23 +78,6 @@ def footprint_ratio(box_mm: Sequence[float], model_mm: Sequence[float]) -> float
     `place`). F1 picks a model with it; the compiler fits in build orientation (`model_export.assets.fit_scale`)."""
     (bl, bs), (ml, ms) = sorted(box_mm[:2], reverse=True), sorted(model_mm[:2], reverse=True)
     return min(bl / ml, bs / ms)
-
-
-def model_origin(
-    model_id: str, centre: XY, rotation_deg: float, lift_mm: float, scale: float = 1.0
-) -> tuple[float, float, float]:
-    """Model origin (layer mm, z above the slab) that puts its bbox centre on `centre` and its bbox bottom on the
-    finish floor + `lift_mm` (F0: pack origins are not always at the bottom centre)."""
-    bb = _bboxes()[model_id]
-    cx = (bb["min"][0] + bb["max"][0]) / 2 * 1000 * scale
-    cy = -(bb["min"][1] + bb["max"][1]) / 2 * 1000 * scale  # Blender +y is local -y here (front towards local +y)
-    th = math.radians(rotation_deg)
-    c, s = math.cos(th), math.sin(th)
-    return (
-        round(centre[0] - (cx * c - cy * s), 1),
-        round(centre[1] - (cx * s + cy * c), 1),
-        round(FINISH_FLOOR_MM + lift_mm - bb["min"][2] * 1000 * scale, 1),
-    )
 
 
 def rect(centre: XY, w: float, d: float, rotation_deg: float) -> Polygon:

@@ -339,6 +339,16 @@ class Furniture(Reviewed):
     origin: FurnitureOrigin | None = None
     """Món nhận nuôi từ đề xuất M2 (`origin.suggestionId`); vắng khoá với đồ thường."""
 
+    @model_validator(mode="after")
+    def _origin_is_human(self) -> Self:
+        """Món nhận nuôi là của người dùng (HOP-DONG-DU-LIEU-LOP-DE-XUAT §2.4): `origin` chỉ đi cùng `source='human'`.
+
+        Món AI mang `origin` sẽ bị `_keep_ids` của pipeline xoá như AI cũ chưa duyệt, đề xuất mất món mà không ai thấy.
+        """
+        if self.origin is not None and self.source != "human":
+            raise ValueError("origin chỉ dùng cho đồ source=human (món nhận nuôi)")
+        return self
+
 
 class Room(Reviewed):
     """Phòng khép kín; điểm đầu không lặp ở cuối nên ít nhất ba điểm."""

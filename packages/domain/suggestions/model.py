@@ -166,7 +166,7 @@ class ItemParams(DomainModel):
     """P1-P3, D3-D5, AID: a furniture item not yet touched by the user.
 
     `centre` is the footprint (model bbox) centre and `sizeMm` the placed bbox (model x scale), not the model origin:
-    `rules.placement.model_origin` converts. `liftMm` is above the finish floor (floor items 0).
+    the compiler anchors the model by its bbox (`anchor: "bbox"`). `liftMm` is above the finish floor (floor items 0).
     """
 
     furniture_kind: Annotated[StrictStr, Field(min_length=1)]

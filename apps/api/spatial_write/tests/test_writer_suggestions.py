@@ -20,6 +20,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.projects.tests.test_routes_common import headers_of
+from apps.api.spatial_read.documents import load_document
 from apps.api.spatial_read.tests._helpers import make_scene
 from apps.api.spatial_read.tests._read_helpers import graph_path
 from apps.api.spatial_write import writer
@@ -497,7 +498,8 @@ async def test_cap_exceeded__422(
         await _write(db_session, floor, scene.owner, fake_clock, base=2, layer=_layer(floor.level_id, thickness=220))
 
     assert caught.value.code == SUGGESTION_CAP
-    assert caught.value.params["count"] == len(stored.suggestions)
+    after = reconcile(stored.suggestions, _layer(floor.level_id, thickness=220), load_ruleset(), revision=3)
+    assert caught.value.params["count"] == len(after.suggestions)
     assert (await reread(db_session, floor.pk)).revision == 2
 
 
@@ -620,3 +622,17 @@ async def test_switched_on_suggestion_colliding__stale_with_reason(
     assert (stale.since, kept in stale.reason_vi) == (2, True)
     assert result.suggestions_meta is not None
     assert result.suggestions_meta.basis_revision == 1
+
+
+async def test_put_furniture_origin_not_human__422(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+    """Review F10: món mang `origin` (nhận nuôi) phải là `source='human'`; gửi kèm `source='ai'` → 422 `VALIDATION`,
+    không ghi gì (pipeline sẽ xoá món AI ấy như AI cũ chưa duyệt)."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    body = write_body(0, layer=_layer(floor.level_id, furniture=(_adopted_bed(floor.level_id),)))
+    body["body"]["layer"]["furniture"][0]["source"] = "ai"
+
+    response = await put_layer(api_client, scene.project.id, floor.level_id, scene.owner, body)
+
+    assert (response.status_code, response.json()["code"]) == (422, "VALIDATION")
+    assert await load_document(db_session, floor.pk) is None

@@ -40,6 +40,14 @@ BUILD_ERRORS: Final = (KeyError, TypeError, ValueError, IndexError, ZeroDivision
 """Tham số hỏng/hình học suy biến của một đề xuất → `skipped minor`, không làm hỏng cả lượt xuất."""
 
 
+def _build_error_vi(exc: Exception) -> str:
+    """Lý do người dùng đọc cho một lỗi `BUILD_ERRORS`: chỉ tiếng Việt (tên khoá tham số thiếu là định danh), không
+    chép chữ ngoại lệ tiếng Anh vào `report.json` (review Nit 19)."""
+    if isinstance(exc, KeyError) and exc.args:
+        return f"tham số đề xuất không dựng được: thiếu {exc.args[0]}"
+    return "tham số đề xuất không dựng được: sai kiểu, giá trị hoặc hình học suy biến"
+
+
 class SkipError(Exception):
     """Đề xuất không dựng được; `args[0]` là lý do tiếng Việt cho sổ."""
 
@@ -781,9 +789,7 @@ def suggestions_plan(
             continue
         except BUILD_ERRORS as exc:
             summary.counts["skipped"] += 1
-            _record(
-                book, lid, s, "skipped", [f"tham số đề xuất không dựng được ({type(exc).__name__}: {exc})"], "minor"
-            )
+            _record(book, lid, s, "skipped", [_build_error_vi(exc)], "minor")
             continue
         _apply(plan, parts)
         reasons = parts.notes + [r.reason for r in sub.records if r.status != "built"]

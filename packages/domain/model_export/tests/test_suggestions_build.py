@@ -309,6 +309,13 @@ def test_suggestion_failure_never_major() -> None:
     assert quality_of(base["records"]) == "ready"
     bad = [
         _s("R1-x", "R1", "skirting", {"room": "R-1", "wall": "W-2"}, {"side": "left"}),
+        _s(
+            "R1-w",
+            "R1",
+            "skirting",
+            {"room": "R-1", "wall": "W-2"},
+            {"side": "left", "spansMm": [[0, 500]], "heightMm": "cao", "thicknessMm": 12},
+        ),
         _s("R1-y", "R1", "skirting", {"room": "R-1", "wall": "W-404"}, {}),
         _s(
             "R1-z",
@@ -348,9 +355,10 @@ def test_suggestion_failure_never_major() -> None:
     assert recs["DRESS-R1-y"]["reason"] == "không còn tường chủ"
     assert "ngoài ±10 %" in recs["DRESS-P1-y"]["reason"]
     assert recs["DRESS-C2-y"]["reason"] == "khung cánh dày hơn ô kính"
-    assert recs["DRESS-R1-x"]["reason"].startswith("tham số đề xuất không dựng được (KeyError")
+    assert recs["DRESS-R1-x"]["reason"].startswith("tham số đề xuất không dựng được: thiếu ")
+    assert recs["DRESS-R1-w"]["reason"] == "tham số đề xuất không dựng được: sai kiểu, giá trị hoặc hình học suy biến"
     assert quality_of(plan["records"]) == "ready"
-    assert plan["appSuggestions"]["counts"] == {"built": 1, "skipped": 10}
+    assert plan["appSuggestions"]["counts"] == {"built": 1, "skipped": 11}
 
 
 def test_extras_carry_rule_host_state() -> None:

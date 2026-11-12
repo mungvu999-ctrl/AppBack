@@ -147,3 +147,55 @@ def test_build_pack_rebuild_drops_stale_preview(tmp_path: Path) -> None:
     assert (report.copied, report.previews) == (3, 0)
     assert sorted(_listing(out)) == ["a.glb", "b.glb", "c.glb"]
     assert sorted(path.name for path in tmp_path.iterdir()) == ["pack", "src1", "src2"]
+
+
+def test_build_pack_second_rename_fails_restores_old(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Đổi tên thư mục tạm thành `out` hỏng: bản cũ trở về `out`, lỗi nổi lên, không sót thư mục tạm hay bản lưu."""
+    sources, catalogue, out = _built(tmp_path)
+    before = _listing(out)
+    real = Path.rename
+
+    def flaky(self: Path, target: Path) -> Path:
+        """Hỏng khi thư mục tạm (không phải bản `.old-`) đổi tên thành `out`."""
+        if Path(target) == out and ".old-" not in self.name:
+            raise OSError(13, "bị khoá")
+        return real(self, target)
+
+    monkeypatch.setattr(Path, "rename", flaky)
+    with pytest.raises(OSError, match="bị khoá"):
+        build_pack(out, sources, catalogue)
+    assert _listing(out) == before
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["pack", "src1", "src2"]
+
+
+def test_build_pack_cleanup_failure_only_warns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Xoá bản cũ hỏng sau khi đã xuất bản: lượt dựng vẫn đạt, chỉ cảnh báo; bản cũ sót lại không chặn lần sau."""
+    sources, catalogue, out = _built(tmp_path)
+    (sources[1] / "b.png").unlink()
+    real = shutil.rmtree
+
+    def stuck(path: Path, *args: object, **kwargs: object) -> None:
+        """Bản `.old-` không xoá được (tệp đang mở)."""
+        if ".old-" in Path(path).name:
+            raise OSError(16, "đang dùng")
+        real(path)
+
+    monkeypatch.setattr(shutil, "rmtree", stuck)
+    assert build_pack(out, sources, catalogue).copied == 3
+    assert sorted(_listing(out)) == ["a.glb", "b.glb", "c.glb"]
+    assert "library_pack_old_left" in caplog.text
+    assert build_pack(out, sources, catalogue).copied == 3
+    assert len(list(tmp_path.glob(".pack.old-*"))) == 2
+
+
+def test_build_pack_recovers_interrupted_swap(tmp_path: Path) -> None:
+    """Lượt trước chết giữa hai lần đổi tên (`out` vắng, còn `.old-`): lần dựng sau, kể cả lượt hỏng, trả `out` về."""
+    sources, catalogue, out = _built(tmp_path)
+    before = _listing(out)
+    out.rename(tmp_path / ".pack.old-cat")
+    report = build_pack(out, sources, (*catalogue, _item("gone", b"x")))
+    assert report.missing == ("gone",)
+    assert _listing(out) == before
+    assert not list(tmp_path.glob(".pack.old-*"))

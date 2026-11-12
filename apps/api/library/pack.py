@@ -8,13 +8,16 @@ tạm cùng cha, kiểm sha bản đã chép rồi mới đổi tên thành `out
 """
 
 import hashlib
-import os
+import logging
 import shutil
 import tempfile
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
 from packages.domain.library import FILE_CATALOGUE, FileItem
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,7 +49,11 @@ def _locate(item: FileItem, sources: tuple[Path, ...]) -> tuple[Path | None, boo
 
 
 def build_pack(out: Path, sources: tuple[Path, ...], catalogue: tuple[FileItem, ...] = FILE_CATALOGUE) -> PackReport:
-    """Kiểm hết rồi mới chép `<id>.glb` (+ `<id>.png` cùng thư mục nếu có) vào `out`; hỏng thì không ghi gì."""
+    """Kiểm hết rồi mới chép `<id>.glb` (+ `<id>.png` cùng thư mục nếu có) vào `out`; hỏng thì không ghi gì.
+
+    Trước hết khôi phục `out` nếu lượt trước bị cắt giữa hai lần đổi tên (`_recover`).
+    """
+    _recover(out)
     found: dict[str, Path] = {}
     missing: list[str] = []
     mismatched: list[str] = []
@@ -87,12 +94,34 @@ def _stage(staging: Path, found: dict[str, Path], shas: dict[str, str]) -> PackR
     return PackReport(copied=len(found), previews=previews)
 
 
+def _backups(out: Path) -> list[Path]:
+    """Các bản `out` cũ đã dời đi (`.<tên>.old-<uuid>`), mới nhất trước."""
+    return sorted(out.parent.glob(f".{out.name}.old-*"), key=lambda path: path.stat().st_mtime, reverse=True)
+
+
+def _recover(out: Path) -> None:
+    """`out` vắng mà còn bản cũ đã dời (lượt trước chết giữa hai lần đổi tên) → đổi bản mới nhất về `out`."""
+    if not out.exists() and (backups := _backups(out)):
+        backups[0].rename(out)
+
+
 def _publish(staging: Path, out: Path) -> None:
-    """Đổi tên `staging` thành `out`; `out` cũ dời sang tên tạm trước (Windows không đổi tên đè thư mục) rồi xoá."""
+    """Đổi tên `staging` thành `out`; `out` cũ dời sang tên tạm trước (Windows không đổi tên đè thư mục).
+
+    Đổi tên lần hai hỏng → trả bản cũ về `out` rồi ném lỗi. Xoá bản cũ hỏng sau khi đã xuất bản chỉ cảnh báo:
+    gói mới đã đúng chỗ, bản sót lại vô hại.
+    """
     if not out.exists():
         staging.rename(out)
         return
-    old = out.with_name(f".{out.name}.old-{os.getpid()}")
+    old = out.with_name(f".{out.name}.old-{uuid.uuid4().hex}")
     out.rename(old)
-    staging.rename(out)
-    shutil.rmtree(old)
+    try:
+        staging.rename(out)
+    except BaseException:
+        old.rename(out)
+        raise
+    try:
+        shutil.rmtree(old)
+    except OSError:
+        _log.warning("library_pack_old_left", extra={"path": str(old)})

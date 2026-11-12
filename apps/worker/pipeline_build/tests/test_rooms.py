@@ -17,6 +17,7 @@ from apps.worker.pipeline_build.rooms import (
     _corner_pieces,
     _door_closers,
     _gap_closers,
+    _merge_fragments,
     _open_space_labels,
     _outline_points,
     build_furniture,
@@ -1313,3 +1314,32 @@ def test_build_rooms__rail_needs_outside_beyond_the_strip(fake_clock: FakeClock)
     ]
     rooms, _ = _balcony_rooms(fake_clock, _rail_page(), walls=walls)
     assert sorted(room.area_m2 for room in rooms) == [16.0, 32.0]
+
+
+# Hai cặp phòng thật (vòng ML-ACC R4, toàn pipeline từ ảnh): mảnh nhỏ chạm phòng kề theo cạnh và thêm một điểm rời,
+# nên cạnh chung là GeometryCollection lẫn đường + điểm; không có đoạn nối khe dài nên vùng `weak` rỗng.
+_CIS_429 = (
+    ([(11402, 7047), (11402, 7269), (12106, 7269), (12106, 5942), (11900, 5667), (11430, 5667), (11430, 5817),
+      (11430, 5892)], 1.08),
+    ([(7773, 5257), (7773, 8310), (12106, 8310), (12106, 7269), (11402, 7269), (11402, 7047), (11430, 5667),
+      (11430, 5517), (11430, 5257)], 11.84),
+)  # fmt: skip
+_CVCFP_SL0801_FILL = (
+    ([(12872, 11516), (12872, 12349), (12872, 12866), (13822, 12866), (13972, 12866), (13972, 12036),
+      (13972, 12030), (13972, 11516)], 1.49),
+    ([(10825, 14495), (11247, 14495), (11352, 14495), (14230, 14495), (14230, 16020), (14230, 16170),
+      (11352, 16170), (11352, 17846), (11352, 17935), (11247, 17846), (11247, 17996), (11247, 24167),
+      (20847, 24167), (20847, 16923), (20847, 16773), (15825, 16773), (15825, 12866), (13972, 12866),
+      (13972, 13019), (12872, 13019), (12872, 12866), (12872, 12349), (10825, 12349), (10825, 12499)], 85.27),
+)  # fmt: skip
+
+
+@pytest.mark.parametrize("pair", [_CIS_429, _CVCFP_SL0801_FILL], ids=["cis-429", "cvcfp-IIa_SL0801-fill"])
+def test_merge_fragments__edge_plus_point_contact_without_long_closers(
+    pair: tuple[tuple[list[tuple[int, int]], float], ...],
+) -> None:
+    """Cạnh chung đường + điểm rời, `long_closers` rỗng: không GEOSException (GEOS 3.13); hợp hai phòng có lỗ (khe giữa
+    cạnh chung và điểm chạm) nên giữ nguyên cả hai."""
+    kept = [([Point(x=x, y=y) for x, y in outline], area) for outline, area in pair]
+    merged = _merge_fragments(kept, np.array([], dtype=object), (), (), ())
+    assert merged == kept

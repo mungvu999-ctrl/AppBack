@@ -18,9 +18,9 @@ def _item(**overrides: str) -> FileItem:
 
 
 def test_file_catalogue_is_valid_and_disjoint() -> None:
-    """883 mục, id hợp lệ và không trùng nhau hay trùng `CATALOGUE`, nhóm hợp lệ, có `decor`."""
+    """978 mục (vòng 13: +78 ABO, +17 Objaverse), id hợp lệ, không trùng nhau hay `CATALOGUE`, nhóm đúng, có decor."""
     ids = [item.id for item in FILE_CATALOGUE]
-    assert len(ids) == len(set(ids)) == 883
+    assert len(ids) == len(set(ids)) == 978
     assert all(is_item_id(i) for i in ids)
     assert not set(ids) & {item.id for item in CATALOGUE}
     assert {item.group for item in FILE_CATALOGUE} <= set(LIBRARY_GROUPS)

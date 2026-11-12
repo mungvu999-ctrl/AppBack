@@ -13,3 +13,10 @@
 - NO-437 (mở, P2): ghi công CC BY 4.0 thiếu liên kết nguồn, liên kết giấy phép, ghi chú "đã chỉnh sửa" (`packages/domain/library/files.py:33-43`
   + FE `ModelCreditCard`); chưa sửa trong vòng này. Finding #4/#6 của phán quyết (trần tạm, mục `mine` vượt trần) đóng bằng phân trang ở đây.
 - `DEBT.md` đã bỏ khỏi repo ở 6b2e4d52 (TIDY-ROOT) nên nợ ghi ở đây, như `changes/UX41-B1.md`.
+- Duyệt hợp đồng #14: người dùng (chủ dự án) duyệt nguyên văn câu chữ dưới đây ngày 12/11/2026 trong phiên điều phối vòng 14,
+  lựa chọn "Duyệt như đề xuất" (phương án bị bỏ: thân phong bì `CursorPageSchema`). Tiền lệ #19 (G1-15).
+  > `GET /api/library` (#14) nhận thêm `limit` (1..500) và `cursor` tuỳ chọn. Thân vẫn là `LibraryItem[]`. Còn trang sau → header
+  > `X-Next-Cursor`. Mọi trang có header `X-Library-Revision` (chuỗi mờ, đổi khi tập mục người dùng thấy đổi). Thứ tự `(sort_order, id)`
+  > tăng dần, cursor ký bằng khoá `cursor`; sai/giả → 422 `CURSOR_INVALID`. Không gửi limit lẫn cursor = hành vi cũ (trả trọn tới trần
+  > setting, W22). Client đọc tới hết `X-Next-Cursor`; revision khác nhau giữa các trang → đọc lại từ đầu (có giới hạn lần thử). Mẫu đã
+  > lưu resolve bằng #15 `GET /api/library/{id}` (đã có, kiểm quyền) — không đổi.

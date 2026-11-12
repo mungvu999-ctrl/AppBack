@@ -244,6 +244,7 @@ F-07: hộp thoại A9 khi gỡ; ánh xạ `MEMBER_*`.
 
 - Lượt xử lý của dự án, mới nhất trước; `limit` + `cursor` (`CursorPage`); thành viên dự án đọc được, người ngoài/dự án không có → 404. Mỗi mục một lượt của một tầng: trạng thái, bước, %, `createdAt`/`startedAt`/`endedAt`/`updatedAt`, mã lỗi. Màn: tab Nhật ký của màn Xử lý (N5-08).
 - `GET /api/notifications` nhận thêm `limit`, `cursor` tuỳ chọn; thân vẫn là mảng; còn trang sau thì header `X-Next-Cursor` (G1-15).
+- `GET /api/library` (#14) nhận thêm `limit` (1..500) và `cursor` tuỳ chọn; thân vẫn là `LibraryItem[]`; còn trang sau thì header `X-Next-Cursor`; mọi trang có header `X-Library-Revision` (chuỗi mờ, đổi khi tập mục người gọi thấy đổi). Thứ tự `(sort_order, id)` tăng dần, cursor ký bằng khoá `cursor`, sai/giả → 422 `CURSOR_INVALID`. Không gửi tham số = hành vi cũ (trọn tới trần setting, W22). Client đọc tới hết `X-Next-Cursor`; revision lệch giữa các trang → đọc lại từ đầu (có giới hạn lần thử). Mẫu đã lưu resolve bằng #15 (M15-LIBRARY, duyệt 12/11/2026).
 
 ### N7 — `GET /api/projects/{project_id}/drawings/uploads/latest` → `uploads.ts`
 

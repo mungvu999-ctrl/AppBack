@@ -35,7 +35,7 @@
 | 11 | floors | `DELETE /api/floors/{floor_id}` | `floors_delete_floor` | `Floor` | G | `layer.edit` | có | B2-03 | resolver `project_of_floor`; xoá mềm |
 | 12 | floors | `GET /api/projects/{project_id}/floors` | `floors_list_floors` | `Floor[]` | Đ | thành viên | — | B2-03 | danh sách cũ, theo `order` |
 | 13 | floors | `PATCH /api/floors/reorder` | `floors_reorder_floors` | `Floor[]` | G | `layer.edit` | có | B2-03 | resolver; thiếu hoặc lẫn tầng → 422 |
-| 14 | library | `GET /api/library` | `library_list_items` | `LibraryItem[]` | Đ\* | — | — | B2-06 || `limit`/`cursor` tuỳ chọn, header `X-Next-Cursor` + `X-Library-Revision` (M15-LIBRARY, HOP-DONG-MOI) |
+| 14 | library | `GET /api/library` | `library_list_items` | `LibraryItem[]` | Đ\* | — | — | B2-06 | `limit`/`cursor` tuỳ chọn, header `X-Next-Cursor` + `X-Library-Revision` (M15-LIBRARY, HOP-DONG-MOI) |
 | 15 | library | `GET /api/library/{item_id}` | `library_read_item` | `LibraryItem` | Đ\* | — | — | B2-06 | |
 | 16 | measurements | `GET /api/projects/{project_id}/measurements` | `measurements_list_records` | F-00a `MeasurementRecordSchema[]` | Đ | thành viên | — | B2-07 | trần 1000 |
 | 17 | measurements | `POST /api/projects/{project_id}/measurements` | `measurements_create_record` | `MeasurementRecord` | G | `layer.edit` | — | B2-07 | cùng id + cùng thân → 200; khác thân → 409 `MEASUREMENT_ID_TAKEN` |

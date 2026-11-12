@@ -26,4 +26,4 @@ class LibraryItemOut(WireModel):
     file_size_bytes: int
     model_url: str
     preview_url: str | None = None
-    attribution: str | None = None  # tác giả · giấy phép của mẫu từ tệp; mẫu dựng bằng mã thì vắng
+    attribution: str | None = None  # `FileItem.attribution` (CC BY: đủ TASL); mẫu dựng bằng mã thì vắng

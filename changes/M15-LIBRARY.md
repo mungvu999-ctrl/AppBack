@@ -11,7 +11,7 @@
 - Nợ / quy trình — NO-436 (mở, P1 quy trình): PR #63 (f317c17e) merge vào `main` không qua `/merge-review`, merge commit thay vì squash,
   thiếu `changes/`; phán quyết hồi tố REJECT (quy trình), mã đạt 3,85/5 — `docs/reviews/2026-11-12-feature-m14-catalog.md`;
   `changes/M13-CATALOG.md` bổ sung trong nhánh này. Chờ người dùng ghi waiver dưới phán quyết.
-- NO-437 (mở, P2): ghi công CC BY 4.0 thiếu liên kết nguồn, liên kết giấy phép, ghi chú "đã chỉnh sửa" (`packages/domain/library/files.py:33-43`
+- NO-437 (đóng bởi `changes/M17-CREDIT.md`, P2): ghi công CC BY 4.0 thiếu liên kết nguồn, liên kết giấy phép, ghi chú "đã chỉnh sửa" (`packages/domain/library/files.py:33-43`
   + FE `ModelCreditCard`); chưa sửa trong vòng này. Finding #4/#6 của phán quyết (trần tạm, mục `mine` vượt trần) đóng bằng phân trang ở đây.
 - `DEBT.md` đã bỏ khỏi repo ở 6b2e4d52 (TIDY-ROOT) nên nợ ghi ở đây, như `changes/UX41-B1.md`.
 - Duyệt hợp đồng #14: người dùng (chủ dự án) duyệt nguyên văn câu chữ dưới đây ngày 12/11/2026 trong phiên điều phối vòng 14,

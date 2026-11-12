@@ -9581,8 +9581,44 @@
     },
     "/api/library": {
       "get": {
-        "description": "#14: danh sách cũ (mảng trần) mọi mục người gọi thấy.",
+        "description": "#14: mục người gọi thấy theo `(sort_order, id)`; không tham số → trọn tới `LIBRARY_LIST_MAX` như cũ.\n\nCòn mục sau trang → `X-Next-Cursor`. Mọi trang có `X-Library-Revision` (cùng snapshot với các mục của trang);\nhai trang khác dấu → client đọc lại từ đầu.",
         "operationId": "library_list_items_api_library_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 500,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -9596,7 +9632,31 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "X-Library-Revision": {
+                "description": "Chuỗi mờ, đổi khi tập mục người gọi thấy đổi; hai trang khác dấu → đọc lại.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Next-Cursor": {
+                "description": "Cursor cho trang sau; vắng khi đây là trang cuối.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Library List Items",

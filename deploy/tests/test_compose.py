@@ -545,3 +545,18 @@ def test_compose_bake_service_gated_single_gpu_worker(env: str) -> None:
     assert devices == [gpu], f"{env}/bake: thiếu đặt GPU nvidia như ml-gpu"
     if env == "dev":
         assert bake["build"].get("target") == "bake", "dev/bake: build.target phải là bake"
+
+
+def test_compose_migrate_imports_library_pack_only_when_mounted() -> None:
+    """M15: `migrate` gọi `import-files "$LIBRARY_PACK_DIR"` sau seed, chỉ khi biến có giá trị; `library-pack.yml` đặt
+    biến, gắn gói **chỉ đọc** từ `LIBRARY_PACK_HOST_DIR` bắt buộc và chờ `minio-init` (cần storage để `put`)."""
+    command = _cmd_text(_resolved_services("dev")["migrate"]["command"])
+    assert '[ -z "$${LIBRARY_PACK_DIR:-}" ] || python -m apps.api.library.cli import-files' in command
+    assert 'import-files --strict "$$LIBRARY_PACK_DIR"' in command
+    assert command.index("packages.db.seeds") < command.index("import-files")
+    migrate = load_yaml(require_path("deploy/compose/library-pack.yml"))["services"]["migrate"]
+    assert migrate["environment"]["LIBRARY_PACK_DIR"] == "/library-pack"
+    pack = next(v for v in migrate["volumes"] if isinstance(v, dict) and v["target"] == "/library-pack")
+    assert pack["read_only"] is True
+    assert pack["source"].startswith("${LIBRARY_PACK_HOST_DIR:?")
+    assert migrate["depends_on"]["minio-init"]["condition"] == "service_completed_successfully"

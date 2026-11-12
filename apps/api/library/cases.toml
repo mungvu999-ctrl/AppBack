@@ -1,6 +1,7 @@
 # Bảng case bắt buộc thêm của module thư viện .glb (B2-06 [8], CASE.md §2.3).
 #
-# `library_list_items` (Đ*: C01 C15 C17) không cần khai gì; task `publish_library_assets` tự bị đòi J01, J06.
+# `library_list_items` (Đ*: C01 C15 C17) không cần khai gì — trang/cursor/dấu phiên bản (M15) là các case C15 trong
+# `tests/test_routes_page.py`; task `publish_library_assets` tự bị đòi J01, J06.
 
 [[endpoint]]
 op = "library_read_item"

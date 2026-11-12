@@ -112,7 +112,14 @@ services:
 
   migrate:
     logging: *logging
-    command: ["sh", "-c", "alembic -c packages/db/alembic.ini upgrade head && python -m packages.db.seeds"]
+    # M15: có `LIBRARY_PACK_DIR` (gắn bằng `library-pack.yml`) thì phát hành luôn gói mẫu thư viện sau seed;
+    # chạy lại không `put` lại object đã khớp sha. `$$` để compose không nội suy: shell trong container đọc biến.
+    command:
+      - sh
+      - -c
+      - >-
+        alembic -c packages/db/alembic.ini upgrade head && python -m packages.db.seeds
+        && { [ -z "$${LIBRARY_PACK_DIR:-}" ] || python -m apps.api.library.cli import-files "$$LIBRARY_PACK_DIR"; }
     environment: &app-env
       APP_ENV: ${APP_ENV:?bắt buộc — không mặc định}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}

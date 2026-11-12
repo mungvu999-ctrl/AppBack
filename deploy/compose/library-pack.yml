@@ -1,0 +1,22 @@
+# Gói mẫu thư viện cho `migrate` (M15) — thay cho `docker cp` + `import-files` chạy tay.
+#
+# Dùng chồng lên file môi trường: `docker compose -f deploy/compose/dev.yml -f deploy/compose/library-pack.yml up -d`
+# với `LIBRARY_PACK_HOST_DIR=<thư mục gói trên máy chủ>`. Gói dựng bằng
+# `python -m apps.api.library.cli build-pack <out> --from <nguồn> …` (kiểm sha mọi id của `files.json`), tên
+# `library-<12 ký tự đầu sha256(files.json)>` cho biết gói ứng với bản danh mục nào (docs/SETUP.md §4.1).
+#
+# Gắn chỉ đọc. `local-storage` chỉ có tác dụng khi STORAGE_BACKEND=local. `migrate` phải chờ `minio-init` xong mới
+# `put` được object: file này chỉ dùng với stack có minio (dev, f14; prod bật profile `minio`).
+services:
+  migrate:
+    environment:
+      LIBRARY_PACK_DIR: /library-pack
+    volumes:
+      - type: bind
+        source: ${LIBRARY_PACK_HOST_DIR:?bắt buộc — thư mục gói mẫu trên máy chủ}
+        target: /library-pack
+        read_only: true
+      - local-storage:/var/lib/appback/storage
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully

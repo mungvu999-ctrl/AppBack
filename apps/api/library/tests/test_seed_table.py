@@ -35,7 +35,7 @@ def test_seed_module_contract() -> None:
 
 
 async def test_seed_twice_keeps_row_count_and_identity(db_session: AsyncSession) -> None:
-    """Chạy hai lần → 16 + 883 dòng (mẫu từ tệp xếp sau), `sort_order` = chỉ số x 10, chỉ danh tính."""
+    """Chạy hai lần → 16 + 978 dòng (mẫu từ tệp xếp sau), `sort_order` = chỉ số x 10, chỉ danh tính."""
     await seed(db_session)
     await db_session.commit()
     await seed(db_session)

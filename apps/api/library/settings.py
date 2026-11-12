@@ -15,7 +15,9 @@ class LibrarySettings(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore", env_file=None)
 
-    library_list_max: PositiveInt = 500
+    # Trần phải lớn hơn cả danh mục: 978 mẫu từ tệp + 16 mẫu dựng sẵn (12/11/2026). Trần cũ 500 cắt mất các mẫu xếp sau
+    # (sắp theo `sort_order`) — editor không bao giờ thấy chúng. `test_list_cap.py` giữ danh mục dưới trần.
+    library_list_max: PositiveInt = 2000
     library_verify_after_s: PositiveInt = 3600
 
 

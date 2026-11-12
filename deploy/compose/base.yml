@@ -119,7 +119,7 @@ services:
       - -c
       - >-
         alembic -c packages/db/alembic.ini upgrade head && python -m packages.db.seeds
-        && { [ -z "$${LIBRARY_PACK_DIR:-}" ] || python -m apps.api.library.cli import-files "$$LIBRARY_PACK_DIR"; }
+        && { [ -z "$${LIBRARY_PACK_DIR:-}" ] || python -m apps.api.library.cli import-files --strict "$$LIBRARY_PACK_DIR"; }
     environment: &app-env
       APP_ENV: ${APP_ENV:?bắt buộc — không mặc định}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}

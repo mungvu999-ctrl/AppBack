@@ -5,7 +5,7 @@
 # `python -m apps.api.library.cli build-pack <out> --from <nguồn> …` (kiểm sha mọi id của `files.json`), tên
 # `library-<12 ký tự đầu sha256(files.json)>` cho biết gói ứng với bản danh mục nào (docs/SETUP.md §4.1).
 #
-# Gắn chỉ đọc. `local-storage` chỉ có tác dụng khi STORAGE_BACKEND=local. `migrate` phải chờ `minio-init` xong mới
+# `migrate` nhập bằng `import-files --strict`: gói rỗng hay thiếu mục làm `migrate` thất bại. Gắn chỉ đọc. `local-storage` chỉ có tác dụng khi STORAGE_BACKEND=local. `migrate` phải chờ `minio-init` xong mới
 # `put` được object: file này chỉ dùng với stack có minio (dev, f14; prod bật profile `minio`).
 services:
   migrate:

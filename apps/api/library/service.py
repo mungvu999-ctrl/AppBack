@@ -9,10 +9,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final, cast
 
-from sqlalchemy import ColumnElement, Select, Text, and_, func, literal, literal_column, or_, select, tuple_
+from sqlalchemy import ColumnElement, Select, Text, and_, func, literal, literal_column, or_, select, true, tuple_
 from sqlalchemy import cast as sql_cast
 from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnClause
 
 from apps.api.library.schemas import LibraryItemOut
@@ -98,7 +99,7 @@ def _revision_of(user_id: str) -> Select[tuple[str]]:
     entry = func.concat_ws(_FIELD_SEP, row.id, row.name, row.item_group, sql_cast(row.sort_order, Text))
     # `string_agg(x, sep ORDER BY …)`: SQLAlchemy dựng mệnh đề ORDER BY qua đối số phân cách.
     joined = func.string_agg(entry, aggregate_order_by(_ROW_SEP, row.sort_order, row.id))
-    return select(func.md5(func.coalesce(joined, ""))).where(visible_to(user_id))
+    return select(func.md5(func.coalesce(joined, "")).label("revision")).where(visible_to(user_id))
 
 
 async def list_page(
@@ -107,26 +108,33 @@ async def list_page(
     """#14: tối đa `size` mục hiển thị theo `(sort_order, id)` sau `after`, kèm vị trí trang sau và dấu phiên bản.
 
     Keyset, không OFFSET (chỉ mục `ix_library_items_sort_order_id_live`); đọc dư một dòng để biết còn trang sau;
-    chỉ ký URL cho các dòng của trang. Dấu là subquery của **cùng câu** nên cùng snapshot với các dòng: thay đổi
-    chen giữa hai trang luôn hiện thành hai dấu khác nhau. Trang rỗng → dấu đọc riêng (không có dòng nào để lệch).
+    chỉ ký URL cho các dòng của trang. Dấu và các dòng đi trong **một** câu (subquery dấu LEFT JOIN trang) nên cùng
+    snapshot, kể cả khi trang rỗng (một dòng, mục `None`): thay đổi chen giữa hai trang luôn ra hai dấu khác nhau.
     """
-    rev = _revision_of(user_id).scalar_subquery()
-    stmt = (
-        select(LibraryItemRow, rev)
+    rows = (
+        select(LibraryItemRow)
         .where(visible_to(user_id))
         .order_by(LibraryItemRow.sort_order, LibraryItemRow.id)
         .limit(size + 1)
     )
     if after is not None:
-        stmt = stmt.where(
+        rows = rows.where(
             tuple_(LibraryItemRow.sort_order, LibraryItemRow.id) > tuple_(literal(after[0]), literal(after[1]))
         )
+    page_rows = rows.subquery()
+    item = aliased(LibraryItemRow, page_rows)
+    rev = _revision_of(user_id).subquery()
+    stmt = (
+        select(rev.c.revision, item)
+        .select_from(rev)
+        .outerjoin(page_rows, true())
+        .order_by(page_rows.c.sort_order, page_rows.c.id)
+    )
     found = (await db.execute(stmt)).all()
-    if not found:
-        return LibraryPage([], None, (await db.execute(_revision_of(user_id))).scalar_one())
-    page = [item for item, _ in found[:size]]
-    following = (page[-1].sort_order, page[-1].id) if len(found) > size else None
-    return LibraryPage(await _to_outs(storage, page, user_id), following, found[0][1])
+    found_items = [row for _, row in found if row is not None]
+    page = found_items[:size]
+    following = (page[-1].sort_order, page[-1].id) if len(found_items) > size else None
+    return LibraryPage(await _to_outs(storage, page, user_id), following, found[0][0])
 
 
 async def read_item(db: AsyncSession, storage: ObjectStorage, user_id: str, item_id: str) -> LibraryItemOut:

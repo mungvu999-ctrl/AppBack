@@ -2,6 +2,7 @@
 
 import functools
 import hashlib
+import shutil
 from dataclasses import replace
 from pathlib import Path
 
@@ -85,3 +86,64 @@ def test_cli_build_pack_lists_mismatched_ids(
     monkeypatch.setattr(cli, "build_pack", functools.partial(build_pack, catalogue=(_item("a", b"glb-a"),)))
     assert cli.main(["build-pack", str(tmp_path / "out"), "--from", str(tmp_path / "src")]) == cli.EXIT_FAIL
     assert "lệch sha: a\n" in capsys.readouterr().err
+
+
+def _built(tmp_path: Path) -> tuple[tuple[Path, Path], tuple[FileItem, ...], Path]:
+    """Một gói đã dựng xong từ `_sources` (để thử dựng lại đè lên)."""
+    sources, catalogue = _sources(tmp_path)
+    out = tmp_path / "pack"
+    assert build_pack(out, sources, catalogue).copied == 3
+    return sources, catalogue, out
+
+
+def _listing(directory: Path) -> dict[str, bytes]:
+    """Tên → nội dung mọi tệp trong thư mục."""
+    return {path.name: path.read_bytes() for path in directory.iterdir()}
+
+
+def test_build_pack_failure_midway_keeps_old_pack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Đĩa đầy ở tệp thứ hai: lỗi nổi lên, `out` cũ nguyên vẹn, không sót thư mục tạm."""
+    sources, catalogue, out = _built(tmp_path)
+    before = _listing(out)
+    real = shutil.copyfile
+    calls: list[str] = []
+
+    def full_disk(src: Path, dst: Path) -> Path:
+        """Tệp thứ hai ném `OSError` như đĩa đầy."""
+        calls.append(str(dst))
+        if len(calls) == 2:
+            raise OSError(28, "no space left")
+        return real(src, dst)
+
+    monkeypatch.setattr(shutil, "copyfile", full_disk)
+    with pytest.raises(OSError, match="no space"):
+        build_pack(out, sources, catalogue)
+    assert _listing(out) == before
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["pack", "src1", "src2"]
+
+
+def test_build_pack_rejects_corrupted_copy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bản chép lệch sha (nguồn đổi giữa lúc kiểm và chép) → `mismatched`, `out` cũ giữ nguyên, thư mục tạm bị xoá."""
+    sources, catalogue, out = _built(tmp_path)
+    before = _listing(out)
+
+    def corrupt(_src: Path, dst: Path) -> Path:
+        """Ghi byte khác nguồn."""
+        Path(dst).write_bytes(b"hong")
+        return Path(dst)
+
+    monkeypatch.setattr(shutil, "copyfile", corrupt)
+    report = build_pack(out, sources, catalogue)
+    assert (report.copied, report.mismatched) == (0, ("a", "b", "c"))
+    assert _listing(out) == before
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["pack", "src1", "src2"]
+
+
+def test_build_pack_rebuild_drops_stale_preview(tmp_path: Path) -> None:
+    """Dựng lại sau khi nguồn mất `b.png`: gói mới không còn ảnh cũ, chỉ đúng các tệp được chọn."""
+    sources, catalogue, out = _built(tmp_path)
+    (sources[1] / "b.png").unlink()
+    report = build_pack(out, sources, catalogue)
+    assert (report.copied, report.previews) == (3, 0)
+    assert sorted(_listing(out)) == ["a.glb", "b.glb", "c.glb"]
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["pack", "src1", "src2"]

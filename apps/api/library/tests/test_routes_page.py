@@ -6,9 +6,10 @@ from typing import Final
 
 import httpx
 import pytest
-from sqlalchemy import func, update
+from sqlalchemy import event, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.api.library import service
 from apps.api.library.router import NEXT_CURSOR_HEADER, PAGE_MAX, REVISION_HEADER
 from apps.api.library.settings import LibrarySettings
 from apps.api.library.tests._helpers import LIST_PATH, headers_of
@@ -170,6 +171,28 @@ async def test_library_list_items__C15_retired_between_pages(
     assert second.json() == []
     assert second.headers[REVISION_HEADER] != first.headers[REVISION_HEADER]
     assert NEXT_CURSOR_HEADER not in second.headers
+    assert second.headers[REVISION_HEADER] == (await _page(api_client, user, limit=2)).headers[REVISION_HEADER]
+
+
+async def test_list_page_empty_page_one_statement(db_session: AsyncSession, local_storage: LocalDiskStorage) -> None:
+    """Trang rỗng: dấu đi cùng **một** câu SQL với các dòng (cùng snapshot), bằng dấu của tập hiện tại."""
+    user = await make_user(db_session)
+    await _seed_three(db_session, local_storage)
+    whole = await service.list_page(db_session, local_storage, user.id, size=10)
+    statements: list[str] = []
+
+    def count(state: object) -> None:
+        """Đếm mỗi lượt `execute` của session."""
+        statements.append(str(state))
+
+    event.listen(db_session.sync_session, "do_orm_execute", count)
+    try:
+        empty = await service.list_page(db_session, local_storage, user.id, size=10, after=(99, "z"))
+    finally:
+        event.remove(db_session.sync_session, "do_orm_execute", count)
+    assert (empty.items, empty.following, len(statements)) == ([], None, 1)
+    assert empty.revision == whole.revision
+    assert [item.id for item in whole.items] == ["item-a", "item-b", "item-c"]
 
 
 async def test_library_list_items__C15_mine_only_for_owner(

@@ -4,8 +4,9 @@
   cursor ký kèm user (`CURSOR_INVALID` 422), `X-Next-Cursor` khi còn trang sau. Mọi lượt có `X-Library-Revision` = md5 của
   `(id, tên, nhóm, sort_order)` các mục người gọi thấy, cùng câu SQL với các dòng của trang. Không tham số = hành vi cũ (trọn tới
   `LIBRARY_LIST_MAX`, nay thêm `X-Next-Cursor` nếu vượt trần). Thân vẫn `LibraryItem[]`; openapi đổi (thêm 2 query, 2 header).
-- CLI `build-pack <out> --from <dir>…` (`apps/api/library/pack.py`): gom `<id>.glb/.png` của `files.json`, hỏng cả lượt nếu thiếu/lệch sha.
-  `migrate` chạy `import-files "$LIBRARY_PACK_DIR"` sau seed khi biến có giá trị; `deploy/compose/library-pack.yml` gắn gói chỉ đọc.
+- CLI `build-pack <out> --from <dir>…` (`apps/api/library/pack.py`): gom `<id>.glb/.png` của `files.json`, hỏng cả lượt nếu thiếu/lệch sha;
+  dựng vào thư mục tạm, chỉ đổi tên thành `out` khi xong. `migrate` chạy `import-files --strict "$LIBRARY_PACK_DIR"` sau seed khi
+  biến có giá trị (gói rỗng/thiếu mục → `migrate` thất bại); `deploy/compose/library-pack.yml` gắn gói chỉ đọc.
 - Không đổi DB, migration. Cổng áp dụng: lint/type, test `apps/api/library`, `deploy/tests`, bước 7–8 (openapi đổi).
 - Nợ / quy trình — NO-436 (mở, P1 quy trình): PR #63 (f317c17e) merge vào `main` không qua `/merge-review`, merge commit thay vì squash,
   thiếu `changes/`; phán quyết hồi tố REJECT (quy trình), mã đạt 3,85/5 — `docs/reviews/2026-11-12-feature-m14-catalog.md`;

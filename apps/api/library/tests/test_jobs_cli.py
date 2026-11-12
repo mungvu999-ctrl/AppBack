@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy import func, select
 
 from apps.api.library import cli
+from apps.api.library.assets import ImportReport
 from apps.api.library.jobs import TASK_NAME, publish_library_assets
 from packages.core.clock import SystemClock
 from packages.core.settings import reset_settings_cache
@@ -109,6 +110,33 @@ def test_cli_publish_exits_one_when_storage_is_down(
     captured = capsys.readouterr()
     assert captured.out == "published=0 verified=0 skipped=0 failed=16\n"
     assert "16" in captured.err
+
+
+@pytest.mark.usefixtures("process_env")
+def test_cli_import_files_strict_rejects_empty_pack(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Gói rỗng: không cờ → mọi mục `skipped`, thoát 0 (nhập tay như cũ); `--strict` (migrate) → thoát 1."""
+    asyncio.run(_seed_process_db())
+    empty = tmp_path / "pack"
+    empty.mkdir()
+    assert cli.main(["import-files", str(empty)]) == cli.EXIT_OK
+    assert capsys.readouterr().out == f"published=0 skipped={len(FILE_CATALOGUE)} failed=0\n"
+    assert cli.main(["import-files", "--strict", str(empty)]) == cli.EXIT_FAIL
+    assert str(len(FILE_CATALOGUE)) in capsys.readouterr().err
+
+
+def test_cli_import_files_strict_rejects_incomplete_pack(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Gói thiếu một mục (một `skipped`, còn lại phát hành): `--strict` → thoát 1, không cờ → thoát 0."""
+
+    async def partial(_directory: Path) -> ImportReport:
+        """Kết quả nhập của gói thiếu một tệp."""
+        return ImportReport(published=len(FILE_CATALOGUE) - 1, skipped=1, failed=0)
+
+    monkeypatch.setattr(cli, "_import_files", partial)
+    assert cli.main(["import-files", str(tmp_path)]) == cli.EXIT_OK
+    assert cli.main(["import-files", "--strict", str(tmp_path)]) == cli.EXIT_FAIL
+    assert "1 mục hỏng" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

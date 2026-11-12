@@ -5,7 +5,7 @@ Chạy sau seed khi triển khai, để danh mục không rỗng tới lượt l
 hỏng, 1 khi `failed > 0` (storage hỏng làm mục `failed`, không làm CLI sập).
 
 `import-files <thư mục>`: phát hành mẫu từ tệp (`FILE_CATALOGUE`) có trong thư mục (`<id>.glb`,
-`<id>.png` nếu có); cùng mã thoát.
+`<id>.png` nếu có); cùng mã thoát. `--strict`: mục thiếu tệp cũng tính là hỏng (thoát 1) — dùng cho `migrate`.
 
 `build-pack <out> --from <dir> [--from <dir> …]` (M15): gom tệp của mọi id trong `files.json` từ các thư mục nguồn
 vào `out`; thoát 1 (không ghi gì) khi có id thiếu hay chỉ có bản lệch sha. Không cần DB hay storage.
@@ -35,6 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("publish", help="đưa object của danh mục lên storage")
     files = commands.add_parser("import-files", help="phát hành mẫu từ tệp .glb trong một thư mục")
     files.add_argument("directory", type=Path)
+    files.add_argument("--strict", action="store_true", help="thiếu tệp của mục nào cũng là lỗi (migrate)")
     pack = commands.add_parser("build-pack", help="gom tệp mẫu của files.json từ các thư mục nguồn, kiểm sha")
     pack.add_argument("out", type=Path)
     pack.add_argument("--from", dest="sources", type=Path, action="append", required=True)
@@ -82,7 +83,8 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "import-files":
         files = asyncio.run(_import_files(args.directory))
         sys.stdout.write(f"published={files.published} skipped={files.skipped} failed={files.failed}\n")
-        failed = files.failed
+        # `--strict` (dịch vụ `migrate`): gói rỗng/thiếu mục không được lặng lẽ qua; nhập tay không cờ vẫn nhận gói dở.
+        failed = files.failed + (files.skipped if args.strict else 0)
     else:
         report = asyncio.run(_publish())
         sys.stdout.write(

@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.spatial_read.codec import DocumentCorruptError, decode_document, document_to_json
 from packages.core.clock import Clock
 from packages.db.models.spatial import FloorDocumentRow
-from packages.domain.spatial import Axis, Dimension, Point, SpatialLayer
+from packages.domain.spatial import Axis, Dimension, Point, ScaleAcceptance, SpatialLayer
 
 _log: Final = logging.getLogger(__name__)
 
@@ -58,6 +58,8 @@ class FloorDocument:
     updated_at: datetime | None
     origin: Point | None = None
     """Gốc toạ độ màn Trục (mm, G4b-17); `None` = chưa đặt."""
+    scale_accepted: ScaleAcceptance | None = None
+    """Tỉ lệ `human` này là chấp nhận số máy (ML-ACC-R10 K4): ảnh chụp căn cứ máy lúc chấp nhận; `None` = đo thật."""
 
 
 def empty_document(floor_pk: int) -> FloorDocument:
@@ -104,6 +106,7 @@ def document_from_row(row: FloorDocumentRow) -> FloorDocument:
         axes=envelope.axes,
         dimensions=envelope.dimensions,
         origin=envelope.origin,
+        scale_accepted=envelope.scale_accepted,
         scale_mm_per_px=row.scale_mm_per_px,
         scale_source=scale_source_of(row.scale_source),
         scale_page_key=row.scale_page_key,

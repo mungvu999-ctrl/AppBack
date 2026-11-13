@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.spatial_read.documents import FloorDocument, load_document
 from apps.api.spatial_read.tests._helpers import other_session
-from apps.api.spatial_write.writer import LayerWrite, WriteResult, write_layer
+from apps.api.spatial_write.writer import LayerWrite, ScaleEvidence, WriteResult, write_layer
 from packages.core.clock import Clock
 from packages.db.models.auth import User
 from packages.db.models.floors import FloorRow
@@ -64,18 +64,23 @@ async def write(
     scale: Decimal | None = None,
     dimensions: Sequence[Dimension] | None = None,
     may_approve: bool = True,
+    evidence: ScaleEvidence | None = None,
     **options: Any,
 ) -> WriteResult:
     """Gọi `write_layer` cho một tầng với người ghi là `actor`; `options` đi thẳng vào hàm thật.
 
     `may_approve=True` mặc định: người ghi của các test dựng trạng thái là engineer, có `qc.approve`.
+    `evidence` là `scaleEvidence` của thân (ML-ACC-R10 K4), `None` = thân cũ.
     """
     return await write_layer(
         db,
         floor_pk=floor.pk,
         base_revision=base_revision,
         body=LayerWrite(
-            layer=layer, scale_mm_per_px=scale, dimensions=None if dimensions is None else tuple(dimensions)
+            layer=layer,
+            scale_mm_per_px=scale,
+            dimensions=None if dimensions is None else tuple(dimensions),
+            scale_evidence=evidence,
         ),
         actor_id=actor.id,
         actor_name=actor.name,

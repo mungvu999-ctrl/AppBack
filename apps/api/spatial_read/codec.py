@@ -11,14 +11,23 @@ là tài liệu hỏng. Đọc **không bao giờ tự sửa** — một tài li
 phải dữ liệu cần đoán lại.
 
 `axes` và `origin` (gốc toạ độ, mm, tuỳ chọn) là dữ liệu màn Trục gửi qua #35 (G4b-17);
-tài liệu cũ không có khoá `origin` vẫn đọc được, nên không cần migration.
+tài liệu cũ không có khoá `origin` vẫn đọc được, nên không cần migration. `scaleAccepted` (ảnh chụp căn cứ
+tỉ lệ của máy lúc người dùng chấp nhận số máy, ML-ACC-R10 K4) theo cùng cách: vắng khoá = không chấp nhận.
 """
 
 from collections.abc import Mapping
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from packages.domain.spatial import Axis, Dimension, Point, SpatialLayer, document_to_json, entity_ids
+from packages.domain.spatial import (
+    Axis,
+    Dimension,
+    Point,
+    ScaleAcceptance,
+    SpatialLayer,
+    document_to_json,
+    entity_ids,
+)
 
 __all__ = [
     "DocumentCorruptError",
@@ -48,6 +57,7 @@ class DocumentEnvelope(BaseModel):
     axes: tuple[Axis, ...]
     dimensions: tuple[Dimension, ...]
     origin: Point | None = None
+    scale_accepted: ScaleAcceptance | None = Field(default=None, alias="scaleAccepted")
 
 
 def document_from_json(raw: Mapping[str, object]) -> tuple[SpatialLayer, tuple[Axis, ...], tuple[Dimension, ...]]:

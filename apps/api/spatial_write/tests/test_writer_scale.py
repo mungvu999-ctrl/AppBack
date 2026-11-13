@@ -5,13 +5,16 @@ K19), luật theo trang của #35 (tỉ lệ của **trang khác** không nói g
 "chỉ mục chưa duyệt mới đổi tỉ lệ".
 """
 
+import json
 from collections.abc import Sequence
 from decimal import Decimal
+from hashlib import sha256
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.spatial_read.tests._helpers import make_scene
+from apps.api.spatial_read.tests.test_routes_layer import CRITICAL_SUMMARY, _completed_classic_run
 from apps.api.spatial_write.tests._helpers import (
     WALL_ID,
     RecordingMerge,
@@ -22,9 +25,12 @@ from apps.api.spatial_write.tests._helpers import (
     simple_layer,
     write,
 )
+from apps.api.spatial_write.writer import LayerWrite, ScaleEvidence, body_sha256
 from packages.core.errors import AppError
+from packages.db.models.auth import User
 from packages.db.models.floors import FloorRow
-from packages.domain.spatial import Dimension, SpatialLayer
+from packages.domain.spatial import Dimension, ScaleAcceptance, SpatialLayer
+from packages.storage.local import LocalDiskStorage
 from packages.storage.port import ObjectStorage
 from packages.testing.factories.drawings import make_drawing, make_upload, png_bytes
 from packages.testing.factories.spatial import make_floor_document
@@ -488,3 +494,176 @@ async def test_merge_replaces_plain_ai_dimensions(db_session: AsyncSession, fake
     )
 
     assert [item.id for item in (await reread(db_session, floor.pk)).dimensions] == ["M-TESTDIM002"]
+
+
+async def _accepted_floor(
+    db: AsyncSession, storage: LocalDiskStorage, clock: FakeClock, *, reviewed_wall: bool = False
+) -> tuple[FloorRow, User]:
+    """Tầng pipeline 10 mm/px ở trang P1, lượt mới nhất báo gốc `door`, rồi người chấp nhận số máy 12 (bản ghi 2)."""
+    scene = await make_scene(db)
+    floor = scene.floors[0]
+    await _prepared(
+        db,
+        floor,
+        clock,
+        scale=Decimal("10"),
+        scale_source="pipeline",
+        scale_page_key=PAGE_1,
+        reviewed_wall=reviewed_wall,
+    )
+    summary = {**CRITICAL_SUMMARY, "scaleBasis": "door", "scaleChecks": ["estimateSpread"]}
+    await _completed_classic_run(db, storage, clock, scene=scene, floor=floor, summary=summary)
+    await write(
+        db,
+        floor=floor,
+        actor=scene.owner,
+        clock=clock,
+        base_revision=1,
+        scale=Decimal("12"),
+        evidence="machineAccepted",
+    )
+    return floor, scene.owner
+
+
+async def test_put_machine_accepted_sets_flag_keeps_human_source(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """K4: chấp nhận số máy vẫn là quyết định của người (`human`, trang giữ), kèm ảnh chụp căn cứ máy lúc ghi."""
+    floor, _ = await _accepted_floor(db_session, local_storage, fake_clock)
+
+    document = await reread(db_session, floor.pk)
+    assert (document.revision, document.scale_mm_per_px, document.scale_source, document.scale_page_key) == (
+        2,
+        Decimal("12.000000"),
+        "human",
+        PAGE_1,
+    )
+    assert document.scale_accepted == ScaleAcceptance(basis="door", checks=("estimateSpread",))
+
+
+@pytest.mark.parametrize("evidence", ["measured", None])
+async def test_put_measured_clears_flag(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock, evidence: ScaleEvidence | None
+) -> None:
+    """K4 #13/#20: đo thật sau khi chấp nhận (hay thân cũ không có `scaleEvidence`) → xoá cờ, `human` thường."""
+    floor, owner = await _accepted_floor(db_session, local_storage, fake_clock)
+
+    await write(
+        db_session, floor=floor, actor=owner, clock=fake_clock, base_revision=2, scale=Decimal("15"), evidence=evidence
+    )
+
+    document = await reread(db_session, floor.pk)
+    assert (document.scale_mm_per_px, document.scale_source, document.scale_accepted) == (
+        Decimal("15.000000"),
+        "human",
+        None,
+    )
+
+
+async def test_layer_only_write_keeps_flag(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """K4 #15/#16: lượt ghi không đặt tỉ lệ (sửa lớp, khôi phục phiên bản) giữ nguyên cờ chấp nhận."""
+    floor, owner = await _accepted_floor(db_session, local_storage, fake_clock)
+    layer = simple_layer(floor.level_id, walls=[make_wall(floor.level_id, length=1500)])
+
+    await write(db_session, floor=floor, actor=owner, clock=fake_clock, base_revision=2, layer=layer)
+
+    document = await reread(db_session, floor.pk)
+    assert document.revision == 3
+    assert document.scale_accepted == ScaleAcceptance(basis="door", checks=("estimateSpread",))
+
+
+async def test_accept_same_value_bumps_revision(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """K4 #12: tầng đã đo 10 → chấp nhận đúng số 10 của máy: cờ đổi nên vẫn ghi (bản ghi +1), không trượt bước 10."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    await _prepared(db_session, floor, fake_clock, scale=Decimal("10"), scale_source="human", scale_page_key=PAGE_1)
+
+    result = await write(
+        db_session,
+        floor=floor,
+        actor=scene.owner,
+        clock=fake_clock,
+        base_revision=1,
+        scale=Decimal("10"),
+        evidence="machineAccepted",
+    )
+
+    assert (result.revision, result.applied) == (2, True)
+    assert (await reread(db_session, floor.pk)).scale_accepted == ScaleAcceptance(basis=None)
+
+
+async def test_recalibrate_after_accept_rescales_reviewed(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """K4 lỗi phụ: số máy người chỉ chấp nhận vẫn là tạm — đo thật sau đó co giãn cả tường đã duyệt."""
+    floor, owner = await _accepted_floor(db_session, local_storage, fake_clock, reviewed_wall=True)
+
+    result = await write(
+        db_session,
+        floor=floor,
+        actor=owner,
+        clock=fake_clock,
+        base_revision=2,
+        scale=Decimal("24"),
+        evidence="measured",
+    )
+
+    assert (_wall_length(result.layer, 0), _wall_length(result.layer, 1)) == (2400, 2400)
+
+
+async def test_pipeline_same_page_keeps_flag(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """K4 #18 (R2): pipeline chạy lại cùng trang bị hạng chặn — số, nguồn và ảnh chụp lúc chấp nhận giữ nguyên."""
+    floor, owner = await _accepted_floor(db_session, local_storage, fake_clock)
+
+    await write(
+        db_session,
+        floor=floor,
+        actor=owner,
+        clock=fake_clock,
+        scale=Decimal("13"),
+        scale_source="pipeline",
+        page_key=PAGE_1,
+        merge=RecordingMerge(lambda base: base),
+    )
+
+    document = await reread(db_session, floor.pk)
+    assert (document.scale_mm_per_px, document.scale_source) == (Decimal("12.000000"), "human")
+    assert document.scale_accepted == ScaleAcceptance(basis="door", checks=("estimateSpread",))
+
+
+async def test_pipeline_merge_other_page_clears_flag(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """K4 #17: merge trang khác ghi tỉ lệ pipeline mới — cờ chấp nhận của tỉ lệ cũ không còn nghĩa, bị xoá."""
+    floor, owner = await _accepted_floor(db_session, local_storage, fake_clock)
+
+    await write(
+        db_session,
+        floor=floor,
+        actor=owner,
+        clock=fake_clock,
+        scale=Decimal("13"),
+        scale_source="pipeline",
+        page_key=PAGE_2,
+        merge=RecordingMerge(lambda base: base),
+    )
+
+    document = await reread(db_session, floor.pk)
+    assert (document.scale_source, document.scale_page_key, document.scale_accepted) == ("pipeline", PAGE_2, None)
+
+
+def test_body_sha_unchanged_without_evidence() -> None:
+    """Vân tay C09b: thân không có `scaleEvidence` giữ đúng vân tay cũ; có khoá thì vân tay khác."""
+    old = LayerWrite(layer=None, scale_mm_per_px=Decimal("12.000000"))
+    canonical = json.dumps(
+        {"dimensions": None, "layer": None, "scaleMillimetresPerPixel": "12.000000"},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    assert body_sha256(old) == sha256(canonical.encode()).hexdigest()
+    accepted = LayerWrite(layer=None, scale_mm_per_px=Decimal("12.000000"), scale_evidence="machineAccepted")
+    assert body_sha256(accepted) != body_sha256(old)

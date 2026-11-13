@@ -60,6 +60,14 @@ def _bad_bodies(level_id: str) -> dict[str, tuple[dict[str, Any], str]]:
         "huge_scale": (write_body(0, scale=1e22), "body.scaleMillimetresPerPixel"),
         "huge_integer_scale": (write_body(0, scale=10**310), "body.scaleMillimetresPerPixel"),
         "empty_body": ({"baseVersion": 0, "body": {}}, "body"),
+        "evidence_without_scale": (
+            {"baseVersion": 0, "body": {"scaleEvidence": "machineAccepted"}},
+            "body.scaleEvidence",
+        ),
+        "unknown_evidence": (
+            {"baseVersion": 0, "body": {"scaleMillimetresPerPixel": 10.0, "scaleEvidence": "guessed"}},
+            "body.scaleEvidence",
+        ),
         "bidi_room_name": (
             {"baseVersion": 0, "body": {"layer": _raw_layer(wall, rooms=[room | {"name": "B‮p"}])}},
             "body.layer.rooms.0.name",

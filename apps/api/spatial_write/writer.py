@@ -37,6 +37,7 @@ from apps.api.spatial_read.codec import document_to_json, entity_ids
 from apps.api.spatial_read.counts import layer_counts
 from apps.api.spatial_read.documents import FloorDocument, ScaleSource, ensure_document, load_document
 from apps.api.spatial_read.entity_ids import claim_entity_ids
+from apps.api.spatial_read.readiness import latest_run_facts, scale_snapshot_of
 from apps.api.spatial_write.changes import remote_changes_since
 from apps.api.spatial_write.errors import LAYER_INTEGRITY_BROKEN, LAYER_LEVEL_MISMATCH, REVIEW_BY_AI_FORBIDDEN
 from apps.api.spatial_write.settings import get_spatial_write_settings
@@ -58,6 +59,7 @@ from packages.domain.spatial import (
     Point,
     Roof,
     Room,
+    ScaleAcceptance,
     SpatialLayer,
     Wall,
     ai_reviewed_ids,
@@ -75,6 +77,9 @@ _log: Final = logging.getLogger(__name__)
 
 ScaleWriter = Literal["human", "pipeline", "project_default"]
 """Ai đặt tỉ lệ của lượt ghi này; `none` không phải lựa chọn của người ghi (W24)."""
+
+ScaleEvidence = Literal["measured", "machineAccepted"]
+"""Căn cứ của tỉ lệ người gửi (ML-ACC-R10 K4): đưa kích thước thật, hay chấp nhận số máy (không nâng độ tin)."""
 
 _RANK: Final[Mapping[str, int]] = {"human": 3, "pipeline": 2, "project_default": 1, "none": 0}
 """Hạng nguồn tỉ lệ: nguồn hạng thấp không đè được tỉ lệ của nguồn hạng cao (K19)."""
@@ -132,6 +137,7 @@ class LayerWrite:
     """Thân một lượt ghi. `dimensions`/`axes`: thay nguyên danh sách; `None` = giữ như cũ.
 
     `axes` và `origin` (gốc toạ độ mm) là dữ liệu màn Trục (G4b-17), chỉ người gửi qua #35.
+    `scale_evidence` (K4): `None` = `measured` (thân cũ); `machineAccepted` chỉ có nghĩa khi người đặt tỉ lệ.
     """
 
     layer: SpatialLayer | None
@@ -139,6 +145,7 @@ class LayerWrite:
     dimensions: tuple[Dimension, ...] | None = None
     axes: tuple[Axis, ...] | None = None
     origin: Point | None = None
+    scale_evidence: ScaleEvidence | None = None
 
 
 @dataclass(frozen=True)
@@ -172,8 +179,9 @@ class _Request:
 class _Scale:
     """Tỉ lệ đích của lượt ghi; `factor` khác `None` nghĩa là tỉ lệ đổi và lớp phải tính lại.
 
-    `include_reviewed`: tỉ lệ cũ chỉ là đoán (`scale_status` = `unresolved`), nên co giãn cả
-    mục đã duyệt — người dùng duyệt hình dạng theo pixel, không duyệt số mm của tỉ lệ tạm (H4).
+    `include_reviewed`: tỉ lệ cũ chỉ là đoán (`scale_status` = `unresolved`, hay số máy người chỉ chấp nhận),
+    nên co giãn cả mục đã duyệt — người dùng duyệt hình dạng theo pixel, không duyệt số mm của tỉ lệ tạm (H4).
+    `accepted`: ảnh chụp căn cứ máy khi tỉ lệ `human` này là chấp nhận số máy (K4); `None` = đo thật / không phải người.
     """
 
     value: Decimal | None
@@ -181,6 +189,7 @@ class _Scale:
     page_key: str | None
     factor: tuple[float, float] | None
     include_reviewed: bool
+    accepted: ScaleAcceptance | None = None
 
 
 @dataclass(frozen=True)
@@ -219,6 +228,8 @@ def body_sha256(body: LayerWrite) -> str:
         payload["axes"] = [_wire(item) for item in body.axes]
     if body.origin is not None:
         payload["origin"] = _wire(body.origin)
+    if body.scale_evidence is not None:
+        payload["scaleEvidence"] = body.scale_evidence
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return sha256(canonical.encode()).hexdigest()
 
@@ -400,7 +411,7 @@ async def _attempt(db: AsyncSession, request: _Request) -> WriteResult | None:
         (*current.layer.entities(), *current.dimensions, *current.axes), (*nxt.layer.entities(), *dimensions, *axes)
     ):
         raise FORBIDDEN.error()
-    document = document_to_json(nxt.layer, axes, dimensions, origin)
+    document = document_to_json(nxt.layer, axes, dimensions, origin, scale.accepted)
     if _unchanged(current, document, scale):
         return WriteResult(current.revision, current.layer, applied=False)
     return await _commit(
@@ -460,13 +471,18 @@ async def _target_scale(db: AsyncSession, request: _Request, current: FloorDocum
     (BENCH3D-27): chúng quy về tỉ lệ mới, còn mục đã duyệt giữ nguyên mm (K21, HOP-DONG-MOI §4). Tỉ lệ mới chỉ là
     `project_default` thì không phải số đo: nền giữ nguyên, FE đã báo đỏ theo `scaleStatus`. Cùng tệp thì
     `upsert_drawing` đã chuyển khoá nên không vào nhánh này.
+
+    Cờ chấp nhận số máy (K4) đi theo **lần đặt** tỉ lệ: không đặt (thiếu tỉ lệ, bị hạng chặn) → giữ ảnh chụp cũ;
+    đặt → ảnh chụp mới khi người gửi `machineAccepted`, còn lại xoá (đo thật, pipeline, `project_default`).
     """
     other_page = (
         request.merge is not None and current.scale_page_key is not None and current.scale_page_key != request.page_key
     )
     rank = 0 if other_page else _RANK[current.scale_source]
     target = request.body.scale_mm_per_px
-    provisional = not other_page and scale_status(current.scale_source) == "unresolved"
+    provisional = not other_page and (
+        scale_status(current.scale_source) == "unresolved" or current.scale_accepted is not None
+    )
     if target is None or _RANK[request.scale_source] < rank:
         return _Scale(
             current.scale_mm_per_px,
@@ -474,6 +490,7 @@ async def _target_scale(db: AsyncSession, request: _Request, current: FloorDocum
             current.scale_page_key,
             factor=None,
             include_reviewed=provisional,
+            accepted=current.scale_accepted,
         )
     previous = current.scale_mm_per_px
     unmeasured = other_page and request.scale_source == "project_default"
@@ -481,7 +498,22 @@ async def _target_scale(db: AsyncSession, request: _Request, current: FloorDocum
     # hoàn tác bằng phiên bản "trước khi ghi kết quả AI". Thêm phép đặt khớp hai trang nếu người dùng hay gặp ca này.
     factor = None if unmeasured or previous is None or previous == target else (float(previous), float(target))
     page_key = await _page_of(db, request, current)
-    return _Scale(target, request.scale_source, page_key, factor=factor, include_reviewed=provisional)
+    accepted = await _acceptance(db, request, current)
+    return _Scale(
+        target, request.scale_source, page_key, factor=factor, include_reviewed=provisional, accepted=accepted
+    )
+
+
+async def _acceptance(db: AsyncSession, request: _Request, current: FloorDocument) -> ScaleAcceptance | None:
+    """Ảnh chụp căn cứ máy cho một lần người đặt tỉ lệ `machineAccepted` (K4); mọi lần đặt khác → `None`.
+
+    Chụp **lúc ghi** từ tóm tắt lượt mới nhất (`scale_snapshot_of`), để lượt chạy sau đó không nâng độ tin
+    của con số người đã chấp nhận. Một truy vấn, chỉ ở nhánh này.
+    """
+    if request.scale_source != "human" or request.body.scale_evidence != "machineAccepted":
+        return None
+    run = await latest_run_facts(db, request.floor_pk)
+    return scale_snapshot_of(current.scale_source, None if run is None else run.quality_summary)
 
 
 async def _page_of(db: AsyncSession, request: _Request, current: FloorDocument) -> str | None:
@@ -609,9 +641,10 @@ def _drop_missing_refs(dimensions: tuple[Dimension, ...], live: frozenset[str]) 
 
 
 def _unchanged(current: FloorDocument, document: Mapping[str, object], scale: _Scale) -> bool:
-    """Bước 10: jsonb, tỉ lệ, nguồn và trang đều như cũ → không `UPDATE`, không nhật ký, không đếm."""
+    """Bước 10: jsonb (kể cả cờ chấp nhận K4), tỉ lệ, nguồn và trang đều như cũ → không `UPDATE`, nhật ký, đếm."""
     return (
-        document == document_to_json(current.layer, current.axes, current.dimensions, current.origin)
+        document
+        == document_to_json(current.layer, current.axes, current.dimensions, current.origin, current.scale_accepted)
         and scale.value == current.scale_mm_per_px
         and scale.source == current.scale_source
         and scale.page_key == current.scale_page_key

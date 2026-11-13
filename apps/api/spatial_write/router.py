@@ -67,6 +67,7 @@ async def spatial_write_layer(
             dimensions=None if body.body.dimensions is None else tuple(body.body.dimensions),
             axes=None if body.body.axes is None else tuple(body.body.axes),
             origin=body.body.origin,
+            scale_evidence=body.body.scale_evidence,
         ),
         actor_id=access.principal.user_id,
         actor_name=await _actor_name(db, access.principal.user_id),

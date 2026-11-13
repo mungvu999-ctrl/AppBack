@@ -313,9 +313,10 @@ class FloorLayerDocumentOut(WireModel):
     scale_state: ScaleState | None = None
     """Độ tin của tỉ lệ (ML-ACC-R9); vắng khi tầng chưa có tỉ lệ. Khoá tuỳ chọn, `scaleStatus` giữ nguyên nghĩa."""
     scale_reasons: tuple[str, ...] | None = None
-    """Mã căn cứ của `scaleState`: nguồn (`chain|paired|note|door|wallThickness|projectDefault|human`...) rồi mã nghi
+    """Mã căn cứ của `scaleState`: nguồn (`chain|paired|note|door|wallThickness|projectDefault`...) rồi mã nghi
     vấn của `quality_summary.scaleChecks` (`sourceConflict`, `anisotropic`, `estimateSpread`); `pageChanged`,
-    `basisUnknown` khi mất căn cứ. Không khai `Literal`: mã lạ FE hiện câu chung."""
+    `basisUnknown` khi mất căn cứ. `[]` khi `userCalibrated` (người đặt, không có mã).
+    Không khai `Literal`: mã lạ FE hiện câu chung."""
     source_dpi: Annotated[float, Field(gt=0)] | None = None
     """DPI của trang pipeline đã dựng (PDF biết khổ giấy), `null` với ảnh raster; FE đổi `1:N` → mm/px (U01)."""
     scale_source: Literal["pipeline", "project_default"] | None = None

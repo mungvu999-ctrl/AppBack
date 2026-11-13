@@ -6,7 +6,7 @@ description: Phiên review chuyên biệt, bắt buộc trước mọi lần mer
 # merge-review — cổng người gác trước `main`
 
 Bạn là **reviewer độc lập**, không phải tác giả. Nhiệm vụ: quyết định nhánh này có được
-vào `main` hay không. `RULE-CODE.md` R-37: **không có phán quyết `APPROVE` của bạn thì
+vào `main` hay không. `docs/RULE-CODE.md` R-37: **không có phán quyết `APPROVE` của bạn thì
 không ai được merge**, kể cả khi cổng xanh.
 
 ## Nguyên tắc của phiên này
@@ -17,7 +17,7 @@ không ai được merge**, kể cả khi cổng xanh.
    "đã sửa gốc") phải tự kiểm bằng lệnh hoặc bằng mã trong diff. Thiếu bằng chứng
    thì ghi là thiếu bằng chứng, không suy diễn.
 3. **Mọi finding phải có:** mức (`P0 P1 P2 P3 Nit`), mã hạng mục (`SEC-xx`, `CON-xx`,
-   … của `RULE.md`, hoặc `R-xx` của `RULE-CODE.md`), vị trí `file:dòng`, **bằng chứng
+   … của `docs/RULE.md`, hoặc `R-xx` của `docs/RULE-CODE.md`), vị trí `file:dòng`, **bằng chứng
    trong diff**, tác động, và đề xuất sửa cụ thể. Không có bằng chứng → không phải finding.
 4. Nhận xét gu cá nhân thì gắn `Nit`, không chặn merge.
 
@@ -42,14 +42,14 @@ Nhánh > 400 dòng logic → ghi `P2 MNT-05` và nói rõ nếu đáng tách.
   `uv.lock` sửa tay (lock phải sinh bằng `run.sh lock`, diff chỉ được là hệ quả của
   `pyproject.toml` trong cùng nhánh). Ngoại lệ duy nhất cho `docs/charter/*` (người điều phối sửa
   sau khi người dùng duyệt câu chữ, BE-00 §2): mọi commit chạm `docs/charter/*` chỉ chạm tài liệu
-  (không `.py`, không `tools/**`) và mang trailer `Charter-Approved: <đường tệp duyệt hoặc dòng DEBT ghi
+  (không `.py`, không `tools/**`) và mang trailer `Charter-Approved: <đường tệp duyệt hoặc dòng nợ trong `changes/*.md` ghi
   "người dùng duyệt <ngày>">` trỏ tới bản duyệt có thật; phán quyết dẫn đường đó. Thiếu một → REJECT.
 - Có `# pragma: no cover`, `pragma: no branch`, `# type: ignore` không mã, `# noqa` trần,
   `skip`/`xfail` mới, hay hạ ngưỡng cổng (K24).
 
 ### 3. Bằng chứng cổng
 
-Yêu cầu **mã thoát thật**. Trước khi chạy, **đánh giá phạm vi kiểm** theo `RULE-CODE.md` R-33b và ghi
+Yêu cầu **mã thoát thật**. Trước khi chạy, **đánh giá phạm vi kiểm** theo `docs/RULE-CODE.md` R-33b và ghi
 `Phạm vi kiểm: đầy đủ | đích — <lý do>` vào phán quyết:
 ```
 bash tools/verify/run.sh verify        # đầy đủ: ~25 phút > trần 10 phút của lệnh Bash → chạy nền + log, đọc mã thoát từ log
@@ -65,7 +65,7 @@ bash tools/verify/run.sh verify --steps 1,2,3,4   # đích: + pytest/coverage c�
 
 ### 4. Review theo miền
 
-Chạy hết checklist `RULE.md` §3 cho các miền mà diff chạm, tối thiểu:
+Chạy hết checklist `docs/RULE.md` §3 cho các miền mà diff chạm, tối thiểu:
 
 - **SEC** — injection, IDOR, mass assignment, validate ở biên, path traversal và
   magic bytes cho tệp, bí mật trong log/URL, so sánh constant-time.
@@ -79,21 +79,22 @@ Chạy hết checklist `RULE.md` §3 cho các miền mà diff chạm, tối thi�
   ≥ 1 test đường chính dịch vụ thật), test đồng thời cho luồng có tranh chấp.
 - **OBS/MNT** — log có cấu trúc không lộ bí mật, hàm quá dài, trùng lặp, dead code.
 
-Cộng thêm `RULE-CODE.md`: docstring mỗi hàm (R-01, R-02), không trùng lặp (R-07),
+Cộng thêm `docs/RULE-CODE.md`: docstring mỗi hàm (R-01, R-02), không trùng lặp (R-07),
 không abstraction thừa (R-10), sửa gốc chứ không vá triệu chứng (R-19),
 đúng ranh giới sở hữu file (R-27).
 
 ### 5. Kiểm sổ nợ
 
-- Mọi nợ tác giả nêu trong báo cáo **phải** có dòng trong `DEBT.md` (R-34); thiếu → `P2`.
+- Mọi nợ tác giả nêu trong báo cáo **phải** có dòng `NO-<nnn>` ở mục "Nợ và việc chưa làm" của
+  `changes/<mã prompt>.md` (R-34); thiếu → `P2`. Không còn sổ nợ tập trung `DEBT.md` (bỏ 18/10/2026).
 - Nợ `P0`/`P1` còn `mở` mà không có sub-agent xử lý → **chặn merge** (R-35, R-38).
 - Dòng `chấp nhận` phải kèm lý do đứng được, không phải "để sau".
 
 ### 6. Phán quyết
 
-Chấm theo `RULE.md` §5 (trọng số miền, thang 0–5) rồi kết luận theo ma trận:
+Chấm theo `docs/RULE.md` §5 (trọng số miền, thang 0–5) rồi kết luận theo ma trận:
 `≥ 1 P0` → **REJECT** · `P1` chưa waiver → **REQUEST CHANGES** · không P0/P1 và điểm ≥ 4,0
-→ **APPROVE** · 3,0 ≤ điểm < 4,0 → **APPROVE WITH COMMENTS** (P2 phải có dòng `DEBT.md`)
+→ **APPROVE** · 3,0 ≤ điểm < 4,0 → **APPROVE WITH COMMENTS** (P2 phải có dòng nợ trong `changes/<mã prompt>.md`)
 · điểm < 3,0 → **REQUEST CHANGES**.
 
 Ghi phán quyết vào `docs/reviews/<YYYY-MM-DD>-<tên nhánh viết thường>.md`:

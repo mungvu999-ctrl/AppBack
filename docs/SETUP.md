@@ -2,8 +2,8 @@
 
 Dành cho lập trình viên mới hay agent mới cần dựng máy và chạy được mọi thứ. Nguồn sự thật là mã và
 tài liệu được trích ở cuối từng dòng (`tệp:dòng`). Chỗ nào chưa được kiểm thì ghi **(chưa kiểm)**.
-Luật viết mã không nằm ở đây: AppBack xem `CLAUDE.md`, `RULE-CODE.md`, `docs/charter/*`; AppFront xem
-`CLAUDE.md`, `RULE.md` của repo đó.
+Luật viết mã không nằm ở đây: AppBack xem `CLAUDE.md`, `docs/RULE-CODE.md`, `docs/charter/*`; AppFront xem
+`CLAUDE.md`, `docs/RULE.md` của repo đó.
 
 ## 1. Tổng quan
 
@@ -183,7 +183,7 @@ Bước (`BE-00.md:464-474`, `tools/verify/steps.py:301-324`):
 - Mount: **toàn bộ checkout** → `/src` (chỉ đọc), rồi `cp -r /src/. /tmp/w/` và `chmod 644` (`run.sh:85`, `verify.yml:17`, `tools/verify/in_container.sh:13-14`).
 - Thời gian: bước 5 đầy đủ ~505 s (8383 test, `-n 6`, đo 2026-10-05) (`ENV.md:69`).
 - Trước lượt verify đầu của một prompt: tạo `changes/<mã>.md` 3–10 dòng (`CLAUDE.md:64-67`).
-- Phạm vi "đầy đủ" hay "đích" theo `RULE-CODE.md:68` (R-33b).
+- Phạm vi "đầy đủ" hay "đích" theo `docs/RULE-CODE.md:68` (R-33b).
 
 ### 5.2 AppFront
 
@@ -243,16 +243,16 @@ Trace/báo cáo chứa cookie phiên — không đính vào báo cáo (`e2e/full
 
 | Mục | AppBack | Nguồn |
 |---|---|---|
-| Nhánh | `<loại>/<mã viết thường>-<mô tả>`, loại ∈ feature fix chore docs refactor test; không viết thẳng lên `main` | `BE-00.md:539`, `RULE-CODE.md:76` |
-| Commit | `<type>(<scope>): <tóm tắt tiếng Anh>` ≤ 72 ký tự; trailer `Prompt: <mã>` (FIX thêm `Fix: FIX-<nnn>`) ở đoạn cuối, một dòng trống trước, không dòng trống bên trong; không `--no-verify` | `BE-00.md:535-538`, `RULE-CODE.md:77`, `.githooks/commit-msg` |
-| Review | `/merge-review` ở **phiên riêng**; phán quyết ở `docs/reviews/<ngày>-<nhánh>.md`; không `APPROVE` thì không merge | `RULE-CODE.md:78`, `.claude/skills/merge-review/` |
-| Gộp | một prompt → squash; nhiều prompt → `--no-ff` (giữ mọi trailer) | `RULE-CODE.md:76` |
-| Ngoại lệ thẳng lên `main` | chỉ dòng `DEBT.md` và `docs/reviews/*` | `RULE-CODE.md:76` |
-| Nợ | mỗi nợ một dòng `NO-<nnn>` trong `DEBT.md` trước khi phiên kết thúc; không xoá dòng | `RULE-CODE.md:74-75`, `CLAUDE.md:69-75` |
+| Nhánh | `<loại>/<mã viết thường>-<mô tả>`, loại ∈ feature fix chore docs refactor test; không viết thẳng lên `main` | `BE-00.md:539`, `docs/RULE-CODE.md:76` |
+| Commit | `<type>(<scope>): <tóm tắt tiếng Anh>` ≤ 72 ký tự; trailer `Prompt: <mã>` (FIX thêm `Fix: FIX-<nnn>`) ở đoạn cuối, một dòng trống trước, không dòng trống bên trong; không `--no-verify` | `BE-00.md:535-538`, `docs/RULE-CODE.md:77`, `.githooks/commit-msg` |
+| Review | `/merge-review` ở **phiên riêng**; phán quyết ở `docs/reviews/<ngày>-<nhánh>.md`; không `APPROVE` thì không merge | `docs/RULE-CODE.md:78`, `.claude/skills/merge-review/` |
+| Gộp | một prompt → squash; nhiều prompt → `--no-ff` (giữ mọi trailer) | `docs/RULE-CODE.md:76` |
+| Ngoại lệ thẳng lên `main` | chỉ `docs/reviews/*` | `docs/RULE-CODE.md:76` |
+| Nợ | mỗi nợ một dòng `NO-<nnn>` ở mục "Nợ và việc chưa làm" của `changes/<mã prompt>.md` trước khi phiên kết thúc; không xoá dòng (sổ tập trung `DEBT.md` bỏ 18/10/2026, `6b2e4d52`) | `docs/RULE-CODE.md:74-75`, `CLAUDE.md:69-75` |
 | Không commit | `/openapi.json` gốc, `.coverage`, `contract-samples/**` (trừ khi prompt đòi), `.cache/`, `backend/` | `BE-00.md:541`, `.gitignore` |
 
 AppFront: commit cũng theo dạng `<type>(<scope>): …` và vào `master` qua pull request trên GitHub (thấy trong
-`git log master`); luật chi tiết **(chưa kiểm)** — xem `AppFront/RULE.md`, `AppFront/CLAUDE.md`.
+`git log master`); luật chi tiết **(chưa kiểm)** — xem `AppFront/docs/RULE.md`, `AppFront/CLAUDE.md`.
 
 ## 7. Sự cố thường gặp
 
@@ -262,9 +262,9 @@ AppFront: commit cũng theo dạng `<type>(<scope>): …` và vào `master` qua 
 | 2 | Chạy riêng `--steps 7` ra **0 mẫu golden** / H1 báo thiếu mẫu 2xx | Golden do test bước 5 ghi vào thư mục mới mỗi lượt (`verify.yml:31`) | `bash tools/verify/run.sh verify --steps 5,7` |
 | 3 | Bước chép đầu container treo rất lâu (đã thấy > 25 phút) | `run.sh` mount **cả checkout** và `cp -r /src/. /tmp/w/` (`in_container.sh:13`), kể cả thư mục bị `.gitignore` như `backend/`. Mỗi `backend/dieu-phoi/chay/F-14/web-ctx*` ~81 MB (`chuoi.sh` tự tạo lại khi cần) | Xoá `web-ctx*` trước khi verify. Đường dài quá giới hạn Windows → PowerShell: `Remove-Item -LiteralPath "\\?\F:\App\AppBack\backend\dieu-phoi\chay\F-14\web-ctx-<sha>" -Recurse -Force` |
 | 4 | `docker` báo không nối được daemon sau khi máy ngủ | Docker Desktop chết | `docker info --format '{{.ServerVersion}}'` phải in version trước khi chạy gì; không thì khởi động lại Docker Desktop |
-| 5 | Verify chậm bất thường, OOM; e2e trang trắng, `net::ERR_NO_BUFFER_SPACE`, bài đỏ ở hạn first paint | Hai cổng AppBack đầy đủ cùng lúc vượt RAM VM (`ENV.md:69`); e2e chồng vitest/verify của phiên khác làm Windows cạn bộ đệm socket cho request module Vite (`DEBT.md` NO-408) | Một verify AppBack đầy đủ trên cả máy; tối đa 2 `pnpm verify`, tổng 4 (`ENV.md:65-77`); không chạy e2e chồng vitest/verify. Khoá `e2e.lock` (`mkdir` lấy, `rmdir` trả, kể cả khi hỏng) là **quy ước điều phối**, không có trong mã, và chỉ chặn e2e với e2e (`backend/dieu-phoi/chay/DEBT-03/chung.md:36-39`). Lệnh nền bằng `&` có thể sống sót sau khi shell thoát và chạy trùng — kiểm tiến trình còn sống trước khi chạy lại |
+| 5 | Verify chậm bất thường, OOM; e2e trang trắng, `net::ERR_NO_BUFFER_SPACE`, bài đỏ ở hạn first paint | Hai cổng AppBack đầy đủ cùng lúc vượt RAM VM (`ENV.md:69`); e2e chồng vitest/verify của phiên khác làm Windows cạn bộ đệm socket cho request module Vite (nợ NO-408) | Một verify AppBack đầy đủ trên cả máy; tối đa 2 `pnpm verify`, tổng 4 (`ENV.md:65-77`); không chạy e2e chồng vitest/verify. Khoá `e2e.lock` (`mkdir` lấy, `rmdir` trả, kể cả khi hỏng) là **quy ước điều phối**, không có trong mã, và chỉ chặn e2e với e2e (`backend/dieu-phoi/chay/DEBT-03/chung.md:36-39`). Lệnh nền bằng `&` có thể sống sót sau khi shell thoát và chạy trùng — kiểm tiến trình còn sống trước khi chạy lại |
 | 6 | `git worktree remove` / xoá thư mục báo `Filename too long` | Đường > 260 ký tự trên Windows | `git worktree remove <đường>` rồi xoá phần còn lại bằng tiền tố `\\?\` như mục 3; **(chưa kiểm)** `git config core.longpaths true` có tránh được không (máy hiện chưa đặt) |
-| 7 | Test đỏ thất thường, lượt sau xanh | Chập chờn đã biết: NO-403 (đã sửa FIX-491, phần dư NO-412), NO-404, NO-410 — BE dưới tải `-n`; NO-409 — `e2e/pascal-viewer.spec.ts` B-3 (`DEBT.md:423-432`) | Đối chiếu id trong `DEBT.md` trước khi kết luận lỗi mới; không nới assert, không retry để giấu (`RULE-CODE.md:75`) |
+| 7 | Test đỏ thất thường, lượt sau xanh | Chập chờn đã biết: NO-403 (đã sửa FIX-491, phần dư NO-412), NO-404, NO-410 — BE dưới tải `-n`; NO-409 — `e2e/pascal-viewer.spec.ts` B-3 | Đối chiếu id trong `changes/*.md` (`git grep NO-4xx -- changes/`) trước khi kết luận lỗi mới; không nới assert, không retry để giấu (`docs/RULE-CODE.md:75`) |
 | 8 | Commit kéo theo tệp lạ | Index của checkout `main` có thể chứa tệp phiên khác đã stage | Commit bằng pathspec: `git commit -F - -- <tệp>`; không `git add -A`; không `git stash` khi có nhiều worktree |
 | 9 | `POST /api/auth/*` → 403 `ORIGIN_MISMATCH` | Origin trình duyệt ≠ `PUBLIC_BASE_URL` (hay dùng `127.0.0.1` thay `localhost`) | Đổi cổng thì đổi **cùng nhau** `WEB_HTTP_PORT`, `PUBLIC_BASE_URL`, `E2E_FULLSTACK_BASE_URL` (+ `POSTGRES_HOST_PORT`) (`e2e/fullstack/README.md:28-35`) |
 | 10 | `docker run`/`orca` nhận đường `C:/Program Files/Git/...` | MSYS tự đổi tham số bắt đầu bằng `/` | `export MSYS_NO_PATHCONV=1` (`ENV.md:82`; `run.sh:8` tự đặt) |

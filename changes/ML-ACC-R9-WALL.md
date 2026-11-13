@@ -1,0 +1,22 @@
+# ML-ACC-R9-WALL — hồ sơ review: bỏ nét ký hiệu cửa (cung quạt, cánh) khỏi hình học tường (v5)
+
+- Mục đích: nét cánh và cung quạt của ký hiệu cửa trên bản vẽ bị vectơ hoá thành "tường giả". Đổi này đọc quạt cửa (cánh + cung) trên mực mảnh của trang, rồi bỏ các nét tường nằm trong quạt **trước** khi gắn ô mở (bước 3b → 3c). Tường thật nối ra ngoài vùng quạt (vách tủ, tường dày) được giữ.
+- Thay đổi (nền `b95e4d02`, chỉ 2 tệp): `apps/worker/pipeline_build/geometry.py` (+243/-3: `_wedge_hypotheses`, `_wedge_score`, `_read_wedge`, `_in_wedges`, `_symbol_of`, `_tied_outside`, `_drop_door_symbols`, `_symbol_closers`; đoạn khép phòng qua khoảng ô mở của cửa đã bỏ nét) và `apps/worker/pipeline_build/tests/test_door_symbols.py` (mới, 11 test). Không đụng detector/model, OCR, tỉ lệ, API/DB/hợp đồng, phụ thuộc. Cây kết quả giống hệt cây `5555f2c1` ở hai tệp này.
+- Bằng chứng (tập phát triển cvcfp 34 ảnh; v5 so nền; CI 95 % bootstrap theo ảnh; nhãn tâm AI; chấm số + xem mù AI lần hai):
+  - Tường giả từ ký hiệu / ảnh: -1,62 [-2,66; -0,75] (n=32); cvcfp_test 11 ảnh (báo riêng): -1,50 [-3,00; -0,40].
+  - Phòng mất+gộp / ảnh (hạt chắc): -0,06 [-0,15; +0,00], giảm 2 ảnh, tăng 0; cvcfp_test +0,00.
+  - IoU tường (nhãn v3): +0,0067 [+0,0032; +0,0106]; cvcfp_test +0,0077.
+  - Tường thật mất / nét quạt bỏ: 702 / 17779 px = 3,9 % (cvcfp_test 4,1 %); ngưỡng <= 10 %.
+  - Xem mù: mã cửa/vách bị cắt riêng v5 = 0/51 vùng v5 bỏ (ngưỡng <= 10 %).
+  - Crash 0/0 (cis-429, SL0801 hết crash ở cả nền lẫn v5 nhờ #65); NO_WALLS cis-188, cis-412 như nhau. Thời gian build 0,84 lần nền (ABBA).
+  - Nhóm khác (bench3d/cis/vn, chặn): 0 nét bị bỏ, IoU +0,0000, phòng +0,00.
+  - Nguồn (ngoài repo): `docs/ml-accuracy-research-next/evidence/R9-wall-ket-qua.txt`, `F:/runs/mlr-next/r9/w/eval/`.
+- GIỚI HẠN:
+  - Chỉ xử lý rõ `cua_so_1_canh` (bỏ 44/66 vùng, 45 nét; mất tường thật 605 px, 30 vùng >0, 9 vùng >=20 px; phần lớn là lệch mép 1-2 px).
+  - `cua_don`: bỏ 6/282 vùng, còn 63 tường giả (gần như chưa xử lý). `cua_so_phap`: 0/76. `cua_so_thuong` 0/136, `cua_lua` 1/37: chưa xử lý. `cua_doi`: 2 vùng, mẫu quá nhỏ.
+  - Kiểm riêng: 1 ảnh tường thật mất > nét bỏ (IIa_GL0401, 55/26 px, lệch mép).
+  - Chỉ có kết luận trên tập phát triển cvcfp 34 và nhãn tâm AI (không phải nhãn người); cvcfp_test 11 ảnh chưa xem mù riêng, không đủ mẫu để CI hẹp. Chưa đo ngoài cvcfp (nhóm khác chỉ chứng minh không đổi, không phải có lợi).
+- Tái lập: `docs/ml-accuracy-research-next/scripts/r9_w_cases.py v5:base`, `r9_w_pipe.sh`/`r9_w_run.sh` (chạy pipeline), `r9_w_eval.py` (layer/report/rooms/summary), `r9_w_loai.py` (theo loại), `r9_w_blind_kit.py` (xem mù). Đầu ra `F:/runs/mlr-next/r9/w/out/{base,v5}`.
+- Rủi ro: vừa; giả thuyết quạt dựa vào góc cánh và mực mảnh nên có thể bỏ nhầm tường mảnh trùng quạt (đã đo 3,9 %). Test: `pytest apps/worker/pipeline_build` qua `run.sh shell`.
+- Nợ: cửa đơn / cửa sổ pháp / cửa lùa chưa xử lý (vòng sau). Không chạy cổng đầy đủ tại chỗ (CI khi mở PR).
+- Sau review (P2 #1, P3 #3): nhánh không có trang (`page=None`) giữ hết nét như main, bỏ luật v2 (`_swing_zone`, `_touches`) chưa duyệt; thêm test 3 ca có trang. 5 ảnh cvcfp có trang cho kết quả y hệt `out/v5` (`F:/runs/mlr-next/r9/w/fix-p2.txt`).

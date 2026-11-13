@@ -1,8 +1,8 @@
 # AppBack — hướng dẫn cho worker
 
 **Đọc trước khi viết một dòng mã, theo đúng thứ tự:**
-0. `RULE-CODE.md` — luật viết mã bắt buộc cho mọi phiên (docstring mỗi hàm, không
-   trùng lặp, phủ hết case, tối ưu ngay lúc viết). `RULE.md` là bảng chấm review sau đó.
+0. `docs/RULE-CODE.md` — luật viết mã bắt buộc cho mọi phiên (docstring mỗi hàm, không
+   trùng lặp, phủ hết case, tối ưu ngay lúc viết). `docs/RULE.md` là bảng chấm review sau đó.
 1. `docs/charter/BE-00.md` — hiến chương: stack, ranh giới import, quy ước dây W1–W24, lỗi, xác thực, migration, việc nền, cổng verify.
 2. `docs/charter/BE-KFM.md` — lỗi agent hay mắc (K01–K34); khối [9] của prompt trích lại phần liên quan.
 3. `docs/charter/ENV.md` — môi trường đã đo (mount, biến môi trường, trần chạy song song).
@@ -21,7 +21,7 @@ bash tools/verify/run.sh <việc>
 
 | Việc | Làm gì | Ai chạy |
 |---|---|---|
-| `verify [--steps 1,2,4]` | 8 bước (BE-00 §12) trong container Linux. **Một lượt một lúc trên cả máy**: lượt sau tự xếp hàng ở khoá cổng (`tools/verify/gate_lock.sh`, in "khoá cổng: chờ…") — ~8,4 GiB/lượt, hai lượt chồng từng làm treo Docker. **Không tự viết vòng chờ** `docker ps \| grep verify`: cứ gọi `run.sh`, nó tự chờ đúng lượt (PERF-11) | trước khi báo xong; đầy đủ hay chỉ bước/test đích theo đánh giá phạm vi kiểm (`RULE-CODE.md` R-33b) |
+| `verify [--steps 1,2,4]` | 8 bước (BE-00 §12) trong container Linux. **Một lượt một lúc trên cả máy**: lượt sau tự xếp hàng ở khoá cổng (`tools/verify/gate_lock.sh`, in "khoá cổng: chờ…") — ~8,4 GiB/lượt, hai lượt chồng từng làm treo Docker. **Không tự viết vòng chờ** `docker ps \| grep verify`: cứ gọi `run.sh`, nó tự chờ đúng lượt (PERF-11) | trước khi báo xong; đầy đủ hay chỉ bước/test đích theo đánh giá phạm vi kiểm (`docs/RULE-CODE.md` R-33b) |
 | `verify --fast` | **cổng nhanh**: ruff, lint-imports, mypy cache ấm, pytest các **tệp test bị ảnh hưởng** so với `main` (đồ thị import + fixture, PERF-04), độ phủ đơn vị bị chạm, bước 6/7/8 chỉ khi đầu vào đổi, không 5b | mỗi lần sửa; `verify` đầy đủ **chỉ trước merge** (PERF-03) |
 | `lock` | `uv lock` (không `--upgrade`), chép `uv.lock` ra worktree | worker khi thêm thư viện ngoài bảng BE-00 §13.1 |
 | `shell` | bash trong container, để gỡ lỗi (`run.sh shell < lệnh.sh` chạy không tương tác). `--fast` và `shell` giữ khoá cổng **dùng chung**: chạy cùng nhau được, không chạy cạnh cổng đầy đủ — đừng giữ shell tương tác lâu, nó chặn cổng của phiên khác | worker |
@@ -68,10 +68,13 @@ phối giao FIX cho đúng chủ (K27).
 Tạo `changes/<mã prompt>.md` (3–10 dòng) — các cổng có điều kiện đọc file
 này để biết bước nào "không áp dụng" (BE-00 §13.2, §12).
 
-## Nợ và merge (RULE-CODE.md §6)
+## Nợ và merge (`docs/RULE-CODE.md` §6)
 
-- Nợ phát hiện trong phiên → một dòng `NO-<nnn>` trong `DEBT.md` trước khi báo xong
-  (R-34). Xong task mà còn nợ mở → giao sub-agent tìm nguyên nhân gốc và sửa (R-35).
+- Nợ phát hiện trong phiên → một dòng `NO-<nnn>` ở mục "Nợ và việc chưa làm" của
+  `changes/<mã prompt>.md` trước khi báo xong (R-34). Không còn sổ nợ tập trung:
+  `DEBT.md` đã bỏ 18/10/2026 (`6b2e4d52`); mã kế tiếp =
+  `git grep -ohE 'NO-[0-9]+' -- changes/ | sort -t- -k2 -n | tail -1` cộng một.
+- Xong task mà còn nợ mở → giao sub-agent tìm nguyên nhân gốc và sửa (R-35).
 - Vào `main` **chỉ** qua nhánh + phiên review riêng: `/merge-review` (skill ở
   `.claude/skills/merge-review/`). Phán quyết lưu ở `docs/reviews/`. Không `APPROVE`
   thì không merge, kể cả khi cổng xanh (R-37).

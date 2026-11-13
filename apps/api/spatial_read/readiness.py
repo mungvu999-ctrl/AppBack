@@ -153,21 +153,32 @@ def scale_state_of(
     return "unresolved", reasons
 
 
-def _critical_checks(summary: Mapping[str, object]) -> tuple[str, ...]:
-    """Mã kiểm hình học critical của tóm tắt, theo `GEOMETRY_CHECK_ORDER`; lượt trước BENCH3D-09 → rỗng."""
+def _critical_checks(summary: Mapping[str, object]) -> tuple[str, ...] | None:
+    """Mã kiểm hình học critical của tóm tắt, theo `GEOMETRY_CHECK_ORDER`.
+
+    Vắng khoá / `null` → `()` (lượt trước BENCH3D-09, không có nghi vấn nào để báo).
+    Hỏng dạng (không phải danh sách chuỗi: chuỗi, số, dict, list lẫn phần tử khác chuỗi) → `None`:
+    lượt CÓ ghi nghi vấn nhưng ta không đọc được mã nào. Cùng luật với `scaleChecks` (ML-ACC-R10 #70) —
+    không đọc được thì coi như còn nghi vấn, không im lặng trả "ready".
+    """
     codes = summary.get("criticalChecks")
-    if not isinstance(codes, list):
+    if codes is None:
         return ()
+    if not isinstance(codes, list) or not all(isinstance(code, str) for code in codes):
+        return None
     known = [code for code in GEOMETRY_CHECK_ORDER if code in codes]
-    return (*known, *(code for code in codes if isinstance(code, str) and code not in GEOMETRY_CHECK_ORDER))
+    return (*known, *(code for code in codes if code not in GEOMETRY_CHECK_ORDER))
 
 
-def _integrity_critical(summary: Mapping[str, object], checks: tuple[str, ...]) -> bool:
-    """Còn lỗi toàn vẹn critical: `criticalCount` đếm cả kiểm hình học, trừ chúng ra; lượt cũ → theo `hasCritical`."""
+def _integrity_critical(summary: Mapping[str, object], checks: tuple[str, ...], *, trusted: bool) -> bool:
+    """Còn lỗi toàn vẹn critical: `criticalCount` đếm cả kiểm hình học, trừ chúng ra; lượt cũ → theo `hasCritical`.
+
+    `trusted=False` (mã kiểm hỏng dạng): không trừ được gì nên theo `hasCritical`, như lượt cũ.
+    """
     if summary.get("hasCritical") is not True:
         return False
     count = summary.get("criticalCount")
-    if "criticalChecks" not in summary or not isinstance(count, int):
+    if not trusted or "criticalChecks" not in summary or not isinstance(count, int):
         return True
     return count > len(checks)
 
@@ -187,6 +198,7 @@ def readiness_of(
     cũ, trước FIX-P0-08) không sinh `criticalIssues`; họ vắng trong `pinned` không sinh lý do.
     Kiểm hình học critical → `geometrySuspect` kèm `checks`; `criticalIssues` chỉ còn cho lỗi toàn vẹn.
     `scale_accepted` (K4): tỉ lệ `human` chấp nhận số máy vẫn báo `scaleUnresolved` khi ảnh chụp không `determined`.
+    `criticalChecks` hỏng dạng → vẫn `geometrySuspect` (không có `checks` để kèm), không bao giờ im lặng "ready".
     """
     reasons: list[ReadinessReason] = []
     summary = None if run is None else run.quality_summary
@@ -196,10 +208,11 @@ def readiness_of(
     checks: tuple[str, ...] = ()
     if run is not None and not level_reviewed(layer, scale_source):
         if summary is not None:
-            checks = _critical_checks(summary)
-            if _integrity_critical(summary, checks):
+            read = _critical_checks(summary)
+            checks = read or ()
+            if _integrity_critical(summary, checks, trusted=read is not None):
                 reasons.append("criticalIssues")
-            if checks:
+            if checks or read is None:
                 reasons.append("geometrySuspect")
         reasons.extend(
             reason for family, reason in _FALLBACK_REASONS if family in run.pinned and _is_classic(run.pinned[family])

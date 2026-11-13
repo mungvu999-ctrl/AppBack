@@ -15,6 +15,15 @@ from packages.domain.library.catalogue import CATALOGUE, LIBRARY_GROUPS, is_item
 
 MANIFEST: Final = Path(__file__).with_name("files.json")
 _SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
+_URL_RE: Final = re.compile(r"https?://[^\s\"'()<>;,]+")
+_TITLE_RE: Final = re.compile(r'"([^"]+)"')
+# Giấy phép có bản cố định; "CC-BY" không ghi bản (bản demo Blender) trỏ trang danh mục giấy phép CC.
+_LICENSE_URLS: Final = {
+    "CC-BY 4.0": "https://creativecommons.org/licenses/by/4.0/",
+    "CC-BY 3.0": "https://creativecommons.org/licenses/by/3.0/",
+    "CC-BY": "https://creativecommons.org/licenses/",
+}
+MODIFIED_NOTE: Final = "đã chỉnh sửa: chuyển đổi, chuẩn hoá tệp GLB"
 
 
 @dataclass(frozen=True)
@@ -31,7 +40,13 @@ class FileItem:
 
     @property
     def attribution(self) -> str:
-        """`"<ai> · <giấy phép>"`; không có tác giả thì suy từ nguồn, không suy được thì chỉ giấy phép."""
+        """Ghi công một dòng, các phần nối bằng `" · "`.
+
+        Mẫu CC BY (TASL, NO-437): `[“tên gốc”] · <ai> · <giấy phép> · [URL giấy phép] · <URL nguồn>… · đã chỉnh sửa …`
+        (manifest giữ sha của tệp đã chuẩn hoá nên mọi mẫu từ tệp đều đã chỉnh sửa).
+        Giấy phép khác: `"<ai> · <giấy phép>"`; không có tác giả thì suy từ nguồn, không suy được thì chỉ giấy phép.
+        Phần là URL thì FE hiện thành liên kết.
+        """
         if self.author:
             who = self.author
         elif "polyhaven.com" in self.source:
@@ -40,7 +55,18 @@ class FileItem:
             who = "Pascal"
         else:
             return self.license
-        return f"{who} · {self.license}"
+        if not self.license.startswith("CC-BY"):
+            return f"{who} · {self.license}"
+        title = _TITLE_RE.search(self.source)
+        parts = [
+            *([f"“{title.group(1)}”"] if title else []),
+            who,
+            self.license,
+            *([_LICENSE_URLS[self.license]] if self.license in _LICENSE_URLS else []),
+            *_URL_RE.findall(self.source),
+            MODIFIED_NOTE,
+        ]
+        return " · ".join(parts)
 
 
 def load_file_catalogue(path: Path = MANIFEST) -> tuple[FileItem, ...]:

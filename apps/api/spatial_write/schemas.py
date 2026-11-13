@@ -16,10 +16,11 @@ một tên; khác quy ước `…In`/`…Out` của các module ghi khác là c�
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Final, Self
 
-from pydantic import BeforeValidator, Field, model_validator
+from pydantic import BeforeValidator, Field, ValidationInfo, field_validator, model_validator
 
 from apps.api.core.wire import WireModel, WireRequest
 from apps.api.spatial_read.wire import SpatialLayerOut
+from apps.api.spatial_write.writer import ScaleEvidence
 from packages.domain.spatial import Axis, Dimension, Point, SpatialLayer
 
 SCALE_PLACES: Final = 6
@@ -62,6 +63,7 @@ class FloorLayerWriteBodySchema(WireRequest):
     """`body` của #35: lớp, tỉ lệ, kích thước, trục, gốc toạ độ — ít nhất một khoá (FE `refine` ≥ 1 khoá).
 
     `axes` thay nguyên danh sách trục như `dimensions`; `origin` là gốc toạ độ màn Trục (mm, G4b-17).
+    `scaleEvidence` (ML-ACC-R10 K4): căn cứ của tỉ lệ gửi kèm, vắng = `measured`; không có tỉ lệ thì 422.
     """
 
     layer: SpatialLayer | None = None
@@ -69,6 +71,15 @@ class FloorLayerWriteBodySchema(WireRequest):
     dimensions: list[Dimension] | None = None
     axes: list[Axis] | None = None
     origin: Point | None = None
+    scale_evidence: ScaleEvidence | None = None
+
+    @field_validator("scale_evidence")
+    @classmethod
+    def _evidence_needs_scale(cls, value: ScaleEvidence | None, info: ValidationInfo) -> ScaleEvidence | None:
+        """`scaleEvidence` nói về tỉ lệ gửi kèm: thân không có `scaleMillimetresPerPixel` → 422 `body.scaleEvidence`."""
+        if info.data.get("scale_millimetres_per_pixel") is None:
+            raise ValueError("scaleEvidence cần scaleMillimetresPerPixel")
+        return value
 
     @model_validator(mode="after")
     def _at_least_one_key(self) -> Self:

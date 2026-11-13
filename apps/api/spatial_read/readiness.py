@@ -4,7 +4,8 @@ Tính **lúc đọc**, không lưu: luật nằm một chỗ ở `readiness_of` 
 lấy bằng **một** truy vấn ở `latest_run_facts`. Lý do cấp lượt (`criticalIssues`,
 `fallback*Model`) tắt bằng chính `level_reviewed` của `Level.reviewed` — không thêm định nghĩa
 "đã kiểm" thứ hai. `scaleUnresolved` chỉ tắt khi tỉ lệ thật sự là `human` (đã chấm hạng theo
-trang, cùng nguồn với `scaleStatus`).
+trang, cùng nguồn với `scaleStatus`) và là số đo thật — tỉ lệ `human` chấp nhận số máy (ML-ACC-R10 K4) giữ độ tin
+của ảnh chụp căn cứ lúc chấp nhận (`scale_snapshot_of`), thêm mã `userAccepted`.
 
 Module này nhập được trong ngữ cảnh worker: không `fastapi`, không `starlette`.
 """
@@ -21,7 +22,7 @@ from apps.api.spatial_read.documents import ScaleSource
 from apps.api.spatial_read.wire import ReadinessOut, ReadinessReason, ScaleBasis, ScaleState
 from packages.db.models.drawings import PipelineRunRow
 from packages.db.models.pipeline_orchestrate import PipelineRunModelsRow
-from packages.domain.spatial import SpatialLayer
+from packages.domain.spatial import ScaleAcceptance, SpatialLayer
 from packages.ml_contracts.families import ModelFamily
 from packages.ml_contracts.payloads import ModelRef
 
@@ -67,17 +68,49 @@ def _is_classic(value: object) -> bool:
     return ModelRef.model_validate(value).is_classic
 
 
-def scale_basis_of(run: RunFacts | None, stored: ScaleSource, effective: ScaleSource) -> ScaleBasis | None:
-    """Gốc tỉ lệ cho `scaleBasis`: `human` khi tỉ lệ người đặt còn hiệu lực; tỉ lệ pipeline → gốc lượt mới nhất ghi.
+def _pipeline_basis(value: object) -> ScaleBasis | None:
+    """Một gốc của pipeline (`chain`…`default`); mọi giá trị khác (`human`, gốc lạ, không phải chuỗi) → `None`."""
+    return cast("ScaleBasis", value) if value in _PIPELINE_BASES else None
 
-    Tỉ lệ người đặt bị hạ hạng (trang đổi, `stored` vẫn `human`) không phải do lượt nào đo → vắng.
+
+def _checks_of(summary: Mapping[str, object]) -> tuple[str, ...] | None:
+    """`quality_summary.scaleChecks` thành bộ mã; vắng/`null` = `()`, hỏng dạng (không phải list chuỗi) = `None`."""
+    raw = summary.get("scaleChecks")
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or not all(isinstance(c, str) for c in raw):
+        return None
+    return tuple(raw)
+
+
+def scale_snapshot_of(stored: ScaleSource, summary: Mapping[str, object] | None) -> ScaleAcceptance:
+    """Ảnh chụp căn cứ của máy khi người dùng chấp nhận số máy (ML-ACC-R10 K4), lấy **lúc ghi**.
+
+    Tỉ lệ đang là `project_default` → gốc `default`; còn lại = gốc + `scaleChecks` của tóm tắt lượt mới nhất.
+    Chưa có lượt, gốc lạ hay `scaleChecks` hỏng dạng → `basis=None` (đọc ra `unresolved`/`basisUnknown`, như #70).
+    """
+    if stored == "project_default":
+        return ScaleAcceptance(basis="default")
+    basis = None if summary is None else _pipeline_basis(summary.get("scaleBasis"))
+    checks = None if summary is None else _checks_of(summary)
+    if basis is None or checks is None:
+        return ScaleAcceptance(basis=None)
+    return ScaleAcceptance(basis=basis, checks=checks)
+
+
+def scale_basis_of(
+    run: RunFacts | None, stored: ScaleSource, effective: ScaleSource, accepted: ScaleAcceptance | None = None
+) -> ScaleBasis | None:
+    """Gốc tỉ lệ cho `scaleBasis`: `human` khi tỉ lệ người đo còn hiệu lực; tỉ lệ pipeline → gốc lượt mới nhất ghi.
+
+    Tỉ lệ `human` chấp nhận số máy → gốc của ảnh chụp lúc chấp nhận (`None` thì vắng). Tỉ lệ người đặt bị hạ hạng
+    (trang đổi, `stored` vẫn `human`) không phải do lượt nào đo → vắng.
     """
     if effective == "human":
-        return "human"
+        return "human" if accepted is None else _pipeline_basis(accepted.basis)
     if stored not in ("pipeline", "project_default") or run is None or run.quality_summary is None:
         return None
-    basis = run.quality_summary.get("scaleBasis")
-    return cast("ScaleBasis", basis) if basis in _PIPELINE_BASES else None
+    return _pipeline_basis(run.quality_summary.get("scaleBasis"))
 
 
 def scale_state_of(
@@ -85,15 +118,22 @@ def scale_state_of(
     stored: ScaleSource,
     basis: ScaleBasis | None,
     summary: Mapping[str, object] | None,
+    accepted: ScaleAcceptance | None = None,
 ) -> tuple[ScaleState | None, tuple[str, ...]]:
     """Độ tin của tỉ lệ (ML-ACC-R9): một luật cho `scaleState`/`scaleReasons` và cho `scaleUnresolved` của readiness.
 
     `None` khi tầng chưa có tỉ lệ. Lý do = gốc, rồi tên khoá `quality_summary.scaleChecks` theo thứ tự lượt ghi.
     `scaleChecks` hỏng dạng (không phải danh sách chuỗi: chuỗi, số, dict, list lẫn phần tử khác chuỗi) → `unresolved`
     với `basisUnknown`, không bao giờ `determined`/`estimated` (ML-ACC-R10); vắng khoá, `null`, `[]` = hợp lệ.
+    Tỉ lệ `human` chấp nhận số máy (`accepted`, K4) → đúng độ tin của máy theo ảnh chụp lúc chấp nhận, thêm
+    `userAccepted`; không bao giờ `userCalibrated`, không đọc lượt chạy sau đó (`summary` bỏ qua).
     """
     if effective == "human":
-        return "userCalibrated", ()
+        if accepted is None:
+            return "userCalibrated", ()
+        machine = {"scaleChecks": list(accepted.checks)}
+        state, reasons = scale_state_of("pipeline", "pipeline", _pipeline_basis(accepted.basis), machine)
+        return state, (*reasons, "userAccepted")
     if effective == "none":
         return None, ()
     if effective == "project_default" or basis == "default":
@@ -102,12 +142,9 @@ def scale_state_of(
         return "unresolved", ("pageChanged",)
     if basis is None or basis == "human" or summary is None:
         return "unresolved", ("basisUnknown",)
-    raw = summary.get("scaleChecks")
-    if raw is None:
-        raw = []
-    if not isinstance(raw, list) or not all(isinstance(c, str) for c in raw):
+    checks = _checks_of(summary)
+    if checks is None:
         return "unresolved", ("basisUnknown",)
-    checks = tuple(raw)
     reasons = (basis, *checks)
     if basis in _MEASURED_BASES:
         return ("unresolved" if checks else "determined"), reasons
@@ -141,6 +178,7 @@ def readiness_of(
     scale_source: ScaleSource,
     layer: SpatialLayer,
     scale_basis: ScaleBasis | None = None,
+    scale_accepted: ScaleAcceptance | None = None,
 ) -> ReadinessOut:
     """Luật H5 §2.2: `notEvaluated` khi chưa có lượt; còn lý do → `needsReview`; hết → `ready`.
 
@@ -148,10 +186,11 @@ def readiness_of(
     (`_MEASURED_BASES`) mà lượt không ghi nghi vấn `scaleChecks` (BENCH3D-09). Tóm tắt `NULL` (lượt
     cũ, trước FIX-P0-08) không sinh `criticalIssues`; họ vắng trong `pinned` không sinh lý do.
     Kiểm hình học critical → `geometrySuspect` kèm `checks`; `criticalIssues` chỉ còn cho lỗi toàn vẹn.
+    `scale_accepted` (K4): tỉ lệ `human` chấp nhận số máy vẫn báo `scaleUnresolved` khi ảnh chụp không `determined`.
     """
     reasons: list[ReadinessReason] = []
     summary = None if run is None else run.quality_summary
-    state, _ = scale_state_of(scale_source, scale_source, scale_basis, summary)
+    state, _ = scale_state_of(scale_source, scale_source, scale_basis, summary, scale_accepted)
     if state not in (None, "determined", "userCalibrated"):
         reasons.append("scaleUnresolved")
     checks: tuple[str, ...] = ()

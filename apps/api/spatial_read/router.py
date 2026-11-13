@@ -119,8 +119,10 @@ async def spatial_read_layer(project_id: str, floor_id: str, request: Request, d
     source = effective_scale_source(document, page_key)
     out = await _floor_out_or_404(db, project_id, floor.pk, app=request.app)
     run = await latest_run_facts(db, floor.pk)
-    basis = scale_basis_of(run, document.scale_source, source)
-    state, reasons = scale_state_of(source, document.scale_source, basis, None if run is None else run.quality_summary)
+    accepted = document.scale_accepted
+    basis = scale_basis_of(run, document.scale_source, source, accepted)
+    summary = None if run is None else run.quality_summary
+    state, reasons = scale_state_of(source, document.scale_source, basis, summary, accepted)
     out_document = FloorLayerDocumentOut(
         revision=document.revision,
         level=level_out(out, document, source),
@@ -131,7 +133,9 @@ async def spatial_read_layer(project_id: str, floor_id: str, request: Request, d
         source_dpi=await _source_dpi(db, floor.pk),
         scale_source=provisional_scale_source(source),
         suggested_scale_mm_per_px=suggested_scale_mm_per_px(document, source),
-        readiness=readiness_of(run=run, scale_source=source, layer=document.layer, scale_basis=basis),
+        readiness=readiness_of(
+            run=run, scale_source=source, layer=document.layer, scale_basis=basis, scale_accepted=accepted
+        ),
         layer=layer_out(document.layer),
         axes=axes_out(document.axes),
         dimensions=dimensions_out(document.dimensions),

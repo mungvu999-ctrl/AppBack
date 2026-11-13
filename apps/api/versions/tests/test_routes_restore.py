@@ -659,3 +659,22 @@ async def test_versions_restore_version__other_users_are_recorded_as_the_actor(
     body = (await restore(api_client, stage, first, 2, second)).json()
 
     assert (body["creatorId"], body["creatorName"]) == (second.id, "Người thứ hai")
+
+
+async def test_versions_restore_version__keeps_scale_accepted(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """ML-ACC-R10 K4 #15: phục hồi không gửi tỉ lệ — số, nguồn `human` và cờ chấp nhận số máy giữ như hiện tại."""
+    stage = await make_stage(db_session)
+    first, *_ = await _history(db_session, stage, fake_clock, (200,))
+    await put_layer(db_session, stage, fake_clock, None, base=1, scale=Decimal("12"), evidence="machineAccepted")
+
+    response = await restore(api_client, stage, first, 2)
+
+    assert response.status_code == 201, response.text
+    document = await load_document(db_session, stage.floor.pk)
+    assert document is not None
+    assert (document.scale_mm_per_px, document.scale_source) == (Decimal("12.000000"), "human")
+    assert document.scale_accepted is not None
+    read = await _read_layer(api_client, stage)
+    assert read["scaleReasons"] == ["basisUnknown", "userAccepted"]

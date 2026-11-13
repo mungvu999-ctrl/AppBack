@@ -11,11 +11,17 @@ import pytest
 
 from apps.api.spatial_read.assemble import effective_scale_source
 from apps.api.spatial_read.documents import ScaleSource, empty_document
-from apps.api.spatial_read.readiness import RunFacts, readiness_of, scale_basis_of, scale_state_of
+from apps.api.spatial_read.readiness import (
+    RunFacts,
+    readiness_of,
+    scale_basis_of,
+    scale_snapshot_of,
+    scale_state_of,
+)
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
 from packages.core.object_keys import model_prefix
-from packages.domain.spatial import SpatialLayer
+from packages.domain.spatial import ScaleAcceptance, SpatialLayer
 from packages.ml_contracts.families import MODEL_FAMILIES, ModelFamily
 from packages.ml_contracts.payloads import ModelRef
 from packages.testing.factories.pipeline_orchestrate import classic_ref
@@ -308,3 +314,119 @@ def test_scale_unresolved_iff_state_is_doubtful(source: ScaleSource, checks: lis
     state, _ = scale_state_of(source, source, basis, run.quality_summary)  # type: ignore[arg-type]
     out = readiness_of(run=run, scale_source=source, layer=REVIEWED, scale_basis=basis)  # type: ignore[arg-type]
     assert ("scaleUnresolved" in out.reasons) is (state not in (None, "determined", "userCalibrated"))
+
+
+_TRUST = {"unresolved": 0, "estimated": 1, "determined": 2, "userCalibrated": 3}
+"""Thứ tự độ tin (ML-ACC-R10 K4): chấp nhận số máy không bao giờ đi lên thang này."""
+
+_LATER_DETERMINED: Mapping[str, object] = {**CLEAN, "scaleBasis": "chain", "scaleChecks": []}
+"""Tóm tắt của một lượt chạy **sau** lần chấp nhận, sạch nhất có thể: không được nâng độ tin (R2)."""
+
+
+def _machine(stored: ScaleSource, summary: Mapping[str, object] | None) -> tuple[str | None, tuple[str, ...]]:
+    """Độ tin máy báo trên N16 ngay trước lần chấp nhận (đường pipeline/project_default của N16)."""
+    run = None if summary is None else _run(summary=summary)
+    basis = scale_basis_of(run, stored, stored)
+    return scale_state_of(stored, stored, basis, summary)
+
+
+@pytest.mark.parametrize(
+    ("stored", "summary", "expected"),
+    [
+        pytest.param("pipeline", {"scaleBasis": "chain", "scaleChecks": []}, ("determined", ("chain",)), id="chain"),
+        pytest.param(
+            "pipeline",
+            {"scaleBasis": "chain", "scaleChecks": ["anisotropic"]},
+            ("unresolved", ("chain", "anisotropic")),
+            id="chain-aniso",
+        ),
+        pytest.param("pipeline", {"scaleBasis": "door"}, ("estimated", ("door",)), id="door"),
+        pytest.param(
+            "pipeline",
+            {"scaleBasis": "door", "scaleChecks": ["sourceConflict"]},
+            ("unresolved", ("door", "sourceConflict")),
+            id="door-conflict",
+        ),
+        pytest.param("pipeline", {"scaleBasis": "note", "scaleChecks": []}, ("estimated", ("note",)), id="note"),
+        pytest.param("project_default", None, ("unresolved", ("projectDefault",)), id="project-default"),
+        pytest.param("pipeline", None, ("unresolved", ("basisUnknown",)), id="no-run"),
+        pytest.param(
+            "pipeline",
+            {"scaleBasis": "chain", "scaleChecks": "anisotropic"},
+            ("unresolved", ("basisUnknown",)),
+            id="malformed-checks",
+        ),
+    ],
+)
+def test_scale_state_accepted_keeps_machine_state(
+    stored: ScaleSource, summary: Mapping[str, object] | None, expected: tuple[str, tuple[str, ...]]
+) -> None:
+    """Bảng chân trị K4 #1-#4: chấp nhận số máy giữ đúng độ tin của máy lúc chấp nhận, thêm `userAccepted`."""
+    snapshot = scale_snapshot_of(stored, summary)
+    state, reasons = scale_state_of("human", "human", "human", _LATER_DETERMINED, snapshot)
+    assert (state, reasons) == (expected[0], (*expected[1], "userAccepted"))
+    assert _machine(stored, summary) == expected
+
+
+_BASES = [None, "chain", "paired", "note", "door", "wallThickness", "default", "human", "bogus"]
+_CHECKS: list[object] = [
+    [],
+    None,
+    ["anisotropic"],
+    ["sourceConflict"],
+    ["estimateSpread"],
+    ["anisotropic", "sourceConflict"],
+    ["estimateSpread", "sourceConflict"],
+    ["anisotropic", "estimateSpread", "sourceConflict"],
+    "anisotropic",
+    [1],
+]
+
+
+@pytest.mark.parametrize("stored", ["pipeline", "project_default", "human", "none"])
+@pytest.mark.parametrize("checks", _CHECKS)
+@pytest.mark.parametrize("basis", _BASES)
+def test_scale_state_accepted_never_user_calibrated(stored: ScaleSource, checks: object, basis: str | None) -> None:
+    """Tính chất K4: mọi (nguồn, gốc, `scaleChecks`) — không bao giờ `userCalibrated`, không tin hơn máy lúc chấp nhận.
+
+    Máy lúc chấp nhận = N16 của nguồn ấy; nguồn `human`/`none` không có độ tin máy riêng nên so với đường pipeline.
+    Lượt chạy sau sạch (`_LATER_DETERMINED`) không đổi kết quả; readiness báo `scaleUnresolved` theo đúng độ tin ấy.
+    """
+    summary = {**CLEAN, "scaleBasis": basis, "scaleChecks": checks}
+    snapshot = scale_snapshot_of(stored, summary)
+    state, reasons = scale_state_of("human", "human", "human", _LATER_DETERMINED, snapshot)
+    machine, _ = _machine("project_default" if stored == "project_default" else "pipeline", summary)
+    assert state is not None
+    assert machine is not None
+    assert state != "userCalibrated"
+    assert _TRUST[state] <= _TRUST[machine]
+    assert reasons[-1] == "userAccepted"
+    run = _run(summary=_LATER_DETERMINED)
+    out = readiness_of(run=run, scale_source="human", layer=REVIEWED, scale_accepted=snapshot)
+    assert ("scaleUnresolved" in out.reasons) is (state != "determined")
+
+
+def test_scale_state_measured_human_unchanged() -> None:
+    """PUT không có `scaleEvidence` (đo thật, dữ liệu cũ): `userCalibrated []`, gốc `human` — hành vi cũ."""
+    assert scale_state_of("human", "human", "human", _LATER_DETERMINED) == ("userCalibrated", ())
+    assert scale_basis_of(_run(summary=_LATER_DETERMINED), "human", "human") == "human"
+
+
+@pytest.mark.parametrize(
+    ("snapshot", "expected"),
+    [
+        pytest.param(ScaleAcceptance(basis="door"), "door", id="door"),
+        pytest.param(ScaleAcceptance(basis="default"), "default", id="default"),
+        pytest.param(ScaleAcceptance(basis=None), None, id="unknown"),
+        pytest.param(ScaleAcceptance(basis="human"), None, id="human-not-machine"),
+    ],
+)
+def test_scale_basis_of_accepted(snapshot: ScaleAcceptance, expected: str | None) -> None:
+    """`scaleBasis` của tỉ lệ chấp nhận = gốc máy trong ảnh chụp, không phải `human`; gốc lạ → vắng."""
+    assert scale_basis_of(_run(summary=_LATER_DETERMINED), "human", "human", snapshot) == expected
+
+
+def test_scale_state_accepted_ignored_when_demoted() -> None:
+    """Trang đổi (`effective` pipeline, `stored` human): `pageChanged` như cũ, cờ chấp nhận không đổi gì."""
+    snapshot = ScaleAcceptance(basis="chain")
+    assert scale_state_of("pipeline", "human", None, _LATER_DETERMINED, snapshot) == ("unresolved", ("pageChanged",))

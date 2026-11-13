@@ -10,6 +10,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
+from pydantic import BaseModel, ConfigDict
+
 from packages.domain.spatial.area import total_area_m2
 from packages.domain.spatial.model import Axis, Dimension, Point, SpatialLayer
 
@@ -23,12 +25,29 @@ class LayerCounts:
     area_m2: Decimal | None
 
 
+class ScaleAcceptance(BaseModel):
+    """Ảnh chụp căn cứ tỉ lệ của máy **lúc** người dùng chấp nhận số máy (ML-ACC-R10 K4), khoá `scaleAccepted`.
+
+    `basis` là gốc của lượt mới nhất lúc ghi (`None` = không biết: chưa có lượt, gốc lạ, `scaleChecks` hỏng dạng),
+    `checks` là mã nghi vấn của lượt ấy. Độ tin đọc ra tính từ ảnh chụp này, không từ lượt chạy sau đó.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    basis: str | None
+    checks: tuple[str, ...] = ()
+
+
 def document_to_json(
-    layer: SpatialLayer, axes: Sequence[Axis], dimensions: Sequence[Dimension], origin: Point | None = None
+    layer: SpatialLayer,
+    axes: Sequence[Axis],
+    dimensions: Sequence[Dimension],
+    origin: Point | None = None,
+    scale_accepted: ScaleAcceptance | None = None,
 ) -> dict[str, object]:
     """Dạng dây của một tài liệu (G4b-17): trục và gốc toạ độ (mm) của màn Trục được lưu thật.
 
-    `origin=None` → **vắng khoá** `origin` (không `null`), nên tài liệu cũ chưa đặt gốc vẫn ra
+    `origin=None` / `scale_accepted=None` → **vắng khoá** (không `null`), nên tài liệu cũ vẫn ra
     đúng jsonb như trước và phép so "không đổi" (C09b bước 10) không lệch.
     """
     document: dict[str, object] = {
@@ -38,6 +57,8 @@ def document_to_json(
     }
     if origin is not None:
         document["origin"] = origin.model_dump(mode="json", by_alias=True)
+    if scale_accepted is not None:
+        document["scaleAccepted"] = scale_accepted.model_dump(mode="json")
     return document
 
 

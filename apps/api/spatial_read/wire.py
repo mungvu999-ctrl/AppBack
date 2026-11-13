@@ -284,6 +284,9 @@ ReadinessReason = Literal[
 ]
 ScaleBasis = Literal["chain", "paired", "note", "door", "wallThickness", "default", "human"]
 """Tỉ lệ đến từ đâu (BENCH3D-09): sáu gốc của pipeline (`layer.json` `scaleBasis`) cộng `human` (người hiệu chỉnh)."""
+ScaleState = Literal["determined", "estimated", "unresolved", "userCalibrated"]
+"""Độ tin của tỉ lệ (ML-ACC-R9): `determined` đo từ bản vẽ không nghi vấn; `estimated` ước từ cửa/tường/ghi chú;
+`unresolved` thiếu căn cứ hoặc nguồn mâu thuẫn; `userCalibrated` do người hiệu chỉnh."""
 
 
 class ReadinessOut(WireModel):
@@ -307,6 +310,13 @@ class FloorLayerDocumentOut(WireModel):
     scale_status: Literal["unresolved"] | None = None
     scale_basis: ScaleBasis | None = None
     """Gốc của tỉ lệ đang dùng (BENCH3D-09); vắng khi chưa có tỉ lệ hay lượt cũ không ghi gốc."""
+    scale_state: ScaleState | None = None
+    """Độ tin của tỉ lệ (ML-ACC-R9); vắng khi tầng chưa có tỉ lệ. Khoá tuỳ chọn, `scaleStatus` giữ nguyên nghĩa."""
+    scale_reasons: tuple[str, ...] | None = None
+    """Mã căn cứ của `scaleState`: nguồn (`chain|paired|note|door|wallThickness|projectDefault`...) rồi mã nghi
+    vấn của `quality_summary.scaleChecks` (`sourceConflict`, `anisotropic`, `estimateSpread`); `pageChanged`,
+    `basisUnknown` khi mất căn cứ. `[]` khi `userCalibrated` (người đặt, không có mã).
+    Không khai `Literal`: mã lạ FE hiện câu chung."""
     source_dpi: Annotated[float, Field(gt=0)] | None = None
     """DPI của trang pipeline đã dựng (PDF biết khổ giấy), `null` với ảnh raster; FE đổi `1:N` → mm/px (U01)."""
     scale_source: Literal["pipeline", "project_default"] | None = None

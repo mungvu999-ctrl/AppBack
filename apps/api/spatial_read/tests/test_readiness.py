@@ -11,7 +11,7 @@ import pytest
 
 from apps.api.spatial_read.assemble import effective_scale_source
 from apps.api.spatial_read.documents import ScaleSource, empty_document
-from apps.api.spatial_read.readiness import RunFacts, readiness_of, scale_basis_of
+from apps.api.spatial_read.readiness import RunFacts, readiness_of, scale_basis_of, scale_state_of
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
 from packages.core.object_keys import model_prefix
@@ -186,3 +186,69 @@ def test_scale_basis_of() -> None:
     assert scale_basis_of(_run(summary=None), "pipeline", "pipeline") is None
     assert scale_basis_of(_run(summary={**CLEAN, "scaleBasis": "human"}), "pipeline", "pipeline") is None
     assert scale_basis_of(run, "none", "none") is None
+
+
+@pytest.mark.parametrize(
+    ("effective", "stored", "basis", "summary", "expected"),
+    [
+        pytest.param("human", "human", "human", None, ("userCalibrated", ()), id="human"),
+        pytest.param("none", "none", None, None, (None, ()), id="no-scale"),
+        pytest.param(
+            "project_default", "project_default", "default", CLEAN, ("unresolved", ("projectDefault",)), id="default"
+        ),
+        pytest.param("pipeline", "human", None, CLEAN, ("unresolved", ("pageChanged",)), id="page-changed"),
+        pytest.param("pipeline", "pipeline", None, CLEAN, ("unresolved", ("basisUnknown",)), id="old-run"),
+        pytest.param("pipeline", "pipeline", "chain", None, ("unresolved", ("basisUnknown",)), id="no-summary"),
+        pytest.param(
+            "pipeline", "pipeline", "chain", {"scaleChecks": []}, ("determined", ("chain",)), id="chain-agreed"
+        ),
+        pytest.param("pipeline", "pipeline", "paired", {}, ("determined", ("paired",)), id="paired-no-key"),
+        pytest.param(
+            "pipeline",
+            "pipeline",
+            "chain",
+            {"scaleChecks": ["anisotropic"]},
+            ("unresolved", ("chain", "anisotropic")),
+            id="chain-doubt",
+        ),
+        pytest.param("pipeline", "pipeline", "door", {"scaleChecks": []}, ("estimated", ("door",)), id="door-745"),
+        pytest.param(
+            "pipeline",
+            "pipeline",
+            "door",
+            {"scaleChecks": ["estimateSpread"]},
+            ("estimated", ("door", "estimateSpread")),
+            id="door-spread",
+        ),
+        pytest.param("pipeline", "pipeline", "wallThickness", {}, ("estimated", ("wallThickness",)), id="thickness"),
+        pytest.param("pipeline", "pipeline", "note", {"scaleChecks": []}, ("estimated", ("note",)), id="note"),
+        pytest.param(
+            "pipeline",
+            "pipeline",
+            "door",
+            {"scaleChecks": ["sourceConflict"]},
+            ("unresolved", ("door", "sourceConflict")),
+            id="door-conflict",
+        ),
+    ],
+)
+def test_scale_state_of_table(
+    effective: ScaleSource,
+    stored: ScaleSource,
+    basis: str | None,
+    summary: Mapping[str, object] | None,
+    expected: tuple[str | None, tuple[str, ...]],
+) -> None:
+    """ML-ACC-R9: mỗi nhánh của luật; cửa 745 mm tối đa `estimated`, chuỗi khớp `determined`, mâu thuẫn `unresolved`."""
+    assert scale_state_of(effective, stored, basis, summary) == expected  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("basis", [None, "chain", "paired", "note", "door", "wallThickness", "default", "human"])
+@pytest.mark.parametrize("checks", [[], ["anisotropic"], ["sourceConflict"], ["estimateSpread"]])
+@pytest.mark.parametrize("source", ["none", "pipeline", "project_default", "human"])
+def test_scale_unresolved_iff_state_is_doubtful(source: ScaleSource, checks: list[str], basis: str | None) -> None:
+    """Một luật, hai đầu ra: `scaleUnresolved` có đúng khi `scaleState` không phải determined/userCalibrated/vắng."""
+    run = _run(summary={**CLEAN, "scaleChecks": checks})
+    state, _ = scale_state_of(source, source, basis, run.quality_summary)  # type: ignore[arg-type]
+    out = readiness_of(run=run, scale_source=source, layer=REVIEWED, scale_basis=basis)  # type: ignore[arg-type]
+    assert ("scaleUnresolved" in out.reasons) is (state not in (None, "determined", "userCalibrated"))

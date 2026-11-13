@@ -20,7 +20,7 @@ from starlette.responses import Response
 from apps.api.core.deps import ClockDep, CurrentPrincipal, DbSession, Storage
 from apps.api.core.ratelimit import key_user, rate_limit
 from apps.api.core.routing import protected_router, route_options
-from apps.api.drawings import complete, thumbnails, uploads
+from apps.api.drawings import complete, scan_results, thumbnails, uploads
 from apps.api.drawings.latest import router as latest_router
 from apps.api.drawings.progress import progress_wire
 from apps.api.drawings.run_history import router as run_history_router
@@ -106,6 +106,15 @@ async def drawings_read_progress(project_id: str, upload_id: str, db: DbSession)
     """#8 — `Progress` hiện tại của một lượt tải, mọi trạng thái (BE-BIND §4)."""
     facts = await uploads.load_upload(db, project_id=project_id, upload_id=upload_id)
     return ProgressOut.model_validate(await progress_wire(db, facts.id))
+
+
+@router.get("/projects/{project_id}/drawings/uploads/{upload_id}/scan-results", dependencies=[_member_gate])
+async def drawings_read_scan_results(
+    project_id: str, upload_id: str, db: DbSession, storage: Storage
+) -> scan_results.ScanResultsOut:
+    """Kết quả mô hình đã có của lượt chạy mới nhất, cho hiệu ứng vẽ trên màn Xử lý."""
+    facts = await uploads.load_upload(db, project_id=project_id, upload_id=upload_id)
+    return await scan_results.read_scan_results(db, storage, facts)
 
 
 @router.post("/projects/{project_id}/drawings/page-thumbnails", dependencies=[_upload_gate])

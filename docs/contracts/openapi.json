@@ -6601,6 +6601,97 @@
         "ge": "0.01",
         "le": 1000
       },
+      "ScanBoxOut": {
+        "additionalProperties": false,
+        "description": "Hộp một vật phát hiện được.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "xMax": {
+            "title": "Xmax",
+            "type": "number"
+          },
+          "xMin": {
+            "title": "Xmin",
+            "type": "number"
+          },
+          "yMax": {
+            "title": "Ymax",
+            "type": "number"
+          },
+          "yMin": {
+            "title": "Ymin",
+            "type": "number"
+          }
+        },
+        "required": [
+          "label",
+          "xMin",
+          "yMin",
+          "xMax",
+          "yMax"
+        ],
+        "title": "ScanBoxOut",
+        "type": "object"
+      },
+      "ScanResultsOut": {
+        "additionalProperties": false,
+        "description": "Kết quả các bước đã xong; bước chưa xong là mảng rỗng.",
+        "properties": {
+          "boxes": {
+            "items": {
+              "$ref": "#/components/schemas/ScanBoxOut"
+            },
+            "title": "Boxes",
+            "type": "array"
+          },
+          "walls": {
+            "items": {
+              "$ref": "#/components/schemas/ScanWallOut"
+            },
+            "title": "Walls",
+            "type": "array"
+          }
+        },
+        "required": [
+          "walls",
+          "boxes"
+        ],
+        "title": "ScanResultsOut",
+        "type": "object"
+      },
+      "ScanWallOut": {
+        "additionalProperties": false,
+        "description": "Đường tim một tường.",
+        "properties": {
+          "x1": {
+            "title": "X1",
+            "type": "number"
+          },
+          "x2": {
+            "title": "X2",
+            "type": "number"
+          },
+          "y1": {
+            "title": "Y1",
+            "type": "number"
+          },
+          "y2": {
+            "title": "Y2",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x1",
+          "y1",
+          "x2",
+          "y2"
+        ],
+        "title": "ScanWallOut",
+        "type": "object"
+      },
       "SeenPatch": {
         "additionalProperties": false,
         "description": "Vá `seen`: `tours` thay cả danh sách (≤ 64 id), không nối thêm.",
@@ -10735,6 +10826,58 @@
           }
         },
         "summary": "Drawings Read Progress",
+        "tags": [
+          "drawings"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/drawings/uploads/{upload_id}/scan-results": {
+      "get": {
+        "description": "Kết quả mô hình đã có của lượt chạy mới nhất, cho hiệu ứng vẽ trên màn Xử lý.",
+        "operationId": "drawings_read_scan_results_api_projects__project_id__drawings_uploads__upload_id__scan_results_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanResultsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawings Read Scan Results",
         "tags": [
           "drawings"
         ]

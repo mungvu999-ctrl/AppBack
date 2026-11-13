@@ -15,7 +15,7 @@
 > - S1/S2 chia chủ S-case.
 >
 > **Đường v1** là đường thật sau F-01a (tiền tố `/api`, E1) và F-03 (lồng tạo và liệt kê tầng, T3). Tham số đường viết snake_case (W21).
-> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 50 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
+> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 51 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
 > **Khoá:** `—` = mọi vai đã đăng nhập (miễn C07), `thành viên` = mọi vai là thành viên dự án, `admin` = `require_admin` (route trong dự án: `require_project("admin")` — thành viên **và** vai admin, 404 trước 403).
 
 ## 1. Hợp đồng CŨ — 49 thao tác HTTP + 2 kênh SSE
@@ -132,6 +132,7 @@
 | N46 | `GET /api/projects/{project_id}/floors/{floor_id}/detected-geometry` | `spatial_read_detected_geometry` | `quality.ts` (`DetectedGeometry`) | Đ | thành viên | — | QT-SCALE-API | màn tỉ lệ: điểm bắt, bề dày tường, cửa, phòng lớn nhất, hộp ngoài (px trang); chưa có lượt → rỗng |
 | N47 | `GET /api/projects/{project_id}/design-concept` | `design_director_read_state` | `designConcept.ts` (`DesignConceptState`) | Đ | thành viên | — | AID-01 | editor: công tắc, kiểu AI đề xuất, concept đang chọn; thăm dò 3 s khi đang chạy |
 | N48 | `POST /api/projects/{project_id}/design-concept` | `design_director_select_concept` | `designConcept.ts` (`DesignConcept`) | G | `project.settings.edit` | — | AID-01 | ô chọn phong cách; luôn 202 (dùng lại concept cùng đầu vào); 503 `DESIGN_DIRECTOR_DISABLED`, 429 `DESIGN_DIRECTOR_QUOTA` |
+| N49 | `GET /api/projects/{project_id}/drawings/uploads/{upload_id}/scan-results` | `drawings_read_scan_results` | `uploads.ts` (`ScanResults`) | Đ | thành viên | — | SCAN-CURSOR | hiệu ứng con trỏ màn Xử lý; thăm dò khi lượt đang chạy, bước chưa xong là mảng rỗng |
 
 N24 có version: áp thêm C09, C09b, C14 theo CASE §2.2 A.
 

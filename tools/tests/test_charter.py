@@ -22,14 +22,14 @@ def _write_table(tmp_path: Path, *rows: str) -> Path:
     return p
 
 
-def test_be_bind_thật_đọc_đủ_49_2_50_dòng() -> None:
+def test_be_bind_thật_đọc_đủ_49_2_51_dòng() -> None:
     rows = load_bind_rows(BE_BIND)
     numeric = [r for r in rows if r.row_id.isdigit()]
     s_rows = [r for r in rows if r.row_id.startswith("S")]
     n_rows = [r for r in rows if r.row_id.startswith("N")]
     assert len(numeric) == 49
     assert len(s_rows) == 2
-    assert len(n_rows) == 50
+    assert len(n_rows) == 51
 
 
 def test_query_bị_bỏ() -> None:

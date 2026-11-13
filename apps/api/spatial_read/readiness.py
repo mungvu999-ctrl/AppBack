@@ -89,6 +89,8 @@ def scale_state_of(
     """Độ tin của tỉ lệ (ML-ACC-R9): một luật cho `scaleState`/`scaleReasons` và cho `scaleUnresolved` của readiness.
 
     `None` khi tầng chưa có tỉ lệ. Lý do = gốc, rồi tên khoá `quality_summary.scaleChecks` theo thứ tự lượt ghi.
+    `scaleChecks` hỏng dạng (không phải danh sách chuỗi: chuỗi, số, dict, list lẫn phần tử khác chuỗi) → `unresolved`
+    với `basisUnknown`, không bao giờ `determined`/`estimated` (ML-ACC-R10); vắng khoá, `null`, `[]` = hợp lệ.
     """
     if effective == "human":
         return "userCalibrated", ()
@@ -101,7 +103,11 @@ def scale_state_of(
     if basis is None or basis == "human" or summary is None:
         return "unresolved", ("basisUnknown",)
     raw = summary.get("scaleChecks")
-    checks = tuple(c for c in raw if isinstance(c, str)) if isinstance(raw, list) else ()
+    if raw is None:
+        raw = []
+    if not isinstance(raw, list) or not all(isinstance(c, str) for c in raw):
+        return "unresolved", ("basisUnknown",)
+    checks = tuple(raw)
     reasons = (basis, *checks)
     if basis in _MEASURED_BASES:
         return ("unresolved" if checks else "determined"), reasons

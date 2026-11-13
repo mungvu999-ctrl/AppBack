@@ -230,6 +230,62 @@ def test_scale_basis_of() -> None:
             ("unresolved", ("door", "sourceConflict")),
             id="door-conflict",
         ),
+        pytest.param(
+            "pipeline",
+            "pipeline",
+            "chain",
+            {"scaleChecks": "anisotropic"},
+            ("unresolved", ("basisUnknown",)),
+            id="chain-checks-string",
+        ),
+        pytest.param(
+            "pipeline",
+            "pipeline",
+            "chain",
+            {"scaleChecks": 3},
+            ("unresolved", ("basisUnknown",)),
+            id="chain-checks-number",
+        ),
+        pytest.param(
+            "pipeline",
+            "pipeline",
+            "chain",
+            {"scaleChecks": {"a": 1}},
+            ("unresolved", ("basisUnknown",)),
+            id="chain-checks-dict",
+        ),
+        pytest.param(
+            "pipeline",
+            "pipeline",
+            "chain",
+            {"scaleChecks": ["anisotropic", 3]},
+            ("unresolved", ("basisUnknown",)),
+            id="chain-checks-mixed",
+        ),
+        pytest.param(
+            "pipeline",
+            "pipeline",
+            "door",
+            {"scaleChecks": "estimateSpread"},
+            ("unresolved", ("basisUnknown",)),
+            id="door-checks-string",
+        ),
+        pytest.param(
+            "pipeline",
+            "pipeline",
+            "paired",
+            {"scaleChecks": []},
+            ("determined", ("paired",)),
+            id="paired-checks-empty",
+        ),
+        pytest.param(
+            "pipeline",
+            "pipeline",
+            "chain",
+            {"scaleChecks": None},
+            ("determined", ("chain",)),
+            id="chain-checks-null",
+        ),
     ],
 )
 def test_scale_state_of_table(
@@ -239,7 +295,7 @@ def test_scale_state_of_table(
     summary: Mapping[str, object] | None,
     expected: tuple[str | None, tuple[str, ...]],
 ) -> None:
-    """ML-ACC-R9: mỗi nhánh của luật; cửa 745 mm tối đa `estimated`, chuỗi khớp `determined`, mâu thuẫn `unresolved`."""
+    """ML-ACC-R9/R10: mỗi nhánh của luật; cửa 745 mm tối đa `estimated`; `scaleChecks` hỏng dạng → `unresolved`."""
     assert scale_state_of(effective, stored, basis, summary) == expected  # type: ignore[arg-type]
 
 

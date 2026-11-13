@@ -25,6 +25,12 @@ CASES: dict[str, tuple[str, dict[str, Any] | None, str | None, list[str] | None]
         "unresolved",
         ["chain", "sourceConflict"],
     ),
+    "chain-malformed": (
+        "pipeline",
+        {"scaleBasis": "chain", "scaleChecks": "anisotropic"},
+        "unresolved",
+        ["basisUnknown"],
+    ),
     "door": ("pipeline", {"scaleBasis": "door", "scaleChecks": []}, "estimated", ["door"]),
     "door-spread": (
         "pipeline",
@@ -46,7 +52,7 @@ async def test_spatial_read_layer__scale_state(
     fake_clock: FakeClock,
     name: str,
 ) -> None:
-    """Bảy loại tầng → khoá đúng trên N16; `scaleStatus` cũ giữ nguyên; tầng chưa có tỉ lệ thì vắng cả hai khoá."""
+    """Tám loại tầng → khoá đúng trên N16; `scaleStatus` cũ giữ nguyên; tầng chưa có tỉ lệ thì vắng cả hai khoá."""
     source, extra, state, reasons = CASES[name]
     scene = await make_scene(db_session)
     floor = scene.floors[0]

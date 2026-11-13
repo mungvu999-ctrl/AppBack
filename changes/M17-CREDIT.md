@@ -5,4 +5,4 @@
 - Không đổi kiểu dây: `LibraryItemOut.attribution` vẫn `string | null`, `openapi.json` không đổi. Đổi nội dung chuỗi; FE
   (`ModelCreditCard`) tách theo `" · "` và hiện phần URL thành liên kết.
 - Không đổi DB, migration. Cổng áp dụng: lint/type, test `packages/domain/library`, `apps/api/library`.
-- "CC-BY" không ghi bản (7 mục bản demo Blender) trỏ `https://creativecommons.org/licenses/` — cần kiểm lại bản giấy phép.
+- Nợ NO-438 (P2, mở): "CC-BY" không ghi bản (7 mục bản demo Blender "Flat Archiviz") trỏ `https://creativecommons.org/licenses/` — cần kiểm bản giấy phép trên trang demo Blender, sửa `_LICENSE_URLS`/manifest, thêm test.

@@ -117,9 +117,11 @@ def test_segment_page_rejects_a_mask_of_another_size(monkeypatch: pytest.MonkeyP
 
 
 def bar_grid(bands: int, columns: int) -> NDArray[np.bool_]:
-    """Lưới `bands x columns` thanh ngang 15 x 3 px, rời nhau — không vòng theo điểm ảnh."""
+    """Lưới `bands x columns` thanh ngang 15 x 3 px, rời nhau — không vòng theo điểm ảnh.
+
+    Khe ngang 8 px > 2 bề dày nên bước chữ nhật (WALLS-RECT) không gộp các thanh cùng hàng."""
     rows = np.arange(bands * 6) % 6 < 3
-    cols = np.arange(columns * 19) % 19 < 15
+    cols = np.arange(columns * 23) % 23 < 15
     return np.logical_and(rows[:, None], cols[None, :])
 
 

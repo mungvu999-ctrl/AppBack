@@ -22,6 +22,7 @@ from numpy.typing import NDArray
 from skimage.morphology import skeletonize
 
 from packages.vision.walls.ink_refine import AxisWall, Frame, refine_line
+from packages.vision.walls.rect_pass import rect_walls
 from packages.vision.walls.types import PointPx, VectorizeResult, WallSegment
 
 _OFFSETS: Final = ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1))
@@ -1542,19 +1543,32 @@ def _refine_from_ink(segs: list[_Seg], gray: NDArray[np.uint8], frame: Frame) ->
     return widths
 
 
-def vectorize_with_stats(mask: NDArray[np.bool_], page_gray: NDArray[np.uint8] | None = None) -> VectorizeResult:
+def vectorize_with_stats(
+    mask: NDArray[np.bool_], page_gray: NDArray[np.uint8] | None = None, *, rect: bool = False
+) -> VectorizeResult:
     """Vector hoá mặt nạ tường thành đoạn tim kèm số phần tử đã bỏ.
 
     `dropped` luôn có đủ hai khoá `spur` (nhánh cụt, bước 4) và `short` (đoạn ngắn hơn
     bề dày, hay cụm xương không còn nhánh, bước 10). Mặt nạ rỗng → không đoạn nào.
     Mảng không phải bool 2 chiều → `ValueError`. Có `page_gray` (ảnh xám `uint8` cùng khổ trang)
     thì tim và bề dày tường thẳng trục đọc lại từ nét mực (bước 8c); khác khổ → `ValueError`.
+    `rect=True` (WALLS-RECT): tường thẳng trục lấy từ dải chữ nhật của mặt nạ trước (`rect_pass`),
+    xương chỉ chạy trên phần còn lại (chéo, cong); `dropped["rect"]` = số đoạn chữ nhật.
     """
     _validate(mask)
     if page_gray is not None and (page_gray.shape != mask.shape or page_gray.dtype != np.uint8):
         raise ValueError("page_gray phải là ảnh xám uint8 cùng khổ mặt nạ")
     if not mask.any():
-        return VectorizeResult(walls=(), dropped={"spur": 0, "short": 0})
+        return VectorizeResult(walls=(), dropped={"spur": 0, "short": 0, **({"rect": 0} if rect else {})})
+    if rect:
+        boxed, residual = rect_walls(mask, page_gray)
+        rest = (
+            vectorize_with_stats(residual, page_gray)
+            if residual.any()
+            else VectorizeResult((), {"spur": 0, "short": 0})
+        )
+        walls = tuple(sorted((*boxed, *rest.walls), key=lambda w: (w.start, w.end)))
+        return VectorizeResult(walls=walls, dropped={**rest.dropped, "rect": len(boxed)})
     dist: NDArray[np.float32] = np.asarray(cv2.distanceTransform(mask.astype(np.uint8), cv2.DIST_L2, 5), np.float32)
     skel = _skeletonize(mask)
     graph, spur = _prune_spurs(skel, dist)

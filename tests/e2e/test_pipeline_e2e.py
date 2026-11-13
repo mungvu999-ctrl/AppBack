@@ -233,11 +233,12 @@ async def _stream_progress_percents(upload_id: str) -> list[int]:
 async def _fetch_layer(
     client: httpx.AsyncClient, headers: dict[str, str], project_id: str, level_id: str
 ) -> dict[str, Any]:
-    """`GET .../spatial/layer`, khẳng định 200 và `scaleStatus: unresolved`; trả thân JSON."""
+    """`GET .../spatial/layer`, khẳng định 200 và tỉ lệ đọc từ số đo: vắng `scaleStatus` (OCR-SCALE); trả thân JSON."""
     response = await client.get(f"/api/projects/{project_id}/floors/{level_id}/spatial/layer", headers=headers)
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body.get("scaleStatus") == "unresolved"
+    assert "scaleStatus" not in body
+    assert body["scaleBasis"] == "chain"
     return body
 
 
@@ -572,7 +573,7 @@ async def test_pipeline_e2e_rerun_rescales_page(
 
     Tỉ lệ gắn với **trang** đang có, không với tầng: sau khi người hiệu chỉnh tỉ lệ ở #35 (nguồn
     `human`), tải một trang pipeline khác (seed `mm_per_px` khác) phải quay lại tỉ lệ pipeline của
-    trang mới (`scaleStatus: unresolved`), không giữ tỉ lệ người đặt của trang cũ (HOP-DONG-MOI §4
+    trang mới (`measured`), không giữ tỉ lệ người đặt của trang cũ (HOP-DONG-MOI §4
     "Tỉ lệ gắn với trang").
     """
     start = time.monotonic()
@@ -584,7 +585,7 @@ async def test_pipeline_e2e_rerun_rescales_page(
     reviewed_wall, _ = await _review_first_wall(
         e2e_client, headers, project_id, level_id, doc_one, scale=plan_one.mm_per_px * 2
     )
-    # Tỉ lệ cũ là `pipeline` (tạm) nên #35 co giãn cả tường vừa duyệt (Phase 0 H4, BE-00 §9): so với bản đã ghi.
+    # Tỉ lệ cũ là `measured` (do máy) nên #35 co giãn cả tường vừa duyệt (Phase 0 H4, BE-00 §9): so với bản đã ghi.
     doc_reviewed = await on_db(db_url, lambda maker: _read_doc(maker, floor_pk))
     reviewed_wall = next(w for w in doc_reviewed.layer.walls if w.id == reviewed_wall.id)
 
@@ -597,7 +598,7 @@ async def test_pipeline_e2e_rerun_rescales_page(
     drift = abs(scale - plan_two.mm_per_px) / plan_two.mm_per_px
 
     doc_two = await on_db(db_url, lambda maker: _read_doc(maker, floor_pk))
-    assert doc_two.scale_source == "pipeline"
+    assert doc_two.scale_source == "measured"
     kept = next(w for w in doc_two.layer.walls if w.id == reviewed_wall.id)
     assert kept == reviewed_wall, (kept, reviewed_wall)
 

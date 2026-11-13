@@ -145,7 +145,7 @@ async def _write_ai_layer(
             actor_name=SYSTEM_PIPELINE_NAME,
             clock=clock,
             merge=merge_and_log,
-            scale_source=built.scale_source,
+            scale_source=built.persisted_scale_source,
             page_key=None if drawing is None else drawing.page_key,
         )
     except AppError as exc:

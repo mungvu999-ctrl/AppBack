@@ -91,6 +91,9 @@ _ESTIMATE_AGREEMENT: Final = 0.10
 """Ước từ cửa đi và từ bề dày tường lệch ≤ 10 % → trung bình nhân hai ước; lệch hơn → giữ ước cửa (bench DOOR-SCALE:
 cửa lệch trung vị 8-10 %, bề dày tường tới 42 %) và ghi `scaleChecks.estimateSpread`."""
 
+_MIN_FRAME_MM: Final = 3000.0
+"""Khung tường dưới 3 m là tỉ lệ sai: căn hộ không gọn hơn (cùng ngưỡng `TINY_FOOTPRINT_MM` của FE)."""
+
 _ANISOTROPY_LIMIT: Final = 0.03
 """Tỉ lệ suy riêng từ chữ ngang và chữ dọc lệch > 3 % → ghi `scaleChecks.anisotropic`. Chỉ khi hai cụm trục cùng
 nằm sát khung tường chính (`_FRAME_MARGIN`; ảnh giãn không đều, ch-13) tỉ lệ chuỗi mới đổi thành trung bình nhân hai
@@ -174,6 +177,14 @@ class BuiltLayer:
     """BENCH3D-14: số nhãn chữ đọc dọc/ngang (`label_orientation`) cho kiểm `ROTATED_PLAN`; rỗng khi không nhãn nào."""
     area_notes: tuple[float, ...] = ()
     """BENCH3D-24: các số "N m²" (≥ `AREA_NOTE_MIN_M2`) OCR đọc trên bản vẽ (`area_notes`) cho `AREA_TEXT_MISMATCH`."""
+
+    @property
+    def persisted_scale_source(self) -> Literal["measured", "pipeline", "project_default"]:
+        """Nguồn ghi vào tài liệu tầng: `measured` khi tỉ lệ từ ≥ 3 số đo đồng thuận (`chain`) và không nghi vấn.
+
+        Nhánh `paired` (2 số), `note` và ước lượng vẫn là tỉ lệ tạm cần người kiểm. `layer.json` giữ `scaleSource`.
+        """
+        return "measured" if self.scale_basis == "chain" and not self.scale_checks else self.scale_source
 
     def to_json(self) -> bytes:
         """`layer.json` UTF-8 gọn, khoá theo thứ tự cố định; `scaleMmPerPx` là chuỗi Decimal."""
@@ -435,6 +446,22 @@ def _anisotropy(texts: Sequence[TextPx], frame: Box | None) -> tuple[dict[str, f
         for box in (boxes[sample.id] for sample in (*across, *down))
     )
     return anisotropic, inside
+
+
+def _implausible_walls(walls: Sequence[WallPx], mm_per_px: float) -> dict[str, float]:
+    """Tỉ lệ làm tường vô lý: bề dày trung vị ngoài `_NOTE_WALL_MM` hay khung dưới `_MIN_FRAME_MM`; ổn → `{}`.
+
+    Lưới an toàn của `measured`: số đo đồng thuận mà đọc sai cùng kiểu thì không ai được nhắc kiểm nữa.
+    """
+    if not walls:
+        return {}
+    median_mm = float(np.median([wall.thickness_px for wall in walls])) * mm_per_px
+    points = [point for wall in walls for point in (wall.start, wall.end)]
+    xs, ys = [point.x for point in points], [point.y for point in points]
+    frame_mm = max(max(xs) - min(xs), max(ys) - min(ys)) * mm_per_px
+    if _NOTE_WALL_MM[0] <= median_mm <= _NOTE_WALL_MM[1] and frame_mm >= _MIN_FRAME_MM:
+        return {}
+    return {"medianMm": round(median_mm, 1), "frameMm": round(frame_mm, 1)}
 
 
 def _plan_frame(walls: Sequence[WallPx], mm_per_px: float) -> Box | None:
@@ -851,6 +878,8 @@ def build_layer(
         checks["anisotropic"] = anisotropic
         if basis == "chain" and same_plan:  # cụm đông nhất chỉ là một trục; trung bình nhân chia đều phần giãn
             scale = Decimal(repr(math.sqrt(anisotropic["x"] * anisotropic["y"]))).quantize(_QUANTUM)
+    if basis == "chain" and (implausible := _implausible_walls(walls_px, float(scale))):
+        checks["implausibleWalls"] = implausible
     noted = _note_scale(walls_px, texts, px_per_paper_mm) if basis == "default" else None
     noted = _trusted_note(noted, vector_page=vector_page, detections=detections, walls=walls_px)
     if noted is not None:

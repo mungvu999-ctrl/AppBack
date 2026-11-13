@@ -67,11 +67,11 @@ def _is_classic(value: object) -> bool:
 def scale_basis_of(run: RunFacts | None, stored: ScaleSource, effective: ScaleSource) -> ScaleBasis | None:
     """Gốc tỉ lệ cho `scaleBasis`: `human` khi tỉ lệ người đặt còn hiệu lực; tỉ lệ pipeline → gốc lượt mới nhất ghi.
 
-    Tỉ lệ người đặt bị hạ hạng (trang đổi, `stored` vẫn `human`) không phải do lượt nào đo → vắng.
+    Tỉ lệ bị hạ hạng (trang đổi, `stored` vẫn `human`/`measured`) không phải do lượt mới nhất đo trên trang này → vắng.
     """
     if effective == "human":
         return "human"
-    if stored not in ("pipeline", "project_default") or run is None or run.quality_summary is None:
+    if stored != effective or stored == "none" or run is None or run.quality_summary is None:
         return None
     basis = run.quality_summary.get("scaleBasis")
     return cast("ScaleBasis", basis) if basis in _PIPELINE_BASES else None

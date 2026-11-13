@@ -126,6 +126,22 @@ async def test_scale_rescales_only_unreviewed_entities(db_session: AsyncSession,
     assert ("x", 2000) in [(row.field, row.value) for row in vertices]
 
 
+async def test_human_scale_over_measured_rescales_reviewed_too(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """OCR-SCALE: tỉ lệ `measured` do máy, chưa ai duyệt số mm → người đổi tỉ lệ thì co giãn cả mục đã duyệt."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    await _prepared(
+        db_session, floor, fake_clock, scale=Decimal("10"), scale_source="measured", reviewed_wall=True, length=1000
+    )
+
+    result = await write(
+        db_session, floor=floor, actor=scene.owner, clock=fake_clock, base_revision=1, scale=Decimal("20")
+    )
+
+    assert (_wall_length(result.layer, 0), _wall_length(result.layer, 1)) == (2000, 2000)
+    assert (await reread(db_session, floor.pk)).scale_source == "human"
+
+
 async def test_scale_from_null_does_not_rescale(db_session: AsyncSession, fake_clock: FakeClock) -> None:
     """Tỉ lệ cũ NULL nghĩa là chưa hiệu chỉnh: hình cũ không ở hệ nào để mà quy đổi (K19)."""
     scene = await make_scene(db_session)

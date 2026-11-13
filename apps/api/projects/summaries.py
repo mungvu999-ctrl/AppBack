@@ -31,7 +31,7 @@ from packages.db.models.spatial import FloorDocumentRow
 _RUNNING_STATES: Final = ("pending", "running")
 """Lượt pipeline còn dở — `legacy_status` xét nó **trước** `failed` (B2-01 [6])."""
 
-_REAL_SCALE_SOURCES: Final = ("human", "pipeline")
+_REAL_SCALE_SOURCES: Final = ("human", "measured", "pipeline")
 """Nguồn tỉ lệ cho diện tích tin được; `project_default` chỉ là số mặc định, `none` là chưa có (U07)."""
 
 _EMPTY_ROLLUP: Final = ProjectRollup(

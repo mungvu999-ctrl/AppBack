@@ -73,10 +73,10 @@ from packages.domain.spatial import (
 
 _log: Final = logging.getLogger(__name__)
 
-ScaleWriter = Literal["human", "pipeline", "project_default"]
+ScaleWriter = Literal["human", "measured", "pipeline", "project_default"]
 """Ai đặt tỉ lệ của lượt ghi này; `none` không phải lựa chọn của người ghi (W24)."""
 
-_RANK: Final[Mapping[str, int]] = {"human": 3, "pipeline": 2, "project_default": 1, "none": 0}
+_RANK: Final[Mapping[str, int]] = {"human": 3, "measured": 2, "pipeline": 2, "project_default": 1, "none": 0}
 """Hạng nguồn tỉ lệ: nguồn hạng thấp không đè được tỉ lệ của nguồn hạng cao (K19)."""
 
 _LISTS: Final = ("walls", "openings", "rooms", "furniture", "roofs")
@@ -172,8 +172,8 @@ class _Request:
 class _Scale:
     """Tỉ lệ đích của lượt ghi; `factor` khác `None` nghĩa là tỉ lệ đổi và lớp phải tính lại.
 
-    `include_reviewed`: tỉ lệ cũ chỉ là đoán (`scale_status` = `unresolved`), nên co giãn cả
-    mục đã duyệt — người dùng duyệt hình dạng theo pixel, không duyệt số mm của tỉ lệ tạm (H4).
+    `include_reviewed`: tỉ lệ cũ do máy (`scale_status` = `unresolved`, hay `measured`), nên co giãn cả
+    mục đã duyệt — người dùng duyệt hình dạng theo pixel, không duyệt số mm của tỉ lệ máy (H4).
     """
 
     value: Decimal | None
@@ -466,7 +466,9 @@ async def _target_scale(db: AsyncSession, request: _Request, current: FloorDocum
     )
     rank = 0 if other_page else _RANK[current.scale_source]
     target = request.body.scale_mm_per_px
-    provisional = not other_page and scale_status(current.scale_source) == "unresolved"
+    provisional = not other_page and (
+        scale_status(current.scale_source) == "unresolved" or current.scale_source == "measured"
+    )
     if target is None or _RANK[request.scale_source] < rank:
         return _Scale(
             current.scale_mm_per_px,

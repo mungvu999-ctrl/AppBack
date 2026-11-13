@@ -31,7 +31,7 @@ _log: Final = logging.getLogger(__name__)
 DOCUMENT_SCHEMA_VERSION: Final = 1
 """Lược đồ của cột `document`; nâng theo FIX.md luật 7 (migration đọc-ghi, không đọc thầm)."""
 
-ScaleSource = Literal["human", "pipeline", "project_default", "none"]
+ScaleSource = Literal["human", "measured", "pipeline", "project_default", "none"]
 
 EMPTY_LAYER: Final = SpatialLayer(walls=(), openings=(), rooms=(), furniture=())
 """Lớp rỗng dùng chung: mô hình bất biến nên một bản là đủ cho mọi tầng chưa có tài liệu."""

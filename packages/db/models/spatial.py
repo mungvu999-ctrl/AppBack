@@ -46,7 +46,7 @@ FLOOR_DOCUMENTS: Final = "floor_documents"
 FLOOR_CHANGE_LOG: Final = "floor_change_log"
 FLOOR_ENTITY_IDS: Final = "floor_entity_ids"
 
-SCALE_SOURCES: Final = ("human", "pipeline", "project_default", "none")
+SCALE_SOURCES: Final = ("human", "measured", "pipeline", "project_default", "none")
 """Nguồn của tỉ lệ mm/px — nguồn duy nhất cho CHECK, `ScaleSource` và test (W24)."""
 
 CHANGE_ENTITY_TYPES: Final = ("vertex", "wall", "door", "window", "furniture", "room", "dimension", "roof")

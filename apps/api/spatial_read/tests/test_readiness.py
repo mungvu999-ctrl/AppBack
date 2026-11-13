@@ -182,7 +182,15 @@ def test_scale_basis_of() -> None:
     assert scale_basis_of(run, "pipeline", "pipeline") == "door"
     assert scale_basis_of(run, "project_default", "project_default") == "door"
     assert scale_basis_of(run, "human", "pipeline") is None
+    assert scale_basis_of(run, "measured", "measured") == "door"
+    assert scale_basis_of(run, "measured", "pipeline") is None
     assert scale_basis_of(None, "pipeline", "pipeline") is None
     assert scale_basis_of(_run(summary=None), "pipeline", "pipeline") is None
     assert scale_basis_of(_run(summary={**CLEAN, "scaleBasis": "human"}), "pipeline", "pipeline") is None
     assert scale_basis_of(run, "none", "none") is None
+
+
+def test_readiness_of_measured_source_is_never_unresolved() -> None:
+    """OCR-SCALE: nguồn `measured` không còn `scaleUnresolved`, dù lượt không có tóm tắt."""
+    out = readiness_of(run=None, scale_source="measured", layer=REVIEWED)
+    assert out.reasons == ()

@@ -264,6 +264,42 @@ def _chain_text(value: str, cx: float, span_px: float, y: float = 1100) -> TextP
     )
 
 
+def _agreed_chain() -> list[TextPx]:
+    """Ba chữ chuỗi đồng thuận 20 mm/px."""
+    return [_chain_text("3000", 200, 150), _chain_text("2000", 500, 100), _chain_text("4000", 800, 200)]
+
+
+def test_build_layer__agreed_chain_persists_as_measured(fake_clock: FakeClock) -> None:
+    """OCR-SCALE: ≥ 3 số đo đồng thuận, không nghi vấn → `measured`; `layer.json` vẫn ghi `pipeline`."""
+    built = _run([_wall(100, 100, 1100, 100, 10.0)], _agreed_chain(), fake_clock)
+    assert (built.scale_basis, built.scale_checks) == ("chain", {})
+    assert (built.scale_source, built.persisted_scale_source) == ("pipeline", "measured")
+
+
+@pytest.mark.parametrize(
+    ("wall", "median_mm", "frame_mm"),
+    [
+        pytest.param(_wall(100, 100, 1100, 100, 1.0), 20.0, 20000.0, id="thin-walls"),
+        pytest.param(_wall(100, 100, 1100, 100, 30.0), 600.0, 20000.0, id="thick-walls"),
+        pytest.param(_wall(100, 100, 200, 100, 10.0), 200.0, 2000.0, id="tiny-frame"),
+    ],
+)
+def test_build_layer__implausible_walls_stay_provisional(
+    fake_clock: FakeClock, wall: WallPx, median_mm: float, frame_mm: float
+) -> None:
+    """OCR-SCALE: số đo đồng thuận mà tường ra vô lý → nghi vấn, giữ `pipeline` để người kiểm."""
+    built = _run([wall], _agreed_chain(), fake_clock)
+    assert built.scale_checks["implausibleWalls"] == {"medianMm": median_mm, "frameMm": frame_mm}
+    assert built.persisted_scale_source == "pipeline"
+
+
+def test_build_layer__estimate_never_persists_as_measured(fake_clock: FakeClock) -> None:
+    """OCR-SCALE: ước lượng và mặc định dự án giữ nguồn của lượt dựng."""
+    walls = [_wall(100, 100, 1100, 100, 15.0), _wall(100, 100, 100, 900, 15.0)]
+    assert _run(walls, (), fake_clock, fallback="1").persisted_scale_source == "pipeline"
+    assert _run(walls, (), fake_clock).persisted_scale_source == "project_default"
+
+
 def test_build_layer__scale_from_dimension_chains(fake_clock: FakeClock) -> None:
     """Ba chữ chuỗi ở 20 mm/px + một chữ đọc sai: chuỗi quyết `s` = 20, `pipeline`, dù không ghép được tường nào."""
     texts = [_chain_text("3000", 200, 150), _chain_text("2000", 500, 100), _chain_text("4000", 800, 200)]

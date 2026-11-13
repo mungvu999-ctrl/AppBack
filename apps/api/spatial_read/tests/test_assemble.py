@@ -52,16 +52,28 @@ def _floor_out(*, area_m2: float | None = None) -> FloorOut:
 
 @pytest.mark.parametrize(
     ("source", "expected"),
-    [("human", None), ("none", None), ("pipeline", "unresolved"), ("project_default", "unresolved")],
+    [
+        ("human", None),
+        ("measured", None),
+        ("none", None),
+        ("pipeline", "unresolved"),
+        ("project_default", "unresolved"),
+    ],
 )
 def test_scale_status_for_every_source(source: ScaleSource, expected: str | None) -> None:
-    """Đủ bốn nguồn: chỉ tỉ lệ **tạm** mới kèm `scaleStatus` trên dây (W24, HOP-DONG-MOI §4.2)."""
+    """Đủ năm nguồn: chỉ tỉ lệ **tạm** mới kèm `scaleStatus` trên dây (W24, HOP-DONG-MOI §4.2)."""
     assert scale_status(source) == expected
 
 
 @pytest.mark.parametrize(
     ("source", "expected"),
-    [("human", None), ("none", None), ("pipeline", "pipeline"), ("project_default", "project_default")],
+    [
+        ("human", None),
+        ("measured", None),
+        ("none", None),
+        ("pipeline", "pipeline"),
+        ("project_default", "project_default"),
+    ],
 )
 def test_provisional_scale_source_follows_scale_status(source: ScaleSource, expected: str | None) -> None:
     """`scaleSource` có đúng khi `scaleStatus` có, và tách "không đo được" khỏi "máy đo" (UX-R1 K12)."""
@@ -109,10 +121,11 @@ def test_level_reviewed_false_when_one_item_unreviewed() -> None:
 
 
 @pytest.mark.parametrize(
-    ("source", "expected"), [("human", True), ("none", True), ("pipeline", False), ("project_default", False)]
+    ("source", "expected"),
+    [("human", True), ("measured", True), ("none", True), ("pipeline", False), ("project_default", False)],
 )
 def test_level_reviewed_follows_scale_source(source: ScaleSource, expected: bool) -> None:
-    """Duyệt hết nhưng tỉ lệ còn `unresolved` → tầng chưa duyệt; `human` và `none` thì đạt."""
+    """Duyệt hết nhưng tỉ lệ còn `unresolved` → tầng chưa duyệt; `human`, `measured` và `none` thì đạt."""
     layer = sample_floor_layer(0, level_id=LEVEL_ID, reviewed=True)
     assert level_reviewed(layer, source) is expected
 
@@ -127,14 +140,16 @@ def test_level_reviewed_ignores_dimensions() -> None:
 
 
 @pytest.mark.parametrize("source", ["none", "pipeline", "project_default"])
-def test_effective_scale_source_keeps_non_human(source: ScaleSource) -> None:
-    """Nguồn khác `human` không gắn với trang: cổng trả gì cũng không đổi hạng."""
+def test_effective_scale_source_keeps_unbound_sources(source: ScaleSource) -> None:
+    """Nguồn khác `human`, `measured` không gắn với trang: cổng trả gì cũng không đổi hạng."""
     assert effective_scale_source(_doc(scale_source=source, page_key="P1"), "P2") == source
 
 
-def test_effective_scale_source_demotes_human_on_other_page() -> None:
-    """Tỉ lệ người đặt trên trang P1, bản vẽ hiện tại là P2 → tụt xuống `pipeline` (#35)."""
-    assert effective_scale_source(_doc(scale_source="human", page_key="P1"), "P2") == "pipeline"
+@pytest.mark.parametrize("source", ["human", "measured"])
+def test_effective_scale_source_demotes_on_other_page(source: ScaleSource) -> None:
+    """Tỉ lệ đặt/đọc trên trang P1, bản vẽ hiện tại là P2 → tụt xuống `pipeline` (#35); cùng trang thì giữ."""
+    assert effective_scale_source(_doc(scale_source=source, page_key="P1"), "P2") == "pipeline"
+    assert effective_scale_source(_doc(scale_source=source, page_key="P1"), "P1") == source
 
 
 def test_effective_scale_source_keeps_human_on_same_page() -> None:

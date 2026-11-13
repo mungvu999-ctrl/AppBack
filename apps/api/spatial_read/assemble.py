@@ -27,19 +27,22 @@ _HUMAN_CONFIDENCE = 1.0
 
 
 def effective_scale_source(doc: FloorDocument, page_key: str | None) -> ScaleSource:
-    """Hạng thật của tỉ lệ: `human` gắn với **trang** lúc hiệu chỉnh, trang khác → `pipeline`.
+    """Hạng thật của tỉ lệ: `human`, `measured` gắn với **trang** lúc đặt/đọc, trang khác → `pipeline`.
 
     Cổng `drawing_pages` không biết tầng (vắng khoá) hay tài liệu chưa ghi `scale_page_key`
     thì giữ nguyên hạng cũ: không có bằng chứng trang đã đổi, và hạ hạng vì thiếu dữ liệu sẽ
     bắt người dùng hiệu chỉnh lại một tỉ lệ vẫn đúng.
     """
-    if doc.scale_source != "human" or doc.scale_page_key is None or page_key is None:
+    if doc.scale_source not in ("human", "measured") or doc.scale_page_key is None or page_key is None:
         return doc.scale_source
-    return "human" if page_key == doc.scale_page_key else "pipeline"
+    return doc.scale_source if page_key == doc.scale_page_key else "pipeline"
 
 
 def scale_status(scale_source: ScaleSource) -> Literal["unresolved"] | None:
-    """`'unresolved'` cho tỉ lệ tạm (`pipeline`, `project_default`); `human` và `none` vắng khoá (W24)."""
+    """`'unresolved'` cho tỉ lệ tạm (`pipeline`, `project_default`); `human`, `measured`, `none` vắng khoá (W24).
+
+    `measured`: từ ≥ 3 số đo OCR đồng thuận, không nghi vấn (`BuiltLayer.persisted_scale_source`), không bắt xác nhận.
+    """
     return "unresolved" if scale_source in ("pipeline", "project_default") else None
 
 

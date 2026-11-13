@@ -19,3 +19,4 @@
 - Tái lập: `docs/ml-accuracy-research-next/scripts/r9_w_cases.py v5:base`, `r9_w_pipe.sh`/`r9_w_run.sh` (chạy pipeline), `r9_w_eval.py` (layer/report/rooms/summary), `r9_w_loai.py` (theo loại), `r9_w_blind_kit.py` (xem mù). Đầu ra `F:/runs/mlr-next/r9/w/out/{base,v5}`.
 - Rủi ro: vừa; giả thuyết quạt dựa vào góc cánh và mực mảnh nên có thể bỏ nhầm tường mảnh trùng quạt (đã đo 3,9 %). Test: `pytest apps/worker/pipeline_build` qua `run.sh shell`.
 - Nợ: cửa đơn / cửa sổ pháp / cửa lùa chưa xử lý (vòng sau). Không chạy cổng đầy đủ tại chỗ (CI khi mở PR).
+- Sau review (P2 #1, P3 #3): nhánh không có trang (`page=None`) giữ hết nét như main, bỏ luật v2 (`_swing_zone`, `_touches`) chưa duyệt; thêm test 3 ca có trang. 5 ảnh cvcfp có trang cho kết quả y hệt `out/v5` (`F:/runs/mlr-next/r9/w/fix-p2.txt`).

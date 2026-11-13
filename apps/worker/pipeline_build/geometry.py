@@ -1724,24 +1724,6 @@ def _in_wedges(seg: _Seg, wedges: Sequence[_Wedge]) -> bool:
     return False
 
 
-def _swing_zone(rect: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
-    """R6-W v2 (không có trang): hộp mảnh (cạnh dài ≥ 2 lần cạnh ngắn) nới cạnh ngắn mỗi phía một bán kính cánh."""
-    x0, y0, x1, y1 = rect
-    width, height = x1 - x0, y1 - y0
-    if max(width, height) < 2 * min(width, height):
-        return rect
-    if width >= height:
-        return (x0, y0 - width, x1, y1 + width)
-    return (x0 - height, y0, x1 + height, y1)
-
-
-def _touches(seg: _Seg, rect: tuple[float, float, float, float]) -> bool:
-    """Một đầu `seg` nằm trong hộp nới `_SYMBOL_SLACK_MM`: cánh/cung quạt luôn xuất phát từ khe cửa."""
-    x0, y0, x1, y1 = rect
-    s = _SYMBOL_SLACK_MM
-    return any(x0 - s <= p.x <= x1 + s and y0 - s <= p.y <= y1 + s for p in (seg.start, seg.end))
-
-
 def _tied_outside(seg: _Seg, rect: tuple[float, float, float, float], geoms: Geoms, within: Collection[int]) -> bool:
     """Sửa sau phản biện X2-C1: đầu xa (không chạm hộp) của `seg` nối vào tường nằm ngoài vùng quạt → vách thật (vách tủ
     âm tường cạnh khe cửa, cvcfp-Ic_JN0702), giữ. Cánh cửa có đầu xa tự do hoặc nối dây cung (cũng trong vùng quạt).
@@ -1766,14 +1748,14 @@ def _drop_door_symbols(
 
     Baseline: dây cung quạt đi qua tâm hộp nên `_attach_walls`/`_runs_along` chọn nó làm tường chủ, ô mở nằm trên
     quạt và vách thật để hở. Ở mỗi hộp `door`/`double_door`: tường neo = tường với tới hộp (`_attach_walls`) có đầu
-    ra ngoài vùng quạt; không có neo → không đủ căn cứ, giữ nguyên. Nét nằm trọn trong vùng quạt (`_swing_zone`, v2:
-    hộp mảnh nới theo bán kính cánh), có một đầu chạm hộp và không nằm trên tim neo (`_symbol_of`) bị bỏ. Không hộp
-    (detector bỏ sót) → quạt còn như cũ; hộp gọi sai trên tường thật chỉ bỏ nét nằm trọn trong vùng quạt, tường neo
+    ra ngoài vùng quạt; không có neo → không đủ căn cứ, giữ nguyên. Nét nằm trọn trong quạt đọc trên mực, có một
+    đầu chạm hộp và không nằm trên tim neo (`_symbol_of`) bị bỏ. Không hộp (detector bỏ sót) hoặc không có trang
+    (`page is None`) → giữ hết như main; hộp gọi sai trên tường thật chỉ bỏ nét nằm trọn trong vùng quạt, tường neo
     không bao giờ bị bỏ. Trả thứ tự (trong `detections`) của
     hộp đã bỏ nét để `_symbol_closers` khép phòng qua ô mở.
     """
     chosen = [(order, det) for order, det in enumerate(detections) if det.label in _DOOR_SYMBOL_LABELS]
-    if not segs or not chosen:
+    if page is None or not segs or not chosen:  # không có trang → không đọc được quạt → giữ hết như main
         return segs, set()
     rects = [_rect(det.box, scaling) for _, det in chosen]
     geoms = _linestrings(segs)
@@ -1782,25 +1764,18 @@ def _drop_door_symbols(
     # ponytail: nét trọn trong hộp lệch tim neo coi là ký hiệu; vách thật ngắn < 1 hộp nằm trọn trong hộp gọi sai sẽ
     # mất — cần đọc mực (cung tròn) nếu đo thấy ca đó.
     for (order, _), rect, near in zip(chosen, rects, _attach_walls(segs, geoms, rects), strict=True):
-        if page is not None:
-            # R8-W v5: chỉ bỏ nét nằm trong quạt có cánh + cung đọc được trên mực thô; không đọc được → giữ hết.
-            wedge = _read_wedge(rect, page, scaling.build)
-            if wedge is None:
-                continue
-            wedges = (wedge,)
-            xs = [w[0] + w[6] * d for w in wedges for d in (0.0, w[2], w[4])]
-            ys = [w[1] + w[6] * d for w in wedges for d in (0.0, w[3], w[5])]
-            pad = max(w[6] for w in wedges) / 4
-            zone = (min(xs) - pad, min(ys) - pad, max(xs) + pad, max(ys) + pad)
-            within = {k for k, seg in enumerate(segs) if _in_wedges(seg, wedges)}
-            inside = within
-        else:
-            zone = _swing_zone(rect)
-            # ponytail: quét mọi tường cho mỗi hộp (O(tường x hộp)); dùng STRtree nếu đo thấy chậm.
-            within = {k for k, seg in enumerate(segs) if _symbol_of(seg, zone, ())}
-            inside = {k for k in within if _touches(segs[k], rect)}
+        # R8-W v5: chỉ bỏ nét nằm trong quạt có cánh + cung đọc được trên mực thô; không đọc được → giữ hết.
+        wedge = _read_wedge(rect, page, scaling.build)
+        if wedge is None:
+            continue
+        wedges = (wedge,)
+        xs = [w[0] + w[6] * d for w in wedges for d in (0.0, w[2], w[4])]
+        ys = [w[1] + w[6] * d for w in wedges for d in (0.0, w[3], w[5])]
+        pad = max(w[6] for w in wedges) / 4
+        zone = (min(xs) - pad, min(ys) - pad, max(xs) + pad, max(ys) + pad)
+        within = {k for k, seg in enumerate(segs) if _in_wedges(seg, wedges)}
         anchors = [segs[k] for k in near if k not in within]
-        found = {k for k in inside if _symbol_of(segs[k], zone, anchors)} if anchors else set()
+        found = {k for k in within if _symbol_of(segs[k], zone, anchors)} if anchors else set()
         found = {k for k in found if not _tied_outside(segs[k], rect, geoms, within)}
         if found:
             drop |= found

@@ -35,10 +35,25 @@ def _shell(gaps: list[tuple[float, float]]) -> list[WallPx]:
     return walls
 
 
-def _layer(walls: list[WallPx], detections: list[DetectionPx], clock: FakeClock) -> tuple[WallSet, tuple[Room, ...]]:
+def _ink(gaps: list[tuple[float, float]], fans: tuple[tuple[int, int, int, int], ...] = ()) -> PageRaster:
+    """Trang thô: vách `x = 3000` đứt ở `gaps` (tô đen dày) + quạt `(x, y, bán kính, hướng y)` mở sang phải."""
+    gray = np.full((4100, 6100), 255, np.uint8)
+    cursor = 0
+    for low, high in [*gaps, (4000, 4000)]:
+        cv2.line(gray, (3000, cursor), (3000, int(low)), 0, 100)
+        cursor = int(high)
+    for hx, hy, r, dy in fans:
+        cv2.line(gray, (hx, hy), (hx + r, hy), 0, 3)
+        cv2.ellipse(gray, (hx, hy), (r, r), 0, 0 if dy > 0 else -90, 90 if dy > 0 else 0, 0, 3)
+    return PageRaster(gray=gray, walls=np.zeros(gray.shape, bool))
+
+
+def _layer(
+    walls: list[WallPx], detections: list[DetectionPx], clock: FakeClock, page: PageRaster | None = None
+) -> tuple[WallSet, tuple[Room, ...]]:
     """`build_walls` → `build_rooms` như `build._assembled` (tường qua khe 3c không vào phòng)."""
     shared: dict[str, Any] = {"level_id": new_spatial_id("level", clock), "scaling": Scaling(1.0, 1.0), "clock": clock}
-    wall_set = build_walls(walls, detections, dropped=Counter(), **shared)
+    wall_set = build_walls(walls, detections, dropped=Counter(), page=page, **shared)
     from_inputs = set(wall_set.input_to_wall.values())
     room_walls = [wall for k, wall in enumerate(wall_set.walls) if k in from_inputs]
     rooms = build_rooms(room_walls, wall_set.bridges, (), detections=detections, dropped=Counter(), **shared)
@@ -73,10 +88,18 @@ def test_door_symbols__missed_door_keeps_fan_as_before(fake_clock: FakeClock) ->
     assert len(rooms) == 2
 
 
+def test_door_symbols__no_page_keeps_everything_like_main(fake_clock: FakeClock) -> None:
+    """Không đọc được trang (`page=None`): không có căn cứ mực → giữ mọi nét như main, dù có hộp cửa."""
+    walls = [*_shell([(1500, 2400)]), *_SWING]
+    box = det("door", *_SWING_BOX)
+    assert len(_layer(walls, [box], fake_clock)[0].walls) == len(_layer(walls, [], fake_clock)[0].walls)
+
+
 def test_door_symbols__fan_dropped_rooms_stay_closed(fake_clock: FakeClock) -> None:
     """Cửa một cánh có hộp: cánh + dây cung bỏ khỏi tường 3D; ô mở trên vách; vẫn đúng 2 phòng (khe được khép)."""
     box = det("door", *_SWING_BOX)
-    wall_set, rooms = _layer([*_shell([(1500, 2400)]), *_SWING], [box], fake_clock)
+    page = _ink([(1500, 2400)], ((3000, 1500, 900, 1),))
+    wall_set, rooms = _layer([*_shell([(1500, 2400)]), *_SWING], [box], fake_clock, page)
     (opening,) = wall_set.openings
     host = next(w for w in wall_set.walls if w.id == opening.wall_id)
     assert host.centreline.start.x == host.centreline.end.x == 3000
@@ -88,24 +111,10 @@ def test_door_symbols__corner_door_keeps_perpendicular_wall(fake_clock: FakeCloc
     """Cửa sát góc (khe 0..900 sát tường trên): bỏ quạt, tường trên đi qua mép hộp còn nguyên, 2 phòng."""
     box_xy = (2950.0, 0.0, 3900.0, 900.0)
     fan = [wall_px(3000, 900, 3900, 900, _FAN), wall_px(3900, 900, 3050, 50, _FAN)]
-    wall_set, rooms = _layer([*_shell([(0, 900)]), *fan], [det("door", *box_xy)], fake_clock)
+    page = _ink([(0, 900)], ((3050, 900, 850, -1),))
+    wall_set, rooms = _layer([*_shell([(0, 900)]), *fan], [det("door", *box_xy)], fake_clock, page)
     assert _spans(wall_set.walls, 0, 0, 6000)
     assert not [w for w in wall_set.walls if _inside_box(w, box_xy) and w.centreline.start.y != 0]
-    assert len(rooms) == 2
-
-
-def test_door_symbols__double_door_drops_both_leaves(fake_clock: FakeClock) -> None:
-    """Cửa đôi 1600: hai cánh + hai dây cung đều bỏ, một ô mở, 2 phòng."""
-    box_xy = (2950.0, 1200.0, 3800.0, 2800.0)
-    fan = [
-        wall_px(3000, 1200, 3800, 1200, _FAN),
-        wall_px(3800, 1200, 3000, 2000, _FAN),
-        wall_px(3000, 2800, 3800, 2800, _FAN),
-        wall_px(3800, 2800, 3000, 2000, _FAN),
-    ]
-    wall_set, rooms = _layer([*_shell([(1200, 2800)]), *fan], [det("double_door", *box_xy)], fake_clock)
-    (opening,) = wall_set.openings
-    assert not [w for w in wall_set.walls if w.id != opening.wall_id and _inside_box(w, box_xy)]
     assert len(rooms) == 2
 
 
@@ -136,7 +145,8 @@ _THIN_BOX = (2950.0, 1500.0, 3050.0, 2400.0)
 
 def test_door_symbols__thin_box_fan_outside_box_dropped(fake_clock: FakeClock) -> None:
     """v2: hộp mảnh chỉ ôm khe, quạt vẽ ra ngoài hộp → vùng quạt nới một bán kính cánh, quạt vẫn bị bỏ, 2 phòng."""
-    wall_set, rooms = _layer([*_shell([(1500, 2400)]), *_SWING], [det("door", *_THIN_BOX)], fake_clock)
+    page = _ink([(1500, 2400)], ((3050, 1500, 900, 1),))
+    wall_set, rooms = _layer([*_shell([(1500, 2400)]), *_SWING], [det("door", *_THIN_BOX)], fake_clock, page)
     zone = (2050.0, 1500.0, 3950.0, 2400.0)
     (opening,) = wall_set.openings
     assert not [w for w in wall_set.walls if w.id != opening.wall_id and _inside_box(w, zone)]
@@ -156,7 +166,8 @@ def test_door_symbols__closet_wall_at_jamb_kept(fake_clock: FakeClock) -> None:
     """
     closet = [wall_px(3000, 2400, 3800, 2400), wall_px(3800, 2400, 3800, 4000)]
     fan = [wall_px(3000, 1500, 3800, 1500, _FAN)]
-    wall_set, _ = _layer([*_shell([(1500, 2400)]), *closet, *fan], [det("door", *_THIN_BOX)], fake_clock)
+    page = _ink([(1500, 2400)], ((3050, 1500, 900, 1),))
+    wall_set, _ = _layer([*_shell([(1500, 2400)]), *closet, *fan], [det("door", *_THIN_BOX)], fake_clock, page)
     assert _spans(wall_set.walls, 2400, 3000, 3800)
     assert not _spans(wall_set.walls, 1500, 3100, 3700)
 
@@ -191,3 +202,38 @@ def test_door_symbols__ink_wedge_drops_fan_keeps_jamb_stub(fake_clock: FakeClock
     assert not _spans(wall_set.walls, 1500, 3100, 3800)
     ends = [(w.centreline.start, w.centreline.end) for w in wall_set.walls]
     assert not [(p, q) for p, q in ends if p.x != q.x and p.y != q.y]
+
+
+def test_door_symbols__square_box_hinge_at_corner_drops_leaf_and_arc(fake_clock: FakeClock) -> None:
+    """P3 #3a: hộp vuông ôm trọn quạt, bản lề ở góc → bỏ cánh + cung, ô mở trên vách, 2 phòng."""
+    box_xy = (3000.0, 1500.0, 3900.0, 2400.0)
+    page = _ink([(1500, 2400)], ((3000, 1500, 900, 1),))
+    wall_set, rooms = _layer([*_shell([(1500, 2400)]), *_SWING], [det("door", *box_xy)], fake_clock, page)
+    (opening,) = wall_set.openings
+    assert not [w for w in wall_set.walls if w.id != opening.wall_id and _inside_box(w, (3100, 1500, 3900, 2300))]
+    assert len(rooms) == 2
+
+
+def test_door_symbols__two_symmetric_fans_keep_everything(fake_clock: FakeClock) -> None:
+    """P3 #3b: cửa đôi, hai quạt đối xứng cùng mực → đọc nhập nhằng (`None`), giữ hết (v5 chưa xử lý cửa đôi)."""
+    box_xy = (2950.0, 1200.0, 3800.0, 2800.0)
+    fan = [
+        wall_px(3000, 1200, 3800, 1200, _FAN),
+        wall_px(3800, 1200, 3000, 2000, _FAN),
+        wall_px(3000, 2800, 3800, 2800, _FAN),
+        wall_px(3800, 2800, 3000, 2000, _FAN),
+    ]
+    page = _ink([(1200, 2800)], ((3000, 1200, 800, 1), (3000, 2800, 800, -1)))
+    walls = [*_shell([(1200, 2800)]), *fan]
+    kept = len(_layer(walls, [], fake_clock, page)[0].walls)
+    assert len(_layer(walls, [det("double_door", *box_xy)], fake_clock, page)[0].walls) == kept
+
+
+def test_door_symbols__false_box_real_wall_through_inked_page_kept(fake_clock: FakeClock) -> None:
+    """P3 #3c: hộp gọi sai, vách thật xuyên hộp, trang có mực (không quạt) → giữ hết."""
+    box_xy = (2950.0, 1500.0, 3900.0, 2400.0)
+    page = _ink([])
+    cv2.line(page.gray, (3000, 1800), (6000, 1800), 0, 100)
+    walls = [*_shell([]), wall_px(3000, 1800, 6000, 1800)]
+    baseline = len(_layer(walls, [], fake_clock, page)[0].walls)
+    assert len(_layer(walls, [det("door", *box_xy)], fake_clock, page)[0].walls) == baseline

@@ -62,6 +62,13 @@ def _page(*rows: tuple[str, float]) -> list[TextPx]:
         ("mm-thuan", _page(("3450", 345), ("900", 90), ("2 400", 240), ("1.200", 120)), [3450, 900, 2400, 1200]),
         # mm thuần ở 0,5 mm/px: mm ra ngoài dải 1-200 (bỏ hết); nhân 10 vào dải nhưng không có số mét lẻ → không đổi
         ("mm-thuan-ngoai-dai", _page(("3450", 6900), ("900", 1800), ("2400", 4800)), []),
+        # mm thuần ngoài dải (0,5 mm/px) có cao độ lạc "2.70"/"3.00": cụm mét-cm (số nguyên nhân 10) không chứa số mét
+        # thập phân nào, các số mét lạc không trùng tỉ số → không đổi, như prod
+        (
+            "mm-ngoai-dai-cao-do",
+            _page(("3450", 6900), ("900", 1800), ("2400", 4800), ("2.70", 140), ("3.00", 95)),
+            [],
+        ),
         # mét-cm (cvcfp), 18 mm/px: số mét thập phân + số cm nguyên cùng một cụm → đọc mét-cm
         ("met-cm", _page(("3.45", 191.7), ("1,20", 66.7), ("2.25", 125), ("80", 44.4)), [3450, 1200, 2250, 800]),
         # mm có vài cao độ thập phân lạc ("2.70", "3.00"): cụm mm đông hơn → giữ mm
@@ -110,3 +117,38 @@ def test_build_layer__cvcfp2_unitless_metre_cm_reads_metric(fake_clock: FakeCloc
     )
     assert built.scale_basis == "chain"
     assert abs(float(built.scale_mm_per_px) / 18.19 - 1) <= 0.01
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        # cvcfp-IIa_SL0801 (chữ OCR thật có span, r4/pipe/work): số nguyên "1720"/"550" lẫn mét phẩy "1,62" và "m2"
+        [
+            ("1720", 2031.0),
+            ("DOUCNE", 257.5),
+            ("DRESSING", 332.0),
+            ("PLACARD", 228.0),
+            ("1,62", 100.0),
+            ("6,16 m2", 175.5),
+            ("CELLIER", 279.0),
+            ("4,18 m2", 236.0),
+            ("550", 1830.0),
+        ],
+        # cvcfp-IIa_LI0801: mm có khoảng trắng "1 625", "000", mét phẩy "1,57", diện tích "9,89 m2"
+        [
+            ("1 625", 1919.0),
+            ("1,30 m2", 181.5),
+            ("000", 1181.0),
+            ("1,57", 1566.5),
+            ("HALL", 1954.0),
+            ("9,89 m2", 1566.5),
+            ("PL.", 151.5),
+        ],
+    ],
+    ids=["cvcfp-IIa_SL0801", "cvcfp-IIa_LI0801"],
+)
+def test_chain_samples__real_mixed_conventions_without_evidence_keep_prod(rows: list[tuple[str, float]]) -> None:
+    """R9 phản biện X: trang thật trộn số nguyên, số mét phẩy và số m²; cách đọc mm ra ngoài dải, mét-cm chỉ có cụm
+    một mẫu → không đủ căn cứ, giữ mm như prod (không mẫu chuỗi nào; tỉ lệ rơi về ghép tường/ước)."""
+    texts = _page(*rows)
+    assert build_module._chain_samples(texts) == build_module._read_chain(texts, parse_length_mm) == ()

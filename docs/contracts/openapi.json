@@ -2293,7 +2293,7 @@
       },
       "FloorLayerWriteBodySchema": {
         "additionalProperties": false,
-        "description": "`body` của #35: lớp, tỉ lệ, kích thước, trục, gốc toạ độ — ít nhất một khoá (FE `refine` ≥ 1 khoá).\n\n`axes` thay nguyên danh sách trục như `dimensions`; `origin` là gốc toạ độ màn Trục (mm, G4b-17).",
+        "description": "`body` của #35: lớp, tỉ lệ, kích thước, trục, gốc toạ độ — ít nhất một khoá (FE `refine` ≥ 1 khoá).\n\n`axes` thay nguyên danh sách trục như `dimensions`; `origin` là gốc toạ độ màn Trục (mm, G4b-17).\n`scaleEvidence` (ML-ACC-R10 K4): căn cứ của tỉ lệ gửi kèm, vắng = `measured`; không có tỉ lệ thì 422.",
         "properties": {
           "axes": {
             "anyOf": [
@@ -2342,6 +2342,21 @@
                 "type": "null"
               }
             ]
+          },
+          "scaleEvidence": {
+            "anyOf": [
+              {
+                "enum": [
+                  "measured",
+                  "machineAccepted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scaleevidence"
           },
           "scaleMillimetresPerPixel": {
             "anyOf": [

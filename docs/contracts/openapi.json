@@ -2197,6 +2197,20 @@
             ],
             "title": "Scalebasis"
           },
+          "scaleReasons": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scalereasons"
+          },
           "scaleSource": {
             "anyOf": [
               {
@@ -2211,6 +2225,23 @@
               }
             ],
             "title": "Scalesource"
+          },
+          "scaleState": {
+            "anyOf": [
+              {
+                "enum": [
+                  "determined",
+                  "estimated",
+                  "unresolved",
+                  "userCalibrated"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scalestate"
           },
           "scaleStatus": {
             "anyOf": [

@@ -16,6 +16,7 @@ from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Final, Literal
 
+import cv2
 import numpy as np
 import shapely
 from numpy.typing import NDArray
@@ -43,7 +44,7 @@ from apps.worker.pipeline_build.constants import (
 )
 from apps.worker.pipeline_build.ids import new_spatial_id
 from apps.worker.pipeline_build.residual import INK_GRAY, PageRaster
-from apps.worker.pipeline_build.swing import read_leaf
+from apps.worker.pipeline_build.swing import _hit, read_leaf
 from packages.core.clock import Clock
 from packages.domain.rules_ai import outline_contains
 from packages.domain.rules_ai.geometry import wall_side_by
@@ -1210,13 +1211,14 @@ def build_walls(
     segs = _drop_inside_body(_drop_far_clusters(_drop_isolated(segs, dropped), dropped), dropped)
     boxes = _opening_boxes(detections, scaling)
     bridges = _join_gaps(segs, boxes, dropped) if segs else ()
-    live = [seg for seg in segs if seg.alive]
+    live, symbol_doors = _drop_door_symbols([seg for seg in segs if seg.alive], detections, scaling, page)
     live += _gap_walls(live, detections, scaling)
-    input_to_wall = {index: position for position, seg in enumerate(live) for index in seg.inputs}
     geoms = _linestrings(live) if live else np.asarray([], dtype=object)
     chains = _arc_chains(live, arc_of)
     cands = _resolve_overlaps(_opening_candidates(live, geoms, detections, scaling, dropped, chains, page), dropped)
     live, cands = _drop_bare_gap_walls(live, cands)
+    bridges = (*bridges, *_symbol_closers(live, cands, symbol_doors))
+    input_to_wall = {index: position for position, seg in enumerate(live) for index in seg.inputs}
     built_walls, openings = _assemble(live, cands, level_id, clock)
     leaves = {opening.id: cand.leaf for opening, cand in zip(openings, cands, strict=True) if cand.leaf is not None}
     return WallSet(built_walls, openings, input_to_wall, bridges, MappingProxyType(leaves))
@@ -1582,6 +1584,244 @@ def close_envelope_gaps(
         walls.append(wall)
         lines.append(_centreline(wall))
     return replace(wall_set, walls=tuple(walls), openings=tuple(openings), leaves=MappingProxyType(leaves))
+
+
+_SYMBOL_SLACK_MM: Final = 50
+"""Tường ký hiệu cửa phải nằm trọn trong hộp cửa nới mỗi phía 50 mm (cung quạt hay chạm mép hộp)."""
+_SYMBOL_ALIGN_SIN: Final = math.sin(math.radians(10.0))
+_DOOR_SYMBOL_LABELS: Final = frozenset({"door", "double_door"})
+
+
+def _symbol_of(seg: _Seg, rect: tuple[float, float, float, float], anchors: Sequence[_Seg]) -> bool:
+    """`seg` là nét ký hiệu cửa (cung quạt, cánh) của hộp `rect`, không phải tường thật.
+
+    Hai đầu nằm trong hộp nới `_SYMBOL_SLACK_MM`, và không nằm trên tim tường neo nào (`anchors`: tường thật với tới
+    hộp, có đầu ra ngoài hộp) — cùng hướng (≤ 10°) và cách tim ≤ nửa bề dày thì là mẩu tường chủ, giữ.
+    """
+    x0, y0, x1, y1 = rect
+    s = _SYMBOL_SLACK_MM
+    if not all(x0 - s <= p.x <= x1 + s and y0 - s <= p.y <= y1 + s for p in (seg.start, seg.end)):
+        return False
+    sx, sy = _unit(seg)
+    mid = ((seg.start.x + seg.end.x) / 2, (seg.start.y + seg.end.y) / 2)
+    for host in anchors:
+        hx, hy = _unit(host)
+        across = hx * (mid[1] - host.start.y) - hy * (mid[0] - host.start.x)
+        if abs(hx * sy - hy * sx) <= _SYMBOL_ALIGN_SIN and abs(across) <= host.thickness_mm / 2:
+            return False
+    return True
+
+
+_Wedge = tuple[float, float, float, float, float, float, float]
+"""Quạt một cánh (mm): bản lề `(hx, hy)`, hướng dây khe `(tx, ty)`, pháp tuyến phía cánh `(sx, sy)`, bán kính `r`."""
+
+_WEDGE_ARC_HIT: Final = 0.6
+_WEDGE_LEAF_HIT: Final = 0.6
+_WEDGE_MARGIN: Final = 0.15
+"""R8-W v5: mực mảnh phủ ≥ 60 % mẫu cung và cánh, hơn quạt khác vùng ≥ 0,15 (vách tủ/placard không có cung → giữ)."""
+
+_SOLID_MM: Final = 80.0
+"""Mực đặc dày ≥ 80 mm là tường tô đen, không phải nét ký hiệu: bỏ khi đọc quạt (cánh dọc mặt tường không ăn điểm)."""
+
+_LEAF_ANGLES: Final = tuple(range(30, 91, 5))
+"""Cánh vẽ mở 30-90° so với dây khe (cvcfp hay vẽ cánh xiên 30°)."""
+
+
+def _wedge_hypotheses(rect: tuple[float, float, float, float]) -> list[_Wedge]:
+    """Giả thuyết quạt của hộp (mm).
+
+    Họ khe: khe trên trục dài, bản lề ở hai đầu dời ra mặt tường (nửa cạnh ngắn), cánh về hai phía, bán kính = cạnh dài.
+    Hộp gần vuông (dài < 2 lần ngắn) thêm họ góc: bản lề ở 4 góc, dây + cánh theo hai cạnh, bán kính = cạnh ngắn.
+    """
+    x0, y0, x1, y1 = rect
+    width, height = x1 - x0, y1 - y0
+    horizontal = width >= height
+    long_side, half = (width, height / 2) if horizontal else (height, width / 2)
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    a, b = ((x0, cy), (x1, cy)) if horizontal else ((cx, y0), (cx, y1))
+    ux, uy = (1.0, 0.0) if horizontal else (0.0, 1.0)
+    hyps: list[_Wedge] = []
+    for side in (1, -1):
+        sx, sy = -uy * side, ux * side
+        hyps += [(a[0] + sx * half, a[1] + sy * half, ux, uy, sx, sy, long_side)]
+        hyps += [(b[0] + sx * half, b[1] + sy * half, -ux, -uy, sx, sy, long_side)]
+    if max(width, height) < 2 * min(width, height):
+        radius = min(width, height)
+        for hx, hy, dx, dy in ((x0, y0, 1.0, 1.0), (x1, y0, -1.0, 1.0), (x0, y1, 1.0, -1.0), (x1, y1, -1.0, -1.0)):
+            hyps += [(hx, hy, dx, 0.0, 0.0, dy, radius), (hx, hy, 0.0, dy, dx, 0.0, radius)]
+    return hyps
+
+
+def _wedge_score(
+    ink: NDArray[np.bool_], origin: tuple[int, int], wedge: _Wedge, build: float
+) -> tuple[float, float, float]:
+    """Điểm tốt nhất theo góc cánh `_LEAF_ANGLES`: `(trung bình, cánh, cung)`; cung lấy mẫu từ má kia tới cánh."""
+    hx, hy, tx, ty, sx, sy, r = wedge
+    depths = np.linspace(0.15, 1.0, 24) * r
+    best = (0.0, 0.0, 0.0)
+    for degrees in _LEAF_ANGLES:
+        phi = math.radians(degrees)
+        dx, dy = tx * math.cos(phi) + sx * math.sin(phi), ty * math.cos(phi) + sy * math.sin(phi)
+        leaf = np.column_stack((hx + dx * depths, hy + dy * depths)) / build
+        angles = np.radians(np.linspace(8.0, degrees - 8.0, 24))
+        cos, sin = np.cos(angles), np.sin(angles)
+        arc = np.column_stack((hx + r * (tx * cos + sx * sin), hy + r * (ty * cos + sy * sin))) / build
+        leaf_hit, arc_hit = _hit(ink, origin, leaf), _hit(ink, origin, arc)
+        if (leaf_hit + arc_hit) / 2 > best[0]:
+            best = ((leaf_hit + arc_hit) / 2, leaf_hit, arc_hit)
+    return best
+
+
+def _read_wedge(rect: tuple[float, float, float, float], page: PageRaster, build: float) -> _Wedge | None:
+    """R8-W v5: quạt có cánh + cung đọc được trên mực mảnh của trang.
+
+    Không trừ mặt nạ tường (quạt nằm trong mặt nạ: lý do v4 mất tác dụng) mà bỏ mực đặc dày ≥ `_SOLID_MM`. Không giả
+    thuyết nào đủ `_WEDGE_*`, hay quạt khác vùng sát điểm (< `_WEDGE_MARGIN`) → `None`. Cửa đôi/lùa thường không đọc
+    được → giữ.
+    """
+    x0, y0, x1, y1 = (v / build for v in rect)
+    reach = max(x1 - x0, y1 - y0) + 4
+    height, cols = page.gray.shape
+    cx0, cy0 = max(0, math.floor(x0 - reach)), max(0, math.floor(y0 - reach))
+    cx1, cy1 = min(cols, math.ceil(x1 + reach) + 1), min(height, math.ceil(y1 + reach) + 1)
+    if cx1 <= cx0 or cy1 <= cy0:
+        return None
+    ink = (page.gray[cy0:cy1, cx0:cx1] < INK_GRAY).astype(np.uint8)
+    k = int(min(15, max(3, round(_SOLID_MM / build))))
+    solid = np.asarray(cv2.morphologyEx(ink, cv2.MORPH_OPEN, np.ones((k, k), np.uint8)), dtype=np.uint8)
+    thin = ink & (1 - solid)
+    pad = max(2, round(0.05 * max(x1 - x0, y1 - y0)))
+    dilated = np.asarray(cv2.dilate(thin, np.ones((2 * pad + 1, 2 * pad + 1), np.uint8)) > 0)
+    scored = sorted(
+        ((_wedge_score(dilated, (cx0, cy0), w, build), w) for w in _wedge_hypotheses(rect)), key=lambda t: -t[0][0]
+    )
+    passing = [item for item in scored if item[0][1] >= _WEDGE_LEAF_HIT and item[0][2] >= _WEDGE_ARC_HIT]
+    if not passing:
+        return None
+    best = passing[0]
+
+    def region(w: _Wedge) -> tuple[float, ...]:
+        # Hai cạnh từ góc đổi vai (dây ↔ cánh) vẫn là cùng một quạt.
+        return (round(w[0]), round(w[1]), round(w[2] + w[4], 3), round(w[3] + w[5], 3))
+
+    rival = next((item for item in scored if region(item[1]) != region(best[1])), None)
+    if rival is not None and best[0][0] - rival[0][0] < _WEDGE_MARGIN:
+        return None
+    return best[1]
+
+
+def _in_wedges(seg: _Seg, wedges: Sequence[_Wedge]) -> bool:
+    """Năm điểm mẫu của `seg` nằm trong cùng một quạt 1/4 tròn (nới `_SYMBOL_SLACK_MM` + 10 % bán kính): cánh, cung và
+    tường giả hình V do cung vector hoá nằm trong đó; vách thật dài hơn cánh hay ở ngoài quạt thì không."""
+    s = _SYMBOL_SLACK_MM
+    dx, dy = seg.end.x - seg.start.x, seg.end.y - seg.start.y
+    pts = [(seg.start.x + dx * f, seg.start.y + dy * f) for f in (0.0, 0.25, 0.5, 0.75, 1.0)]
+    for hx, hy, tx, ty, sx, sy, r in wedges:
+        uv = [((px - hx) * tx + (py - hy) * ty, (px - hx) * sx + (py - hy) * sy) for px, py in pts]
+        # Hộp mảnh: bản lề ở mặt tường, nét quạt vector hoá có thể bắt đầu từ tim tường (sau mặt ≤ nửa cạnh ngắn ≤ r/4).
+        if all(u >= -s and v >= -s - r / 4 and math.hypot(max(u, 0.0), max(v, 0.0)) <= 1.1 * r + s for u, v in uv):
+            return True
+    return False
+
+
+def _swing_zone(rect: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+    """R6-W v2 (không có trang): hộp mảnh (cạnh dài ≥ 2 lần cạnh ngắn) nới cạnh ngắn mỗi phía một bán kính cánh."""
+    x0, y0, x1, y1 = rect
+    width, height = x1 - x0, y1 - y0
+    if max(width, height) < 2 * min(width, height):
+        return rect
+    if width >= height:
+        return (x0, y0 - width, x1, y1 + width)
+    return (x0 - height, y0, x1 + height, y1)
+
+
+def _touches(seg: _Seg, rect: tuple[float, float, float, float]) -> bool:
+    """Một đầu `seg` nằm trong hộp nới `_SYMBOL_SLACK_MM`: cánh/cung quạt luôn xuất phát từ khe cửa."""
+    x0, y0, x1, y1 = rect
+    s = _SYMBOL_SLACK_MM
+    return any(x0 - s <= p.x <= x1 + s and y0 - s <= p.y <= y1 + s for p in (seg.start, seg.end))
+
+
+def _tied_outside(seg: _Seg, rect: tuple[float, float, float, float], geoms: Geoms, within: Collection[int]) -> bool:
+    """Sửa sau phản biện X2-C1: đầu xa (không chạm hộp) của `seg` nối vào tường nằm ngoài vùng quạt → vách thật (vách tủ
+    âm tường cạnh khe cửa, cvcfp-Ic_JN0702), giữ. Cánh cửa có đầu xa tự do hoặc nối dây cung (cũng trong vùng quạt).
+    """
+    x0, y0, x1, y1 = rect
+    s = _SYMBOL_SLACK_MM
+    far = [p for p in (seg.start, seg.end) if not (x0 - s <= p.x <= x1 + s and y0 - s <= p.y <= y1 + s)]
+    if not far:
+        return False
+    for p in far:
+        point = shapely.points(p.x, p.y)
+        near = shapely.dwithin(geoms, point, s)
+        if any(near[k] for k in range(len(geoms)) if k not in within):
+            return True
+    return False
+
+
+def _drop_door_symbols(
+    segs: list[_Seg], detections: Sequence[DetectionPx], scaling: Scaling, page: PageRaster | None = None
+) -> tuple[list[_Seg], set[int]]:
+    """R6-W: bỏ khỏi hình học tường các nét ký hiệu cửa đã thành tường, **trước** khi gắn ô mở (bước 3b → 3c).
+
+    Baseline: dây cung quạt đi qua tâm hộp nên `_attach_walls`/`_runs_along` chọn nó làm tường chủ, ô mở nằm trên
+    quạt và vách thật để hở. Ở mỗi hộp `door`/`double_door`: tường neo = tường với tới hộp (`_attach_walls`) có đầu
+    ra ngoài vùng quạt; không có neo → không đủ căn cứ, giữ nguyên. Nét nằm trọn trong vùng quạt (`_swing_zone`, v2:
+    hộp mảnh nới theo bán kính cánh), có một đầu chạm hộp và không nằm trên tim neo (`_symbol_of`) bị bỏ. Không hộp
+    (detector bỏ sót) → quạt còn như cũ; hộp gọi sai trên tường thật chỉ bỏ nét nằm trọn trong vùng quạt, tường neo
+    không bao giờ bị bỏ. Trả thứ tự (trong `detections`) của
+    hộp đã bỏ nét để `_symbol_closers` khép phòng qua ô mở.
+    """
+    chosen = [(order, det) for order, det in enumerate(detections) if det.label in _DOOR_SYMBOL_LABELS]
+    if not segs or not chosen:
+        return segs, set()
+    rects = [_rect(det.box, scaling) for _, det in chosen]
+    geoms = _linestrings(segs)
+    drop: set[int] = set()
+    doors: set[int] = set()
+    # ponytail: nét trọn trong hộp lệch tim neo coi là ký hiệu; vách thật ngắn < 1 hộp nằm trọn trong hộp gọi sai sẽ
+    # mất — cần đọc mực (cung tròn) nếu đo thấy ca đó.
+    for (order, _), rect, near in zip(chosen, rects, _attach_walls(segs, geoms, rects), strict=True):
+        if page is not None:
+            # R8-W v5: chỉ bỏ nét nằm trong quạt có cánh + cung đọc được trên mực thô; không đọc được → giữ hết.
+            wedge = _read_wedge(rect, page, scaling.build)
+            if wedge is None:
+                continue
+            wedges = (wedge,)
+            xs = [w[0] + w[6] * d for w in wedges for d in (0.0, w[2], w[4])]
+            ys = [w[1] + w[6] * d for w in wedges for d in (0.0, w[3], w[5])]
+            pad = max(w[6] for w in wedges) / 4
+            zone = (min(xs) - pad, min(ys) - pad, max(xs) + pad, max(ys) + pad)
+            within = {k for k, seg in enumerate(segs) if _in_wedges(seg, wedges)}
+            inside = within
+        else:
+            zone = _swing_zone(rect)
+            # ponytail: quét mọi tường cho mỗi hộp (O(tường x hộp)); dùng STRtree nếu đo thấy chậm.
+            within = {k for k, seg in enumerate(segs) if _symbol_of(seg, zone, ())}
+            inside = {k for k in within if _touches(segs[k], rect)}
+        anchors = [segs[k] for k in near if k not in within]
+        found = {k for k in inside if _symbol_of(segs[k], zone, anchors)} if anchors else set()
+        found = {k for k in found if not _tied_outside(segs[k], rect, geoms, within)}
+        if found:
+            drop |= found
+            doors.add(order)
+    return [seg for k, seg in enumerate(segs) if k not in drop], doors
+
+
+def _symbol_closers(segs: Sequence[_Seg], cands: Sequence[_Cand], doors: Collection[int]) -> list[tuple[Point, Point]]:
+    """Đoạn khép phòng trên tim tường chủ qua khoảng ô mở của cửa đã bỏ nét ký hiệu (`WallSet.bridges`, chỉ dựng phòng).
+
+    Trước đây chính cung quạt vô tình bịt khe cửa (R5 FANMASK: bỏ quạt mà không bịt → phòng hở/gộp).
+    """
+    closers = []
+    for cand in cands:
+        if cand.order in doors:
+            host = segs[cand.wall]
+            ux, uy = _unit(host)
+            a, b = cand.offset_mm, cand.offset_mm + cand.width_mm
+            start = Point(x=js_round(host.start.x + ux * a), y=js_round(host.start.y + uy * a))
+            closers.append((start, Point(x=js_round(host.start.x + ux * b), y=js_round(host.start.y + uy * b))))
+    return closers
 
 
 def _drop_bare_gap_walls(segs: Sequence[_Seg], cands: Sequence[_Cand]) -> tuple[list[_Seg], list[_Cand]]:

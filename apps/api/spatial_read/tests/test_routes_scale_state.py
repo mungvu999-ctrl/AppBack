@@ -1,4 +1,7 @@
-"""ML-ACC-R9: `scaleState`/`scaleReasons` trên N16 và hiệu chỉnh một số đo (PUT #35) → `userCalibrated`."""
+"""ML-ACC-R9: `scaleState`/`scaleReasons` trên N16 và hiệu chỉnh một số đo (PUT #35) → `userCalibrated`.
+
+ML-ACC-R10 K4: PUT `scaleEvidence: "machineAccepted"` giữ độ tin của máy lúc chấp nhận (thêm `userAccepted`).
+"""
 
 from decimal import Decimal
 from typing import Any
@@ -107,3 +110,88 @@ async def test_spatial_write_layer__scale_calibration_becomes_user_calibrated(
         assert "scaleStatus" not in after
         assert after["level"]["scaleMillimetresPerPixel"] == 15.0
         assert "scaleUnresolved" not in after["readiness"]["reasons"]
+
+
+ACCEPT_CASES: dict[str, tuple[dict[str, Any], str, list[str]]] = {
+    # tên: (quality_summary thêm của lượt lúc chấp nhận, scaleState sau chấp nhận, scaleReasons sau chấp nhận)
+    "determined": ({"scaleBasis": "chain", "scaleChecks": []}, "determined", ["chain", "userAccepted"]),
+    "estimated": ({"scaleBasis": "door", "scaleChecks": []}, "estimated", ["door", "userAccepted"]),
+    "unresolved": (
+        {"scaleBasis": "chain", "scaleChecks": ["anisotropic"]},
+        "unresolved",
+        ["chain", "anisotropic", "userAccepted"],
+    ),
+    "malformed": (
+        {"scaleBasis": "chain", "scaleChecks": "anisotropic"},
+        "unresolved",
+        ["basisUnknown", "userAccepted"],
+    ),
+}
+
+
+async def _pipeline_floor(
+    db: AsyncSession, storage: LocalDiskStorage, clock: FakeClock, summary: dict[str, Any]
+) -> tuple[Any, Any]:
+    """Tầng pipeline 12,7 mm/px có một lượt `completed` mang `summary`; trả `(scene, floor)` đã commit."""
+    scene = await make_scene(db)
+    floor = scene.floors[0]
+    await make_floor_document(
+        db,
+        floor_pk=floor.pk,
+        layer=sample_floor_layer(0, level_id=floor.level_id),
+        scale=Decimal("12.700000"),
+        scale_source="pipeline",
+        clock=clock,
+    )
+    await _completed_classic_run(db, storage, clock, scene=scene, floor=floor, summary={**CRITICAL_SUMMARY, **summary})
+    await db.commit()
+    return scene, floor
+
+
+@pytest.mark.parametrize("name", list(ACCEPT_CASES))
+async def test_spatial_write_layer__scale_accepted(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    local_storage: LocalDiskStorage,
+    fake_clock: FakeClock,
+    name: str,
+) -> None:
+    """K4 #1-#3: chấp nhận số máy → N16 giữ độ tin của máy + `userAccepted`; lượt sạch chạy sau không nâng (R2).
+
+    `scaleStatus` vắng như mọi tỉ lệ người đặt (quy trình), `scaleBasis` là gốc của máy, readiness báo
+    `scaleUnresolved` đúng khi độ tin không phải `determined`.
+    """
+    summary, state, reasons = ACCEPT_CASES[name]
+    scene, floor = await _pipeline_floor(db_session, local_storage, fake_clock, summary)
+    path, headers = layer_path(scene.project.id, floor.level_id), headers_of(scene.owner)
+    before = (await api_client.get(path, headers=headers)).json()
+    payload = write_body(before["revision"], scale=12.7)
+    payload["body"]["scaleEvidence"] = "machineAccepted"
+    put = await put_layer(api_client, scene.project.id, floor.level_id, scene.owner, payload)
+    assert put.status_code == 200
+    later = {**CRITICAL_SUMMARY, "scaleBasis": "paired", "scaleChecks": []}
+    await _completed_classic_run(db_session, local_storage, fake_clock, scene=scene, floor=floor, summary=later)
+    await db_session.commit()
+    after = (await api_client.get(path, headers=headers)).json()
+    assert after["revision"] == before["revision"] + 1
+    assert after["scaleState"] == state
+    assert after["scaleReasons"] == reasons
+    assert after.get("scaleBasis") == (None if name == "malformed" else summary["scaleBasis"])
+    assert "scaleStatus" not in after
+    assert ("scaleUnresolved" in after["readiness"]["reasons"]) is (state != "determined")
+
+
+async def test_spatial_write_layer__scale_measured_after_accept(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """K4 #13: đã chấp nhận số máy `estimated` → đo thật (`measured`) → `userCalibrated []`, gốc `human`."""
+    scene, floor = await _pipeline_floor(db_session, local_storage, fake_clock, {"scaleBasis": "door"})
+    path, headers = layer_path(scene.project.id, floor.level_id), headers_of(scene.owner)
+    revision = (await api_client.get(path, headers=headers)).json()["revision"]
+    for step, (scale, evidence) in enumerate([(12.7, "machineAccepted"), (14.0, "measured")]):
+        payload = write_body(revision + step, scale=scale)
+        payload["body"]["scaleEvidence"] = evidence
+        assert (await put_layer(api_client, scene.project.id, floor.level_id, scene.owner, payload)).status_code == 200
+    after = (await api_client.get(path, headers=headers)).json()
+    assert (after["scaleState"], after["scaleReasons"], after["scaleBasis"]) == ("userCalibrated", [], "human")
+    assert "scaleUnresolved" not in after["readiness"]["reasons"]

@@ -13,6 +13,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
+from fractions import Fraction
 from typing import Any, Final, Literal, Self, get_args
 
 import numpy as np
@@ -64,7 +65,7 @@ from packages.ml_contracts.artifacts import (
     WallsResult,
 )
 from packages.vision.dimensions import pair_dimension_lines, parse_length_mm, parse_scale_note, wall_spans
-from packages.vision.dimensions.chains import densest_cluster
+from packages.vision.dimensions.chains import CLUSTER_TOLERANCE, densest_cluster
 
 _log = logging.getLogger(__name__)
 
@@ -391,16 +392,68 @@ def _trusted_note(
     return None
 
 
+_METRIC_DECIMAL: Final = re.compile(r"\d{1,2}[.,]\d{1,3}")
+_METRIC_INTEGER: Final = re.compile(r"\d{1,4}")
+"""R8 (cvcfp-2): bản vẽ không ghi đơn vị kiểu "mét-cm" — số thập phân là mét (`2.25`), số nguyên là cm (`80`)."""
+_METRIC_MIN_CLUSTER: Final = 2
+"""Cụm "mét-cm" nhỏ hơn (một chữ lẻ) không đủ căn cứ đổi cách đọc cả trang: giữ mm như prod."""
+
+
 def _chain_samples(texts: Sequence[TextPx]) -> tuple[ScaleSample, ...]:
-    """Một mẫu mỗi chữ có `span_px` và đọc ra độ dài mm, tỉ số trong dải 1-200 mm/px; id `t<i>-chain`."""
+    """Một mẫu mỗi chữ có `span_px` và đọc ra độ dài mm, tỉ số trong dải 1-200 mm/px; id `t<i>-chain`.
+
+    R8/R9 đơn vị theo căn cứ trong chính trang: số trần đọc hai cách — mm (`parse_length_mm`, như prod) và "mét-cm"
+    (`_metric_mm`). Chỉ chọn "mét-cm" khi cụm tỉ số đông nhất của nó (a) có ≥ `_METRIC_MIN_CLUSTER` mẫu, (b) đông hơn
+    hẳn cụm của cách đọc mm và (c) chứa ít nhất một chữ mà cách đọc mm bỏ (số mét thập phân như `2.25`) — trang chỉ
+    toàn số nguyên (mm thuần, VN/Nhật `3450`, `900`) không bao giờ bị đổi, kể cả khi nhân 10 rơi vào dải. Hoà hay thiếu
+    căn cứ → mm như prod (không đoán). Cả trang một cách đọc; chữ có đơn vị (`3,5 m`, `350cm`) đọc như nhau."""
+    plain = _read_chain(texts, parse_length_mm)
+    metric = _read_chain(texts, _metric_mm)
+    unread = {f"t{index}-chain" for index, text in enumerate(texts) if parse_length_mm(text.text) is None}
+    cluster = _largest_cluster(metric)
+    if (
+        len(cluster) >= _METRIC_MIN_CLUSTER
+        and len(cluster) > len(_largest_cluster(plain))
+        and any(sample.id in unread for sample in cluster)
+    ):
+        _log.info("pipeline_build_chain_unit", extra={"reading": "metric", "cluster": len(cluster)})
+        return metric
+    return plain
+
+
+def _largest_cluster(samples: Sequence[ScaleSample]) -> tuple[ScaleSample, ...]:
+    """Mẫu của cụm tỉ số lớn nhất (cùng dung sai `densest_cluster`, không áp luật hoà: hoà vẫn là cụm cỡ đó)."""
+    ratios = [sample.real_length_mm / sample.pixel_length for sample in samples]
+    best: tuple[ScaleSample, ...] = ()
+    for centre in ratios:
+        pairs = zip(samples, ratios, strict=True)
+        members = tuple(sample for sample, ratio in pairs if abs(ratio - centre) <= CLUSTER_TOLERANCE * centre)
+        if len(members) > len(best):
+            best = members
+    return best
+
+
+def _read_chain(texts: Sequence[TextPx], read: Any) -> tuple[ScaleSample, ...]:
+    """Mẫu chuỗi với hàm đọc `read(chữ) -> mm | None`."""
     samples = []
     for index, text in enumerate(texts):
         if text.span_px is None:
             continue
-        value = parse_length_mm(text.text)
+        value = read(text.text)
         if value is not None and classify_scale_range(value / text.span_px) == "inRange":
             samples.append(ScaleSample(f"t{index}-chain", text.span_px, float(value)))
     return tuple(samples)
+
+
+def _metric_mm(text: str) -> int | None:
+    """Cách đọc "mét-cm" cho số trần: `2.25`/`2,25` → 2250 mm, `80` → 800 mm; chữ có đơn vị → `parse_length_mm`."""
+    bare = text.strip()
+    if _METRIC_DECIMAL.fullmatch(bare):
+        value = Fraction(bare.replace(",", ".")) * 1000
+        return int(value) if value.denominator == 1 and value > 0 else None
+    if _METRIC_INTEGER.fullmatch(bare):
+        return int(bare) * 10 if int(bare) > 0 else None
+    return parse_length_mm(text)
 
 
 def _axis_clusters(texts: Sequence[TextPx]) -> tuple[tuple[ScaleSample, ...], tuple[ScaleSample, ...]]:

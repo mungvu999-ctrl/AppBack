@@ -37,7 +37,7 @@ from apps.api.spatial_read.documents import empty_document, load_document
 from apps.api.spatial_read.graph import spatial_graph
 from apps.api.spatial_read.http_cache import cached_json
 from apps.api.spatial_read.pages import load_pages
-from apps.api.spatial_read.readiness import latest_run_facts, readiness_of, scale_basis_of
+from apps.api.spatial_read.readiness import latest_run_facts, readiness_of, scale_basis_of, scale_state_of
 from apps.api.spatial_read.wire import (
     FloorLayerDocumentOut,
     PointOut,
@@ -120,11 +120,14 @@ async def spatial_read_layer(project_id: str, floor_id: str, request: Request, d
     out = await _floor_out_or_404(db, project_id, floor.pk, app=request.app)
     run = await latest_run_facts(db, floor.pk)
     basis = scale_basis_of(run, document.scale_source, source)
+    state, reasons = scale_state_of(source, document.scale_source, basis, None if run is None else run.quality_summary)
     out_document = FloorLayerDocumentOut(
         revision=document.revision,
         level=level_out(out, document, source),
         scale_status=scale_status(source),
         scale_basis=basis,
+        scale_state=state,
+        scale_reasons=None if state is None else reasons,
         source_dpi=await _source_dpi(db, floor.pk),
         scale_source=provisional_scale_source(source),
         suggested_scale_mm_per_px=suggested_scale_mm_per_px(document, source),

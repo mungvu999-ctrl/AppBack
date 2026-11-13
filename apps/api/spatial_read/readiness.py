@@ -16,9 +16,9 @@ from typing import Final, cast, get_args
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.api.spatial_read.assemble import level_reviewed, scale_status
+from apps.api.spatial_read.assemble import level_reviewed
 from apps.api.spatial_read.documents import ScaleSource
-from apps.api.spatial_read.wire import ReadinessOut, ReadinessReason, ScaleBasis
+from apps.api.spatial_read.wire import ReadinessOut, ReadinessReason, ScaleBasis, ScaleState
 from packages.db.models.drawings import PipelineRunRow
 from packages.db.models.pipeline_orchestrate import PipelineRunModelsRow
 from packages.domain.spatial import SpatialLayer
@@ -48,6 +48,9 @@ _MEASURED_BASES: Final = frozenset({"chain", "paired"})
 báo `scaleUnresolved`. `note` (một chữ OCR `TL 1:N` chia khổ giấy, in co trang là lệch x2), `door`/`wallThickness`
 /`default` (ước lượng) vẫn báo."""
 
+_ESTIMATED_BASES: Final = frozenset({"note", "door", "wallThickness"})
+"""Gốc ước lượng (cửa 745 mm, bề dày tường 150 mm, một chữ `TL 1:N`): tối đa `estimated`, không bao giờ `determined`."""
+
 _PIPELINE_BASES: Final = frozenset(get_args(ScaleBasis)) - {"human"}
 
 
@@ -75,6 +78,36 @@ def scale_basis_of(run: RunFacts | None, stored: ScaleSource, effective: ScaleSo
         return None
     basis = run.quality_summary.get("scaleBasis")
     return cast("ScaleBasis", basis) if basis in _PIPELINE_BASES else None
+
+
+def scale_state_of(
+    effective: ScaleSource,
+    stored: ScaleSource,
+    basis: ScaleBasis | None,
+    summary: Mapping[str, object] | None,
+) -> tuple[ScaleState | None, tuple[str, ...]]:
+    """Độ tin của tỉ lệ (ML-ACC-R9): một luật cho `scaleState`/`scaleReasons` và cho `scaleUnresolved` của readiness.
+
+    `None` khi tầng chưa có tỉ lệ. Lý do = gốc, rồi tên khoá `quality_summary.scaleChecks` theo thứ tự lượt ghi.
+    """
+    if effective == "human":
+        return "userCalibrated", ()
+    if effective == "none":
+        return None, ()
+    if effective == "project_default" or basis == "default":
+        return "unresolved", ("projectDefault",)
+    if stored == "human":
+        return "unresolved", ("pageChanged",)
+    if basis is None or basis == "human" or summary is None:
+        return "unresolved", ("basisUnknown",)
+    raw = summary.get("scaleChecks")
+    checks = tuple(c for c in raw if isinstance(c, str)) if isinstance(raw, list) else ()
+    reasons = (basis, *checks)
+    if basis in _MEASURED_BASES:
+        return ("unresolved" if checks else "determined"), reasons
+    if basis in _ESTIMATED_BASES and "sourceConflict" not in checks:
+        return "estimated", reasons
+    return "unresolved", reasons
 
 
 def _critical_checks(summary: Mapping[str, object]) -> tuple[str, ...]:
@@ -112,8 +145,8 @@ def readiness_of(
     """
     reasons: list[ReadinessReason] = []
     summary = None if run is None else run.quality_summary
-    measured = scale_basis in _MEASURED_BASES and summary is not None and not summary.get("scaleChecks")
-    if scale_status(scale_source) == "unresolved" and not measured:
+    state, _ = scale_state_of(scale_source, scale_source, scale_basis, summary)
+    if state not in (None, "determined", "userCalibrated"):
         reasons.append("scaleUnresolved")
     checks: tuple[str, ...] = ()
     if run is not None and not level_reviewed(layer, scale_source):

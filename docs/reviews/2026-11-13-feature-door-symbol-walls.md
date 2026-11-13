@@ -47,3 +47,44 @@ Tổng: 4,53 / 5
 ## PHÁN QUYẾT: APPROVE
 
 Lối chính (có trang, đọc quạt trên mực) được đo theo tiêu chí đóng băng trước khi chấm, trên đúng mã của đầu nhánh, và đạt mọi tiêu chí 3c trên tập phát triển cvcfp 34. Mã an toàn theo hướng giữ: không đọc được quạt thì giữ, tường neo không bao giờ bị bỏ, vách nối ra ngoài quạt cũng giữ. CI đầy đủ của PR xanh 24/24 trên c2ff89cf; `geometry.py` phủ 99,16/96,49 %. Không có P0/P1, điểm 4,53 ≥ 4,0. Hai P2 không chặn merge nhưng phải ghi nợ trước hoặc ngay sau merge: #1, nhánh `page=None` dùng luật v2 chưa duyệt (nên đổi thành giữ hết, kèm các test #3); #2 là ghi nhận kích thước, không cần tách. Merge thuộc phiên gọi review.
+
+---
+
+# Lượt 2: soát vòng sửa 2ae80b15
+
+- Ngày: 2026-11-13 · Reviewer: phiên /merge-review (cùng phiên lượt 1) · Commit đầu nhánh: 2ae80b158702 (sau phán quyết 8e774a06; `origin/main` vẫn b95e4d02)
+- Cổng: Phạm vi kiểm: đích (lượt 2 chỉ soát diff vòng sửa), dựa vào CI đầy đủ của PR: run 43380835771, headSha = 2ae80b15, `gh run watch --exit-status` mã thoát 0, `gh pr checks 68` 24/24 `pass`. Không chạy cổng hay test tại chỗ.
+- Độ phủ (log job `coverage`): tổng dòng 99,31 % · nhánh 97,50 %; `apps/worker/pipeline_build` 98,52 % · 94,54 %. Reviewer tự gộp `.coverage.*` của run: `geometry.py` dòng 99,14 % · nhánh 96,43 % (324/336).
+
+## Soát diff vòng sửa (`git diff 8e774a06 2ae80b15`: 3 tệp, +83/−61)
+
+- **P2 #1, đã sửa** (`geometry.py:1758`): `if page is None or not segs or not chosen: return segs, set()`. Mất trang thì giữ hết như `main`. `_swing_zone`, `_touches` và nhánh `else` đã xoá. Lối có trang giữ nguyên logic, chỉ bỏ bí danh `inside = within`. Test `no_page_keeps_everything_like_main` khoá hành vi mới. Bằng chứng ngoài repo (`F:/runs/mlr-next/r9/w/fix-p2.txt`): 5/5 ảnh cvcfp có trang dựng lại giống hệt `out/v5` sau khi bỏ id ngẫu nhiên và thời gian. Lối có trang không đổi, nên số đo đóng băng của lượt 1 vẫn đúng cho mã này.
+- **P3 #3, đã sửa:** test cũ chuyển sang trang có mực (`_ink`), thêm 3 ca: hộp vuông, bản lề ở góc; hai quạt đối xứng (cửa đôi) phải ra `None` và giữ hết; hộp gọi sai trên vách thật có mực phải giữ hết. Độ phủ xác nhận họ quạt góc (`_wedge_hypotheses`) và nhánh loại vì quạt khác vùng sát điểm trong `_read_wedge` nay đã chạy. Test cửa đôi cũ khẳng định bỏ cả hai cánh qua v2; nay thay bằng ca "giữ hết", khớp giới hạn đã ghi (v5 chưa xử lý cửa đôi).
+- `changes/ML-ACC-R9-WALL.md` thêm dòng ghi vòng sửa. Commit đúng mẫu, có `Prompt: ML-ACC-R9`; job `commits` xanh. Không pragma/`noqa`/skip mới.
+
+## Finding lượt 2
+| # | Mức | ID | Mô tả | Vị trí | Đề xuất |
+|---|---|---|---|---|---|
+| 6 | P3 | TEST | Sau khi chuyển test sang trang có mực, hai chốt bảo vệ tường thật không còn test nào chạy tới: `_tied_outside` trả `True` (vách tủ nối ra ngoài quạt, sửa X2-C1), và `_symbol_of` trả `False` khi nét nằm trên tim tường neo. Trong `closet_wall_at_jamb_kept`, vách tủ nằm ngoài quạt 1/4 tròn nên bị `_in_wedges` loại trước, chưa tới chốt. Xoá một trong hai chốt thì test vẫn xanh. Độ phủ file vẫn đạt (99,14/96,43). | `apps/worker/pipeline_build/geometry.py:1611`, `:1740`; `tests/test_door_symbols.py:163-172` | Thêm một ca có mực: vách thật nằm trọn trong quạt, đầu xa nối tường ngoài quạt, phải giữ. Thêm một ca: mẩu tường chủ trùng tim neo trong quạt, phải giữ. Không chặn merge. |
+| 7 | Nit | MNT | Chữ cũ còn sót: docstring `"""v2: …"""` ở hai test (`test_door_symbols.py:147`, `:157`); chú thích `ponytail:` "cần đọc mực (cung tròn) nếu đo thấy ca đó" (`geometry.py:1764`), trong khi giờ đã đọc mực. `sliding_door_…`, `false_box_does_not_cut_real_wall`, `thin_box_keeps_real_wall_from_jamb` vẫn chạy `page=None`, nên nay chỉ đi qua lối thoát sớm, không còn kiểm luật bỏ nét. Ca hộp gọi sai đã có bản có mực (#3c). | như cột mô tả | Khi chạm lại: sửa docstring/chú thích, chuyển hai test còn lại sang `_ink(...)` hoặc đổi tên cho đúng việc chúng kiểm. |
+
+Finding lượt 1: #1 (P2) và #3 (P3) đã đóng. #2 (P2 MNT-05) vẫn là ghi nhận kích thước, vòng sửa còn làm nhánh gọn hơn (+219 dòng mã ở `geometry.py`). #4 (P3 OBS) và #5 (Nit) giữ nguyên, không chặn.
+
+## Điểm lượt 2
+| Miền | Trọng số | Điểm | Tích |
+|---|---|---|---|
+| SEC | 25% | 5 | 1,25 |
+| CON | 15% | 5 | 0,75 |
+| LOG | 15% | 4,5 | 0,675 |
+| PERF | 10% | 4,5 | 0,45 |
+| RES | 10% | 5 | 0,50 |
+| DB/API | 10% | 5 | 0,50 |
+| TEST | 7% | 4 | 0,28 |
+| OBS/OPS | 5% | 4 | 0,20 |
+| MNT | 3% | 3,5 | 0,105 |
+
+Tổng: 4,71 / 5
+
+## PHÁN QUYẾT LƯỢT 2: APPROVE
+
+Vòng sửa đóng đúng P2 #1: mất trang thì giữ hết như `main`, luật v2 chưa duyệt đã xoá. P3 #3 cũng đóng: đã có test cho họ quạt góc và cho chốt đọc nhập nhằng. Lối có trang không đổi (5/5 ảnh giống hệt `out/v5`), nên số đo đóng băng vẫn áp dụng. CI đầy đủ trên 2ae80b15 xanh 24/24, `geometry.py` phủ 99,14/96,43 %. Không có P0/P1, điểm 4,71. Hai finding mới (#6 P3, #7 Nit) để vòng sau. Merge thuộc phiên gọi review.

@@ -149,7 +149,21 @@ GEOMETRY: Mapping[str, object] = {
             ("MULTIPLE_PLANS", "NEW_CODE"),
             id="bad-count",
         ),
-        pytest.param({**CLEAN, "criticalChecks": "x"}, (), None, id="bad-list"),
+        # ML-ACC-R10: `criticalChecks` hỏng dạng = lượt CÓ ghi nghi vấn mà ta không đọc được mã nào.
+        # Im lặng trả "ready" là giấu nghi vấn — cùng luật với `scaleChecks` của #70.
+        pytest.param({**CLEAN, "criticalChecks": "x"}, ("geometrySuspect",), None, id="bad-str"),
+        pytest.param({**CLEAN, "criticalChecks": 3}, ("geometrySuspect",), None, id="bad-number"),
+        pytest.param({**CLEAN, "criticalChecks": {"a": 1}}, ("geometrySuspect",), None, id="bad-dict"),
+        pytest.param(
+            {**CLEAN, "criticalChecks": ["MULTIPLE_PLANS", 7]}, ("geometrySuspect",), None, id="bad-mixed-list"
+        ),
+        pytest.param(
+            {**CRITICAL, "criticalChecks": "x"},
+            ("criticalIssues", "geometrySuspect"),
+            None,
+            id="bad-list-with-integrity",
+        ),
+        pytest.param({**CLEAN, "criticalChecks": None}, (), None, id="null-is-valid"),
     ],
 )
 def test_readiness_of_geometry_checks(

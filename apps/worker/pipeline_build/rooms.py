@@ -1265,7 +1265,7 @@ def _merge_fragments(
         best: tuple[float, int] | None = None
         near: shapely.Geometry | None = None
         for j in {find(int(k)) for k in tree.query(polygon, predicate="intersects")} - {i}:
-            shared = polygon.exterior.intersection(alive[j].exterior)
+            shared = _shared_edges(polygon, alive[j])
             score = shared.intersection(weak).length
             if score < _FRAGMENT_OPEN_MM and small and sliver:
                 score = shared.length
@@ -1286,6 +1286,16 @@ def _merge_fragments(
         (list(kept[i][0]), kept[i][1]) if polygon is originals[i] else _with_area(_outline_points(polygon))
         for i, polygon in alive.items()
     ]
+
+
+def _shared_edges(a: shapely.Polygon, b: shapely.Polygon) -> shapely.MultiLineString:
+    """Cạnh chung của hai phòng, chỉ phần đường: điểm chạm rời không có chiều dài.
+
+    Giao hai viền có thể là `GeometryCollection` lẫn đường + điểm; GEOS 3.13 (OverlayNG) giao nó với hình rỗng
+    (`weak` khi không có `long_closers`) ném `GEOSException` "Unable to determine overlay result geometry dimension".
+    """
+    parts = shapely.get_parts(a.exterior.intersection(b.exterior))
+    return shapely.MultiLineString(list(parts[shapely.get_dimensions(parts) == 1]))
 
 
 def _with_area(outline: list[Point]) -> tuple[list[Point], float]:

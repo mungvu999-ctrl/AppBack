@@ -54,6 +54,10 @@ async def test_share_links_roles_and_lifecycle(api_client: httpx.AsyncClient, db
     token = link["url"].rsplit("/", 1)[1]
     assert len(token) >= 40
 
+    refused = await api_client.post(path, headers=headers_of(engineer), json={"password": "bi-mat-123"})
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["field"] == "password"
+
     listed = await api_client.get(path, headers=headers_of(admin))
     assert [item["id"] for item in listed.json()] == [link["id"]]
 

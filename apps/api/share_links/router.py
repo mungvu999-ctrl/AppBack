@@ -57,14 +57,14 @@ class EmbedIn(WireRequest):
 
 
 class ShareLinkCreateIn(WireRequest):
-    """Thân `POST share-links`; mật khẩu chưa hỗ trợ (bị bỏ qua, `passwordProtected=false`)."""
+    """Thân `POST share-links`; mật khẩu chưa hỗ trợ: `password` không rỗng → 422 (không nhận rồi bỏ qua)."""
 
     permission: Literal["view", "comment"] = "view"
     expires_at: datetime | None = None
     viewpoint_code: NfcStr | None = Field(default=None, max_length=512)
     label: NfcStr | None = Field(default=None, max_length=200)
     embed: EmbedIn | None = None
-    password: str | None = None
+    password: Annotated[str | None, Field(max_length=0)] = None
 
 
 class ShareLinkOut(WireModel):

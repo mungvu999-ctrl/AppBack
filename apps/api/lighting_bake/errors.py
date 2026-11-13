@@ -8,6 +8,9 @@ from packages.core.errors import ERRORS, AppError
 LIGHTING_BAKE_IN_PROGRESS = ERRORS.define("LIGHTING_BAKE_IN_PROGRESS", 409)
 """Dự án đã có một lượt `queued|running` (unique partial `uq_lighting_bakes_active`)."""
 
+LIGHTING_BAKE_DISABLED = ERRORS.define("LIGHTING_BAKE_DISABLED", 503)
+"""Công tắc `LIGHTING_BAKE_ENABLED` tắt: không có worker `bake` để nhận lượt. FE: "Nướng ánh sáng chưa được bật."."""
+
 LIGHTING_BAKE_RESOURCE: Final = "lightingBake"
 
 

@@ -4,6 +4,7 @@ Postgres, kho local và broker thật (K23). Case chung C04 C05 C12 C13 C25 ở 
 """
 
 import asyncio
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -16,6 +17,7 @@ from apps.api.lighting_bake.tests._helpers import (
     BAKE_QUEUE,
     MISSING_BAKE,
     MISSING_PROJECT,
+    availability_path,
     bakes_path,
     file_path,
     glb_bytes,
@@ -33,6 +35,16 @@ from packages.testing.factories.auth import make_user
 from packages.testing.factories.lighting_bake import make_lighting_bake
 from packages.testing.factories.projects import make_project
 from packages.testing.fixtures.messaging import queued_payloads
+
+
+@pytest.fixture(autouse=True)
+def bake_enabled(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Mặc định bật `LIGHTING_BAKE_ENABLED`; test tắt đặt lại bằng `monkeypatch` riêng."""
+    monkeypatch.setenv("LIGHTING_BAKE_ENABLED", "true")
+    reset_lighting_bake_settings_cache()
+    yield
+    monkeypatch.undo()
+    reset_lighting_bake_settings_cache()
 
 
 async def _project(db: AsyncSession, *, viewer: bool = False) -> tuple[User, Project, list[User]]:
@@ -306,5 +318,59 @@ async def test_start_bake_refuses_a_body_over_the_upload_ceiling(
 
     assert response.status_code == 413
     assert response.json()["code"] == "PAYLOAD_TOO_LARGE"
+    assert await _statuses(db_session, project.id) == []
+    assert await _stored(local_storage, project.id) == []
+
+
+async def test_lighting_bake_read_availability__C01(
+    db_session: AsyncSession, api_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cờ bật → `{enabled: true}`; cờ tắt (mặc định) → `{enabled: false}`."""
+    owner, project, _ = await _project(db_session)
+    on = await api_client.get(availability_path(project.id), headers=headers_of(owner))
+    monkeypatch.setenv("LIGHTING_BAKE_ENABLED", "false")
+    reset_lighting_bake_settings_cache()
+    off = await api_client.get(availability_path(project.id), headers=headers_of(owner))
+    assert on.status_code == 200
+    assert on.json() == {"enabled": True}
+    assert off.json() == {"enabled": False}
+
+
+async def test_lighting_bake_read_availability__C06(db_session: AsyncSession, api_client: AsyncClient) -> None:
+    """Người ngoài (admin hệ thống) → 404 `resource:"project"`."""
+    _, project, _ = await _project(db_session)
+    outsider = await _outsider(db_session)
+    response = await api_client.get(availability_path(project.id), headers=headers_of(outsider, role="admin"))
+    assert response.status_code == 404
+    assert response.json()["resource"] == "project"
+
+
+async def test_lighting_bake_read_availability__C08(db_session: AsyncSession, api_client: AsyncClient) -> None:
+    """Dự án không có → 404."""
+    owner, _, _ = await _project(db_session)
+    response = await api_client.get(availability_path(MISSING_PROJECT), headers=headers_of(owner))
+    assert response.status_code == 404
+
+
+async def test_lighting_bake_read_availability__C17(db_session: AsyncSession, api_client: AsyncClient) -> None:
+    """Thân chỉ có khoá `enabled`."""
+    owner, project, _ = await _project(db_session)
+    response = await api_client.get(availability_path(project.id), headers=headers_of(owner))
+    assert set(response.json()) == {"enabled"}
+
+
+async def test_start_bake_refused_when_disabled(
+    db_session: AsyncSession,
+    api_client: AsyncClient,
+    local_storage: LocalDiskStorage,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cờ tắt → 503 `LIGHTING_BAKE_DISABLED`, không dòng, không object."""
+    owner, project, _ = await _project(db_session)
+    monkeypatch.setenv("LIGHTING_BAKE_ENABLED", "false")
+    reset_lighting_bake_settings_cache()
+    response = await api_client.post(bakes_path(project.id), content=glb_bytes(), headers=headers_of(owner))
+    assert response.status_code == 503
+    assert response.json()["code"] == "LIGHTING_BAKE_DISABLED"
     assert await _statuses(db_session, project.id) == []
     assert await _stored(local_storage, project.id) == []

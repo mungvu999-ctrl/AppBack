@@ -3783,6 +3783,21 @@
         "title": "LightingBake",
         "type": "object"
       },
+      "LightingBakeAvailability": {
+        "additionalProperties": false,
+        "description": "N49 — dự án này có nướng được không (mẫu `DesignConceptState.enabled`).",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "LightingBakeAvailability",
+        "type": "object"
+      },
       "LightingBakeStatus": {
         "enum": [
           "queued",
@@ -6787,7 +6802,7 @@
       },
       "ShareLinkCreateIn": {
         "additionalProperties": false,
-        "description": "Thân `POST share-links`; mật khẩu chưa hỗ trợ (bị bỏ qua, `passwordProtected=false`).",
+        "description": "Thân `POST share-links`; mật khẩu chưa hỗ trợ: `password` không rỗng → 422 (không nhận rồi bỏ qua).",
         "properties": {
           "embed": {
             "anyOf": [
@@ -6826,6 +6841,7 @@
           "password": {
             "anyOf": [
               {
+                "maxLength": 0,
                 "type": "string"
               },
               {
@@ -11485,6 +11501,49 @@
           }
         },
         "summary": "Lighting Bake Start Bake",
+        "tags": [
+          "lighting_bake"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/lighting-bakes/availability": {
+      "get": {
+        "description": "N49 — `enabled`: máy chủ có worker nướng hay không (cờ `LIGHTING_BAKE_ENABLED`).",
+        "operationId": "lighting_bake_read_availability_api_projects__project_id__lighting_bakes_availability_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LightingBakeAvailability"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lighting Bake Read Availability",
         "tags": [
           "lighting_bake"
         ]

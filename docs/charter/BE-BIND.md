@@ -132,6 +132,7 @@
 | N46 | `GET /api/projects/{project_id}/floors/{floor_id}/detected-geometry` | `spatial_read_detected_geometry` | `quality.ts` (`DetectedGeometry`) | Đ | thành viên | — | QT-SCALE-API | màn tỉ lệ: điểm bắt, bề dày tường, cửa, phòng lớn nhất, hộp ngoài (px trang); chưa có lượt → rỗng |
 | N47 | `GET /api/projects/{project_id}/design-concept` | `design_director_read_state` | `designConcept.ts` (`DesignConceptState`) | Đ | thành viên | — | AID-01 | editor: công tắc, kiểu AI đề xuất, concept đang chọn; thăm dò 3 s khi đang chạy |
 | N48 | `POST /api/projects/{project_id}/design-concept` | `design_director_select_concept` | `designConcept.ts` (`DesignConcept`) | G | `project.settings.edit` | — | AID-01 | ô chọn phong cách; luôn 202 (dùng lại concept cùng đầu vào); 503 `DESIGN_DIRECTOR_DISABLED`, 429 `DESIGN_DIRECTOR_QUOTA` |
+| N49 | `GET /api/projects/{project_id}/lighting-bakes/availability` | `lighting_bake_read_availability` | `lightingBake.ts` (`LightingBakeAvailability`) | Đ | thành viên | — | LB-01 | công tắc `LIGHTING_BAKE_ENABLED`: FE ẩn nút "Nướng ánh sáng" khi `false`; N42 tắt → 503 `LIGHTING_BAKE_DISABLED` |
 
 N24 có version: áp thêm C09, C09b, C14 theo CASE §2.2 A.
 

@@ -40,7 +40,7 @@ async def test_settings_replace_settings__C01(api_client: httpx.AsyncClient, db_
         "snapToleranceMm": 40,
         "confidenceThreshold": 0.5,
         "defaultScaleMmPerPx": 2.5,
-        "detectFurniture": False,
+        "detectFurniture": True,
         "separateUnits": False,
     }
     second = await put_settings(api_client, project.id, owner, replace_body(1, snapToleranceMm=41))

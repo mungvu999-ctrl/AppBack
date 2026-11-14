@@ -25,7 +25,7 @@ class ProjectSettingsValue:
     confidence_threshold: Decimal
     default_scale_mm_per_px: Decimal
     scene_style: str | None = None
-    detect_furniture: bool = False
+    detect_furniture: bool = True
     """QT-FURN-TOGGLE: dựng đồ đạc AI vào lớp; `False` = chỉ tường, ô mở, phòng."""
     separate_units: bool = False
     """UX-R2 K34: các tầng là những căn hộ riêng, không phải tầng chồng của một toà nhà."""

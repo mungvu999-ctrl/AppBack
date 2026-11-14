@@ -33,7 +33,7 @@ async def test_settings_read_settings__C01(api_client: httpx.AsyncClient, db_ses
         "snapToleranceMm": 50,
         "confidenceThreshold": 0.75,
         "defaultScaleMmPerPx": 1,
-        "detectFurniture": False,
+        "detectFurniture": True,
         "separateUnits": False,
     }
 

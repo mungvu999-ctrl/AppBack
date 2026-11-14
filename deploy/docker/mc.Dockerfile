@@ -4,7 +4,7 @@
 # cộng đồng. Repo `github.com/minio/mc` (AGPL-3.0) vẫn clone được, nên dựng lại đúng tag đang ghim. Khung ảnh theo
 # `Dockerfile.release` của chính mc ở tag đó: ubi9-micro — `sh` là bash (`deploy/minio/init.sh` dùng `${x//a/b}`).
 # Workflow `minio-images.yml` dựng và đẩy lên GHCR; nhãn `org.opencontainers.image.source` nối gói vào repo public.
-FROM golang:1.23-bookworm@sha256:167053a2bb901972bf2c1611f8f52c44d5fe7e762e5cab213708d82c421614db AS build
+FROM golang:1.25-bookworm@sha256:3b4a11519ad929d1e1d261a12cff056f0c85b735253d7d861346b9c6f8b36437 AS build
 ARG MC_TAG=RELEASE.2025-08-13T08-35-41Z
 ARG MC_COMMIT=7394ce0dd2a80935aded936b09fa12cbb3cb8096
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local

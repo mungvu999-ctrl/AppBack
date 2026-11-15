@@ -183,7 +183,7 @@ def segment_page(
     walls_from: WallsFrom = "mask" if from_pdf is None else "vector"
     if from_pdf is None:
         gray = np.asarray(cv2.cvtColor(image, cv2.COLOR_RGB2GRAY), np.uint8) if used in INK_REFINE_BRANCHES else None
-        result = vectorize_with_stats(mask, gray)
+        result = vectorize_with_stats(mask, gray, rect=True)
         walls, dropped_by = result.walls, result.dropped
     else:
         walls, dropped_by = from_pdf.walls, {}

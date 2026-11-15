@@ -79,8 +79,10 @@ và `web-context.sh` tự tắt autocrlf khi `git archive` (`run.sh:71`, `web-co
    ```
    Trên máy này đã bật. AppFront không có `.githooks`; `core.hooksPath` của AppFront đang trỏ đường cũ
    `F:\AppFront\.githooks` (không tồn tại) — vô hại **(chưa kiểm)** có cần gỡ hay không.
-   **Checkout chính `F:/App/AppFront` trên máy này đang ở nhánh cũ `e2e/integrate`** (2026-10-07: chậm `master`
-   140 commit). Làm việc với AppFront thì tạo worktree từ `origin/master`
+   **Checkout chính `F:/App/AppFront` trên máy này không nằm trên `master`** (2026-11-15: `feat/opening-kind-switch`;
+   2026-10-07: `e2e/integrate`) — đừng trông vào nhánh cụ thể, cứ coi checkout chính là **không** cập nhật. Ở đó
+   `git status` còn hay liệt kê hàng nghìn tệp `vendor/**` là "đã sửa" trong khi `git diff` **rỗng**: chỉ là chỉ mục
+   chưa làm mới sau `pnpm pascal`, không mất gì và không cần dọn. Làm việc với AppFront thì tạo worktree từ `origin/master`
    (`git -C /f/App/AppFront fetch && git -C /f/App/AppFront worktree add <đường> -b <nhánh> origin/master`);
    đọc mã AppFront mới nhất bằng `git show origin/master:<tệp>`, đừng đọc thẳng thư mục checkout chính.
 3. **Phụ thuộc AppFront** (chạy trong worktree FE):
@@ -144,11 +146,12 @@ pnpm dev        # = pnpm pascal && vite (package.json:7); mặc định http://l
 | Chế độ | Cách bật | Nguồn |
 |---|---|---|
 | Client giả (không cần BE) | `VITE_USE_MOCK_API=true` (chỉ đúng chuỗi `'true'`, chỉ dưới `DEV`) | `AppFront/src/api/appClient.ts:47-65` |
-| BE thật qua proxy Vite | `VITE_API_PROXY_TARGET=<gốc BE>`; BE phải có `PUBLIC_BASE_URL` = origin của Vite (`http://localhost:5173`) | `vite.config.ts:33-40` |
+| BE thật qua proxy Vite — **cách thường dùng** | `pnpm dev:be` (mở <http://localhost:18080>): đọc `AppFront/.env.be`, chuyển `/api` sang container `web` của stack f14 ở 18081. Stack đặt `PUBLIC_BASE_URL=http://localhost:18080` đúng bằng origin của dev server nên đăng nhập chạy luôn | `AppFront/.env.be`, `AppFront/package.json` (`dev:be`) |
+| 3D tự nạp lại | `pnpm dev:3d` — như `dev:be`, thêm `/editor3d.html` tự cập nhật khi sửa `src/pascal-page/**` hay `vendor/pascal/**`; dev server Pascal ở 18082 | `AppFront/CLAUDE.md` |
 | BE thật qua nginx | mở thẳng `http://localhost:<WEB_HTTP_PORT>` (bản dựng FE trong ảnh `web`) | mục 4.1 |
 
-**(chưa kiểm)** đường "BE thật qua proxy Vite" trên máy này (ví dụ `VITE_API_PROXY_TARGET=http://localhost:8000`
-tới `api` của `dev.yml`). Bộ mẫu dựng sẵn cho dev/test: `createSampleBuilding()` (`AppFront/CLAUDE.md:109`).
+Đường "BE thật qua proxy Vite" đã kiểm nhiều lượt với stack f14 (`pnpm dev:be`); chưa kiểm với `api` của
+`dev.yml` (`VITE_API_PROXY_TARGET=http://localhost:8000`) **(chưa kiểm)**. Bộ mẫu dựng sẵn cho dev/test: `createSampleBuilding()` (`AppFront/CLAUDE.md:109`).
 Route `/demo` chỉ có ở bản dựng phát triển (`AppFront/CLAUDE.md:190`). `pnpm e2e` tự làm ấm cả đồ thị module
 của Vite trước bài đầu (`scripts/warm-dev-server.mjs`, gọi ở `scripts/run-playwright.mjs:196`).
 
@@ -158,11 +161,17 @@ của Vite trước bài đầu (`scripts/warm-dev-server.mjs`, gọi ở `scrip
 
 | Việc | Làm gì | Ai |
 |---|---|---|
-| `verify [--steps 1,2,4]` | Cổng 8 bước trong container Linux | worker trước khi báo xong (`CLAUDE.md:22-29`) |
+| `verify [--steps 1,2,4]` | Cổng **đầy đủ** 8 bước trong container Linux (~13'). Chỉ chạy **trước khi merge** | worker trước khi báo xong (`CLAUDE.md:22-29`) |
+| `verify --fast` | Cổng **nhanh** (~1'): ruff, lint-imports, mypy cache ấm, pytest các tệp test bị ảnh hưởng so với `main`, bước 6/7/8 chỉ khi đầu vào đổi, không 5b. Log riêng ở `.cache/src-out/verify-fast` | **mỗi lần sửa** (PERF-03/04; `run.sh:202`) |
+| `hold -- <lệnh>` | Chạy lệnh trên host khi giữ khoá cổng một mình — dựng ảnh web f14, build nặng. Xếp hàng chung với `verify` | mọi phiên (PERF-11; `run.sh:36-54`) |
 | `lock` | `uv lock` (không `--upgrade`), chép `uv.lock` ra | khi thêm thư viện ngoài BE-00 §13.1 |
 | `shell` | bash trong container trên **bản chép** `/tmp/w`; sửa ở đó không về worktree (`tools/verify/README.md:10-12`) | gỡ lỗi; `run.sh shell < lệnh.sh` chạy không tương tác |
 | `openapi`, `merge-heads <tên>` | xuất `openapi.json`; revision merge hai head | chỉ người điều phối |
 | `gc` | xoá venv/mypy cache của worktree đã xoá (~1,3 GB mỗi venv) | người điều phối (`ENV.md:53`) |
+
+**Một lượt cổng một lúc trên cả máy.** Lượt sau tự xếp hàng ở khoá cổng (`tools/verify/gate_lock.sh`, in
+"khoá cổng: chờ…") — **đừng tự viết vòng chờ** `docker ps | grep verify`, cứ gọi `run.sh` (PERF-11). `--fast` và
+`shell` dùng chung khoá nên chạy cạnh nhau được, nhưng không chạy cạnh cổng đầy đủ.
 
 Bước (`BE-00.md:464-474`, `tools/verify/steps.py:301-324`):
 
@@ -189,7 +198,8 @@ Bước (`BE-00.md:464-474`, `tools/verify/steps.py:301-324`):
 
 | Lệnh | Việc | Nguồn |
 |---|---|---|
-| `pnpm verify` | 7 bước tuần tự, dừng ở bước hỏng đầu: typecheck → lint → import vòng → test + độ phủ → build → kích thước gói → độ dài file; ~300 s, ăn hết CPU | `scripts/verify.mjs:19-65`, `AppFront/CLAUDE.md:21`, `ENV.md:71` |
+| `pnpm verify` | Cổng **đầy đủ**, 7 bước, dừng ở bước hỏng đầu: typecheck → lint → import vòng → test + độ phủ → build → kích thước gói → độ dài file; ~300 s, ăn hết CPU. Chỉ chạy **trước khi merge** | `scripts/verify.mjs:19-65`, `AppFront/CLAUDE.md:21`, `ENV.md:71` |
+| `pnpm verify:fast` | Cổng **nhanh** (~20 s ấm): `tsc --incremental`, ESLint trên tệp đổi, vitest chỉ thư mục có tệp đổi (không theo chuỗi phụ thuộc, không độ phủ), độ dài file. Không build / kích thước gói / import vòng. `VERIFY_FAST_BASE=HEAD` = chỉ phần chưa commit | **mỗi lần sửa**; `scripts/verify-fast.mjs`, `AppFront/CLAUDE.md` |
 | `pnpm typecheck` / `lint` / `cycles` / `length` / `size` | từng bước lẻ | `package.json:10-19` |
 | `pnpm test` / `pnpm coverage` | vitest; chỉ `coverage` đối chiếu ngưỡng | `AppFront/CLAUDE.md:23-24` |
 | `pnpm e2e [tệp]` | Playwright, tự dựng Vite ở `127.0.0.1:${E2E_PORT:-5173}` | `scripts/run-playwright.mjs:32-36,97` |
@@ -221,12 +231,31 @@ bash …/chuoi.sh down                                                      # do
 
 | Biến | Mặc định | Nguồn |
 |---|---|---|
-| `BE` | `C:/Users/mxuan/orca/workspaces/AppBack/fix378-x` | `chuoi.sh:6` |
-| `FE` | `C:/Users/mxuan/orca/workspaces/AppFront/f14-w` | `chuoi.sh:7` |
-| `WEB_SHA` | `efbda6bd` | `chuoi.sh:21-22` |
-| cố định | `POSTGRES_HOST_PORT=15432 WEB_HTTP_PORT=18080 PUBLIC_BASE_URL=http://localhost:18080 IMAGE_TAG=f14 ML_BACKEND=fake`; compose `-p f14 -f deploy/compose/ci.yml --env-file deploy/compose/env.example --profile ml` | `chuoi.sh:8-9` |
+| `BE` | `C:/Users/mxuan/orca/workspaces/AppBack/qa-main` — **đã bị xoá** (kiểm 15/11/2026) | `chuoi.sh:6` |
+| `FE` | `C:/Users/mxuan/orca/workspaces/AppFront/f14-w` — **đã bị xoá** (kiểm 15/11/2026) | `chuoi.sh:7` |
+| `WEB_SHA` | `efbda6bd` — SHA cũ | `chuoi.sh:21-22` |
+| cố định | `POSTGRES_HOST_PORT=15432 WEB_HTTP_PORT=18081 PUBLIC_BASE_URL=http://localhost:18080 IMAGE_TAG=f14 ML_BACKEND=fake`; compose `-p f14 -f deploy/compose/ci.yml -f <D>/qa-limits.override.yml --env-file deploy/compose/env.example --profile ml` | `chuoi.sh:8-9` |
 
-Mặc định của `BE`/`FE`/`WEB_SHA` trỏ worktree và SHA cũ, có thể đã bị xoá — luôn đặt cả ba tường minh.
+**Cả ba mặc định đều hỏng** — hai worktree Orca trên `C:` không còn, SHA đã cũ. Chạy `chuoi.sh` trần sẽ chết ngay
+dòng đầu; **luôn đặt tường minh cả ba**, ví dụ:
+
+```bash
+BE=/f/App/AppBack FE=/f/App/AppFront \
+  WEB_SHA=$(git -C /f/App/AppFront rev-parse --short origin/master) \
+  bash /f/App/AppBack/backend/dieu-phoi/chay/F-14/chuoi.sh build up seed run
+```
+
+**Hai cổng khác nhau, đừng lẫn** (`chuoi.sh:8,10`):
+
+| Cổng | Là gì | Dùng khi |
+|---|---|---|
+| 18081 | container `web` (nginx + bản dựng FE tĩnh); `$BASE` của script, nơi `/api` thật sự nằm | chỉ xem, không sửa FE |
+| 18080 | `PUBLIC_BASE_URL`, tức origin trình duyệt phải dùng — chính là Vite dev của `pnpm dev:be` | đang sửa FE |
+
+Nghĩa là `WEB_HTTP_PORT=18081` **cố ý** nhường 18080 cho dev server. Mở bằng `127.0.0.1` thay `localhost` thì
+`POST /api/auth/*` trả 403 `ORIGIN_MISMATCH` (mục 7 #9).
+
+Dừng stack mà **giữ** dữ liệu: `docker compose -p f14 stop`. `chuoi.sh down` chạy `down -v`, xoá sạch volume.
 
 | Pha | Làm gì | Nguồn |
 |---|---|---|

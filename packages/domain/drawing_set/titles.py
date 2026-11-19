@@ -238,6 +238,19 @@ _PLAN_OR_VIEW = re.compile(r"MAT BANG|BINH DO|\bPLAN\b|FLOOR|MAT CAT|MAT DUNG|SE
 _STOREY_LINE = re.compile(r"\b(?:TANG|LAU) ?0?\d+\b|\bTRET\b")
 _SNAP_WORDS = ("TANG", "TRET", "PLAN", "FLOOR", "SECTION", "ELEVATION", "GROUND", "BANG", "DUNG", "TIEN")
 _NEED_MAT = ("BANG", "DUNG", "TIEN")  # ngắn và phổ biến: chỉ sửa khi đứng ngay sau một từ giống MAT
+# Từ bộ đọc hiểu (mọi từ trong các mẫu `_SECTION` ... `_VARIANTS`, từ thứ tự "FIRST FLOOR", "CHI TIET"):
+# sửa lỗi OCR chỉ được động vào chữ NGOÀI tập này, vì chữ thật nằm cách một ký tự với từ khoá khác
+# sẽ bị đọc thành nghĩa khác. Va chạm (cách một ký tự) đã dò hết tập, test giữ chúng:
+#   TIET -> TRET (chi tiết thành trệt, lỗi NO-441), TIET -> TIEN, DIEN -> TIEN, LUNG -> DUNG, TONG -> TANG;
+#   cặp với MAT/CAT: CAU, DAT, LAT, MAI. Cặp còn lại (BANG/TANG, MONG/TONG, TIEN/TIET, ...) cùng là từ thật.
+_VOCAB_TEXT = (
+    "MAT CAT BANG BINH DO DOC NGANG DUNG TIEN BEN TANG LAU TRET TUM SAN THUONG MAI KHU DAT CHI TIET DETAIL PLAN FLOOR"
+    " ROOF SITE LOCATION THUA TONG THE HAM BASEMENT CELLAR UNDERGROUND AP ATTIC TERRACE LUNG MEZZ GROUND SECTION"
+    " ELEVATION FACADE ISOMETRIC AXONOMETRIC PERSPECTIVE PHOI CANH MONG FOUNDATION FONDATION TRAN CEILING KET CAU"
+    " STRUCTURE STRUCTURAL ELECTRICAL ELECTRIC DIEN NUOC PLUMBING LAT NOI THAT FURNITURE TRUC FIRST SECOND THIRD"
+    " FOURTH FIFTH SIXTH"
+)
+_VOCAB = frozenset(_VOCAB_TEXT.split())
 _VOWEL_DROPS = (
     (re.compile(r"\bM\w?T ?BNG"), "MAT BANG"),
     (re.compile(r"\bM\w?T ?D\w?NG ?TR\w?C?"), "MAT DUNG TRUC"),
@@ -270,8 +283,11 @@ def _near_by_one_edit(a: str, b: str) -> bool:
 
 
 def _snap_word(word: str, prev: str, nxt: str) -> str:
-    """Từ khoá cách `word` một lần sửa (từ >= 3 chữ), không thì giữ nguyên; `prev`/`nxt` là từ lân cận."""
-    if len(word) < 3 or word in _SNAP_WORDS:
+    """Từ khoá cách `word` một lần sửa (từ >= 3 chữ), không thì giữ nguyên; `prev`/`nxt` là từ lân cận.
+
+    Từ đã là từ thật của bộ đọc (`_VOCAB`, ví dụ TIET) không bao giờ bị sửa.
+    """
+    if len(word) < 3 or word in _VOCAB:
         return word
     for key in _SNAP_WORDS:
         if not _near_by_one_edit(word, key) or (len(word) == 3 and not nxt[:1].isdigit()):
@@ -291,7 +307,7 @@ def _snap(n: str) -> str:
         nxt = words[i + 1] if i + 1 < len(words) else ""
         out.append(_snap_word(word, out[-1] if out else "", nxt) if word.isalpha() else word)
     for i, word in enumerate(out[:-1]):
-        if not word.isalpha():
+        if not word.isalpha() or word in _VOCAB:
             continue
         if len(word) <= 4 and _near_by_one_edit(word, "MAT") and out[i + 1] in ("BANG", "DUNG", "TIEN", "CAT", "BEN"):
             out[i] = "MAT"

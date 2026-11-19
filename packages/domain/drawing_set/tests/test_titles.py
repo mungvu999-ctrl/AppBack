@@ -102,6 +102,10 @@ _TITLES = [
     ("SITE PLAN", "site", None, None, "plain"),
     ("MẶT BẰNG TỔNG THỂ", "site", None, None, "plain"),
     ("CHI TIẾT CỬA ĐI D1", "detail", None, None, "other"),
+    ("CHI TIẾT CẦU THANG", "detail", None, None, "other"),
+    ("CHI TIẾT CỬA", "detail", None, None, "other"),
+    # Như kernel: "MẶT BẰNG" thắng, "CHI TIẾT" chỉ hạ độ ưu tiên tầng (storey_cues.NONSTOREY): mặt bằng, chưa rõ tầng.
+    ("MẶT BẰNG CHI TIẾT WC", "plan", None, None, "plain"),
     ("PERSPECTIVE VIEW", "other", None, None, "other"),
     ("PHỐI CẢNH 3D", "other", None, None, "other"),
 ]
@@ -360,3 +364,77 @@ def test_lines_drop_empty_and_rotated_boxes() -> None:
         [line("B", 10, 50, 100, 80), line(" ", 0, 0, 5, 5), line("ROT", 0, 0, 10, 100), line("A", 10, 10, 100, 40)]
     )
     assert [ln.text for ln in out] == ["A", "B"]
+
+
+# ---------------------------------------------------------------- từ thật không bị sửa (NO-441)
+# Mọi cặp (từ thật của bộ đọc, từ khoá sửa lỗi) cách nhau một ký tự; từ thật phải sống sót.
+_COLLISIONS = [
+    ("TIET", "TRET"),
+    ("TIET", "TIEN"),
+    ("DIEN", "TIEN"),
+    ("LUNG", "DUNG"),
+    ("TONG", "TANG"),
+    ("CAU", "CAT"),
+    ("DAT", "MAT"),
+    ("LAT", "MAT"),
+    ("MAI", "MAT"),
+]
+
+
+def _snap_collisions() -> set[tuple[str, str]]:
+    """Mọi cặp (từ thật, từ khoá bị sửa tới) cách một ký tự, dò trên cả tập từ."""
+    targets = {*titles._SNAP_WORDS, "MAT", "CAT"}
+    return {
+        (w, k)
+        for w in titles._VOCAB
+        for k in targets
+        if len(w) >= 3 and w != k and w not in targets and titles._near_by_one_edit(w, k)
+    }
+
+
+def test_collision_list_is_complete() -> None:
+    """Danh sách va chạm trong test khớp với phép dò toàn tập từ (thêm từ mới sẽ làm test này đỏ)."""
+    found = _snap_collisions()
+    assert set(_COLLISIONS) <= found
+    assert {w for w, _ in found} == {w for w, _ in _COLLISIONS}
+
+
+@pytest.mark.parametrize(("word", "key"), _COLLISIONS)
+def test_snap_keeps_real_words(word: str, key: str) -> None:
+    """Từ thật sát một từ khoá giữ nguyên, kể cả đứng sau MAT/trước số (nơi từ khoá được phép sửa)."""
+    assert titles._snap(word) == word
+    assert titles._snap(f"MAT {word} 1") == f"MAT {word} 1"
+    assert titles._snap(f"{word} 1") == f"{word} 1"
+    assert titles._snap(f"{word} BANG") == f"{word} BANG"
+
+
+def test_snap_leaves_every_vocabulary_word_alone() -> None:
+    """Không từ nào trong tập từ bị `_snap` đổi, dù đứng ở đâu."""
+    for word in titles._VOCAB:
+        assert titles._snap(word) == word
+        assert titles._snap(f"MAT {word} 1") == f"MAT {word} 1"
+
+
+@pytest.mark.parametrize(
+    ("text", "kind", "storey"),
+    [
+        ("CHI TIẾT CẦU THANG", "detail", None),
+        ("CHI TIẾT CỬA", "detail", None),
+        ("MẶT BẰNG CHI TIẾT WC", "plan", None),
+    ],
+)
+def test_pick_title_keeps_vietnamese_detail(text: str, kind: str, storey: object) -> None:
+    """ "CHI TIẾT" không bị bẻ thành "CHI TRET": loại đúng, không thành tầng trệt."""
+    picked = pick_title([*SMALL, line(text, 300, 500, 900, 560)], SIZE)
+    assert picked.text == text
+    info = parse_title(picked.text)
+    assert info is not None
+    assert (info.kind, info.storey) == (kind, storey)
+    assert view_kind([*SMALL, line(text, 300, 500, 900, 560)], SIZE).kind == kind
+
+
+def test_snap_still_repairs_ocr_damage() -> None:
+    """Chữ hỏng (không phải từ thật) vẫn được sửa."""
+    assert titles._fix_vowel_drops("MTBNG TNG 3") == "MAT BANG TANG 3"
+    assert titles._snap("MAT BANG TAN 1") == "MAT BANG TANG 1"
+    assert titles._snap("MAT BANG TRAT") == "MAT BANG TRET"

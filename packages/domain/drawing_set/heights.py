@@ -33,6 +33,9 @@ _MEZZ_PART_M: Final = 2.2  # mỗi phần của khoảng bị lửng chia phải
 _MEZZ_MARGIN_M: Final = 0.5  # lửng nằm trong khoảng tầng khi cách hai đầu hơn mức này
 _BASEMENT_TOP_M: Final = -0.3  # cốt tầng hầm thấp hơn mốc trệt ít nhất mức này
 _RAISED_MIN_M: Final = 0.3  # trệt tự ghi cốt chủ đạo ≥ mức này (không có 0.000 riêng) thì giữ cốt đó
+# ponytail: trần ứng viên mỗi tầng. Mặt bằng thật có dưới 30 cốt khác nhau; quá số này thì giữ các sàn
+# gặp nhiều lần nhất (trệt luôn giữ sàn gần mốc trệt) để quy hoạch động O(tầng × trần²) xong trong thời hạn API.
+_MAX_CANDS: Final = 30
 _TIGHT: Final = (2.6, 4.2)  # chiều cao mỗi tầng "chắc chắn hợp lý"
 _LOOSE: Final = (2.4, 4.6)  # chiều cao mỗi tầng "còn hợp lý"
 
@@ -147,7 +150,12 @@ def _ground_anchor(marks: Sequence[float]) -> float:
 def _candidates(storey: _Storey, marks: Sequence[float], g0: float) -> tuple[_Cand, ...]:
     """Ứng viên của một tầng: các cốt riêng; trệt thêm 0.000 theo quy ước khi chưa có; hầm chỉ nhận cốt
     dưới mốc trệt ít nhất 0,3 m hoặc "không biết" (cốt hầm đọc nhầm không đẩy trệt lên, DS-248)."""
-    out = [_Cand(v, n) for v, n in _plan_values(marks, storey.ground)]
+    vals = _plan_values(marks, storey.ground)
+    if len(vals) > _MAX_CANDS:
+        far = [not (storey.ground and abs(v - g0) <= _GROUND_NEAR_M) for v, _ in vals]
+        ranked = sorted(range(len(vals)), key=lambda j: (far[j], -vals[j][1]))
+        vals = [vals[j] for j in sorted(ranked[:_MAX_CANDS])]  # giữ thứ tự tăng dần (hoà điểm chọn như cũ)
+    out = [_Cand(v, n) for v, n in vals]
     if storey.ground and g0 == 0.0 and not any(c.value is not None and abs(c.value) <= _TOL_M for c in out):
         out.append(_Cand(0.0, conv=True))
     if storey.basement:
@@ -193,11 +201,18 @@ def _step(p: _Problem, i: int) -> int:
     return p.storeys[i].number - p.storeys[i - 1].number
 
 
-def _total(p: _Problem, path: Sequence[int]) -> float:
-    """Tổng điểm của một lựa chọn (chỉ số ứng viên mỗi tầng)."""
-    score = sum(_unary(p.cands[i][j], p.storeys[i], p.g0) for i, j in enumerate(path))
-    for i in range(1, len(path)):
-        score += _pair(p.cands[i - 1][path[i - 1]], p.cands[i][path[i]], _step(p, i), p.mezz)
+def _parts(p: _Problem, path: Sequence[int]) -> tuple[list[float], list[float]]:
+    """Điểm đơn từng tầng và điểm cặp từng cặp kề của một lựa chọn (chỉ số ứng viên mỗi tầng)."""
+    unary = [_unary(p.cands[i][j], p.storeys[i], p.g0) for i, j in enumerate(path)]
+    pairs = [_pair(p.cands[i - 1][path[i - 1]], p.cands[i][path[i]], _step(p, i), p.mezz) for i in range(1, len(path))]
+    return unary, pairs
+
+
+def _sum_parts(unary: list[float], pairs: list[float]) -> float:
+    """Tổng điểm, cộng đúng thứ tự cũ (đơn bằng `sum`, rồi từng cặp) để so `_AMBIG` không lệch số thực."""
+    score = sum(unary)
+    for value in pairs:
+        score += value
     return score
 
 
@@ -207,8 +222,9 @@ def _dp(p: _Problem) -> list[int]:
     back: list[list[int]] = []
     for i in range(1, len(p.cands)):
         row, links = [], []
+        step, prev_best, prev_cands = _step(p, i), best[-1], p.cands[i - 1]
         for c in p.cands[i]:
-            opts = [best[-1][q] + _pair(prev, c, _step(p, i), p.mezz) for q, prev in enumerate(p.cands[i - 1])]
+            opts = [prev_best[q] + _pair(prev, c, step, p.mezz) for q, prev in enumerate(prev_cands)]
             q = max(range(len(opts)), key=opts.__getitem__)
             row.append(opts[q] + _unary(c, p.storeys[i], p.g0))
             links.append(q)
@@ -240,15 +256,32 @@ def _gap_bad(p: _Problem, path: Sequence[int], i: int) -> bool:
     return False
 
 
-def _near_alternatives(p: _Problem, path: list[int], i: int) -> tuple[bool, tuple[float, ...]]:
-    """Ứng viên khác của tầng `i` làm tổng điểm kém dưới 0,5: cờ nhập nhằng và các cốt đó."""
-    best = _total(p, path)
-    others = (j for j in range(len(p.cands[i])) if j != path[i])
-    near = [p.cands[i][j] for j in others if best - _total(p, [*path[:i], j, *path[i + 1 :]]) < _AMBIG]
+def _near_alternatives(
+    p: _Problem, path: list[int], i: int, parts: tuple[list[float], list[float]]
+) -> tuple[bool, tuple[float, ...]]:
+    """Ứng viên khác của tầng `i` làm tổng điểm kém dưới 0,5: cờ nhập nhằng và các cốt đó.
+
+    Đổi ứng viên tầng `i` chỉ đổi điểm đơn của nó và hai điểm cặp kề: tính lại ba số đó, không gọi lại
+    toàn bộ hàm điểm (`parts` = `_parts(p, path)`, tính một lần cho mọi tầng).
+    """
+    unary, pairs = parts
+    best = _sum_parts(unary, pairs)
+    near = []
+    for j, cand in enumerate(p.cands[i]):
+        if j == path[i]:
+            continue
+        alt_unary, alt_pairs = unary.copy(), pairs.copy()
+        alt_unary[i] = _unary(cand, p.storeys[i], p.g0)
+        if i > 0:
+            alt_pairs[i - 1] = _pair(p.cands[i - 1][path[i - 1]], cand, _step(p, i), p.mezz)
+        if i + 1 < len(path):
+            alt_pairs[i] = _pair(cand, p.cands[i + 1][path[i + 1]], _step(p, i + 1), p.mezz)
+        if best - _sum_parts(alt_unary, alt_pairs) < _AMBIG:
+            near.append(cand)
     return bool(near), tuple(c.value for c in near if c.value is not None)
 
 
-def _floor_level(p: _Problem, path: list[int], i: int) -> FloorLevel:
+def _floor_level(p: _Problem, path: list[int], i: int, parts: tuple[list[float], list[float]]) -> FloorLevel:
     """Cốt, nguồn, độ chắc của tầng thứ `i` từ lựa chọn (heights3.floor_record, thang rỗng).
 
     Cốt có trên mặt bằng: 0,8, khoảng tầng vô lý 0,6; 0.000 theo quy ước trệt: 0,6; nhập nhằng ≤ 0,7.
@@ -261,7 +294,7 @@ def _floor_level(p: _Problem, path: list[int], i: int) -> FloorLevel:
         confidence = _CONF_WEAK if _gap_bad(p, path, i) else _CONF_PLAN
     else:
         source, confidence = "convention", _CONF_WEAK
-    ambiguous, alternatives = _near_alternatives(p, path, i)
+    ambiguous, alternatives = _near_alternatives(p, path, i, parts)
     if ambiguous:
         confidence = min(confidence, _CONF_AMBIG)
     return FloorLevel(cand.value, source, confidence, ambiguous, alternatives)
@@ -347,7 +380,8 @@ def solve_heights(storeys: Sequence[StoreyPlan]) -> tuple[tuple[FloorLevel, ...]
         mezz = tuple(lv.level_m for lv in levels.values() if lv.level_m is not None)
         problem = _problem([(n, storeys[i]) for n, i in numbered], mezz)
         path = _dp(problem)
-        levels |= {i: _floor_level(problem, path, pos) for pos, (_, i) in enumerate(numbered)}
+        parts = _parts(problem, path)
+        levels |= {i: _floor_level(problem, path, pos, parts) for pos, (_, i) in enumerate(numbered)}
     floors = tuple(levels[i] for i in range(len(storeys)))
     return floors, _heights(numbered, floors, mezz_idx)
 

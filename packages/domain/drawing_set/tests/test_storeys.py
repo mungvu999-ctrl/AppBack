@@ -256,6 +256,24 @@ def test_deep_basements_keep_their_depth(title: str, number: int | None) -> None
     assert (got.confidence == 0.8) if number is not None else (got.confidence < 0.7)
 
 
+def test_basement_depth_for_every_synonym() -> None:
+    # Soát rv2 #4: độ sâu đọc được sau mọi từ hầm và mã "B2"; mã "B" không số -> hỏi, không lặng lẽ thành hầm 1.
+    got = [solve(plan("v00", t))[0] for t in ("CELLAR B2 PLAN", "UNDERGROUND 3 PLAN", "CELLAR B PLAN")]
+    assert [(c.label, c.number) for c in got] == [("basement", -1), ("basement", -2), ("basement", None)]
+    assert got[2].confidence < 0.7
+
+
+def test_second_plan_title_in_view_is_a_conflict() -> None:
+    # Soát rv2 #2: hai tên "MẶT BẰNG TẦNG n" khác số trên một hình là bất đồng; ghi chú nhắc tầng khác thì không.
+    rival = ("MAT BANG TANG 1", "MAT BANG TANG 2")
+    got = solve(plan("v00", "MAT BANG TANG 1", 0.0, texts=rival), plan("v01", "MAT BANG TANG 2", 3.3))
+    assert (got[0].number, got[0].confidence) == (1, 0.65)
+    assert [(c.source, c.number) for c in got[0].conflict] == [("words", 2)]
+    notes = ("MAT BANG TANG 1", "XEM MAT BANG TANG 2", "LEN TANG 2", "NHA PHO 1 TRET 2 LAU")
+    got = solve(plan("v00", "MAT BANG TANG 1", 0.0, texts=notes), plan("v01", "MAT BANG TANG 2", 3.3))
+    assert (got[0].conflict, got[0].confidence >= 0.9) == ((), True)
+
+
 def test_hostile_input_is_bounded() -> None:
     # Lỗi 3: số tầng lạ, 10 000 dòng chữ, 200 hình không được làm bùng khối lượng việc.
     noise = tuple(f"ROOM {i}" for i in range(10_000))

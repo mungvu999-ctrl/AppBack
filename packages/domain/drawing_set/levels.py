@@ -11,6 +11,7 @@ nhận nhầm tệ hơn bỏ sót, vì cốt sai kéo lệch cả chuỗi tầng
 """
 
 import re
+from bisect import bisect_left, bisect_right
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -193,11 +194,17 @@ def levels_from_texts(texts: Iterable[TextLike]) -> tuple[LevelMark, ...]:
 
 def _clusters(values: Iterable[float]) -> list[tuple[float, int]]:
     """Gom cốt cách nhau ≤ 0,03 m quanh giá trị hay gặp nhất → `(giá trị đại diện, số lần)`."""
+    # Số lần của cốt còn lại không đổi khi gom, nên thứ tự hạt giống là thứ tự sắp một lần; thành viên tìm
+    # bằng bisect trong cửa sổ rộng hơn ngưỡng một chút rồi lọc đúng điều kiện cũ (O(k log k), không O(k²)).
     left = Counter(round(value, 3) for value in values)
+    ordered = sorted(left)
     out: list[tuple[float, int]] = []
-    while left:
-        seed = min(left, key=lambda value: (-left[value], value))
-        members = [value for value in left if round(abs(value - seed), 3) <= _CLUSTER_TOL_M]
+    for seed in sorted(left, key=lambda value: (-left[value], value)):
+        if seed not in left:
+            continue
+        lo = bisect_left(ordered, seed - _CLUSTER_TOL_M - 0.001)
+        hi = bisect_right(ordered, seed + _CLUSTER_TOL_M + 0.001)
+        members = [v for v in ordered[lo:hi] if v in left and round(abs(v - seed), 3) <= _CLUSTER_TOL_M]
         out.append((seed, sum(left.pop(value) for value in members)))
     return out
 

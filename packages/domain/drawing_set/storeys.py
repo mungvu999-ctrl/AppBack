@@ -59,6 +59,9 @@ _NUMBERED = ("plain", "furniture")  # biến thể mang số tầng
 _KIND_CONF = 0.92  # độ tin loại hình của mặt bằng đã biết (chế độ "known" của kernel)
 _MERGE_DOM, _MERGE_STOREY, _NEAR0, _MEZZ_GAP = 0.03, 0.25, 0.6, 2.2
 _PLANISH = re.compile(r"MAT ?BANG|BINH DO|\bPLAN\b|FLOOR")
+# Dòng MỞ ĐẦU bằng tên loại hình ("MAT BANG TANG 2", "SECOND FLOOR PLAN"): tên hình thật, không phải ghi chú
+# nhắc tới hình khác ("XEM MAT BANG TANG 2").
+_TITLE_HEAD = re.compile(r"^(?:MAT ?BANG|BINH DO)\b|^\w+ FLOOR PLAN\b")
 _NONSTOREY = re.compile(r"CAU ?TAO|CHI TIET|DETAIL|\bWC\b|\bSAN\b(?! THUONG)")
 # Dòng KHÔNG phải tên hình dù có chữ tầng: mô tả công trình ("NHÀ PHỐ 1 TRỆT 2 LẦU", "3 TẦNG"),
 # ghi chú thang/mặt cắt ("LÊN TẦNG 3", "SÀN TẦNG 2", "CỐT ..."). Chúng không bỏ phiếu tầng (soát mã F2).
@@ -82,7 +85,9 @@ _RELAXED = (
     (re.compile(r"T[AC]NG\s*0?(\d{1,2})(?!\d)"), 0, "tang"),
     (re.compile(r"\b(\d)\s*(?:ST|ND|RD|TH)\s+FLOOR"), 1, "ordinal"),
 )
-_BASEMENT_NO = re.compile(r"(?:HAM|BASEMENT|TANG AM)\s*B?\s*(\d+)")
+# Độ sâu hầm sau mọi từ hầm mà `parse_title` nhận (HAM, BASEMENT, CELLAR, UNDERGROUND) hoặc mã "B2" đứng riêng.
+_BASEMENT_NO = re.compile(r"(?:HAM|BASEMENT|CELLAR|UNDERGROUND|TANG AM)\s*B?\s*-?\s*(\d+)|\bB\s*-?\s*(\d+)\b")
+_BASEMENT_TAG = re.compile(r"\bB\b")  # có mã "B" mà không đọc được số: độ sâu có ghi nhưng không rõ
 _MAX_BASEMENT = 6  # hầm sâu nhất đọc được; sâu hơn hoặc số lạ -> hầm không số
 _UNSURE_BASEMENT = 0.5
 # Chặn khối lượng việc: chữ OCR là dữ liệu ngoài, số tầng lạ không được sinh hàng triệu ứng viên.
@@ -620,6 +625,17 @@ def _disagreeing(opts: Votes, f: int) -> tuple[StoreyConflict, ...]:
     return tuple(StoreyConflict(s, _FAMILY[s], g) for s, (_, g) in sorted(best.items()) if g != f and s not in here)
 
 
+def _rival_titles(view: PlanView, f: int, conv: str) -> tuple[StoreyConflict, ...]:
+    """Tên hình thứ hai trên cùng hình (`_TITLE_HEAD`) nêu tầng khác `f`. Phiếu chữ đã chia theo tổng nên hai tên
+    ngang nhau thành hai phiếu dưới ngưỡng mạnh và `_disagreeing` không thấy; ở đây xét từng dòng."""
+    rivals: set[int] = set()
+    for text in view.texts:
+        n = fold(text)
+        if _TITLE_HEAD.search(n) and _title_like(n) and (g := floor_relaxed(n, conv)) is not None and g != f:
+            rivals.add(g)
+    return tuple(StoreyConflict("words", "text", g) for g in sorted(rivals))
+
+
 def storey_confidence(src: dict[str, float], alt_far: bool, conflict: bool = False, anchored: bool = True) -> float:
     """Hai họ mạnh (cốt phải được neo), không bất đồng >= 0,9; một họ mạnh 0,72-0,85; bất đồng 0,65;
     chỉ yếu 0,55; nhì sát nút <= 0,7."""
@@ -685,10 +701,11 @@ def _choose(plans: list[tuple[str, Votes]], views: dict[str, PlanView]) -> tuple
 
 
 # ---------------------------------------------------------------- kết quả
-def _explain(view: PlanView, full: Votes, f: int, close: bool, anchored: bool) -> StoreyChoice:
-    """Tầng đã chọn + độ tin, họ ủng hộ, phương án nhì, bất đồng."""
+def _explain(view: PlanView, full: Votes, f: int, close: bool, anchored: bool, conv: str) -> StoreyChoice:
+    """Tầng đã chọn + độ tin, họ ủng hộ, phương án nhì, bất đồng (`conv` = quy ước bộ, cho tên thứ hai)."""
     src = full.get(f, {})
     conflict = _disagreeing(full, f)
+    conflict += tuple(c for c in _rival_titles(view, f, conv) if c not in conflict)
     c = storey_confidence(src, not close, bool(conflict), anchored)
     t = view.title
     if t is not None and t.numbering == "floor_ordinal" and "title" in src:
@@ -703,7 +720,7 @@ def _basement(norm: str) -> StoreyChoice:
     """Hầm sâu N (1.._MAX_BASEMENT, nhiều chữ số được) -> số 1 - N ở 0,8; không ghi độ sâu = hầm duy nhất (0);
     độ sâu ngoài khoảng hoặc không đọc được -> hầm không số, độ tin < 0,7."""
     m = _BASEMENT_NO.search(norm)
-    digits = m.group(1) if m else "1"
+    digits = (m.group(1) or m.group(2)) if m else "0" if _BASEMENT_TAG.search(norm) else "1"
     depth = int(digits) if len(digits) <= 2 else 0
     if 1 <= depth <= _MAX_BASEMENT:
         return StoreyChoice("basement", 1 - depth, 0.8, ("text",), None, ())
@@ -848,7 +865,8 @@ def solve_storeys(views: Sequence[PlanView], order_known: bool = True) -> dict[s
     by_id = {v.view_id: v for v in ordered}
     rows = _rows(ordered)
     plans = [v for v in ordered if v.view_id in rows]
-    cands = _candidates(plans, rows, order_known, normalise_convention(ordered)[0])
+    conv = normalise_convention(ordered)[0]
+    cands = _candidates(plans, rows, order_known, conv)
     ground, dom = _ground_ids(rows, cands), _dominants(ordered)
     anchored = _anchored(dom, ground)
     ladder = _level_order(dom, ground, anchored)
@@ -868,6 +886,6 @@ def solve_storeys(views: Sequence[PlanView], order_known: bool = True) -> dict[s
             out[v.view_id] = _word_choice(v, top)
             continue
         close = run is not None and gap < _CLOSE and run.get(v.view_id) != f
-        out[v.view_id] = _explain(v, full[v.view_id], f, close, anchored)
+        out[v.view_id] = _explain(v, full[v.view_id], f, close, anchored, conv)
     _set_checks(out, ordered)
     return out

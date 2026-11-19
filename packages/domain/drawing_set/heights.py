@@ -77,7 +77,8 @@ class StoreyHeight:
     """Chiều cao từ tầng `from_number` lên tầng đánh số kế tiếp `to_number` (`None` với tầng trên cùng).
 
     Cờ: "skips_mezzanine" (có lửng ở giữa, vẫn tính một cặp), "spans_missing_storey" (thiếu mặt bằng
-    của số tầng ở giữa: không tự chia), "assumed" (giá trị mặc định 3,3 m mỗi tầng).
+    của số tầng ở giữa: không tự chia), "assumed" (giá trị mặc định 3,3 m mỗi tầng), "implausible" (mỗi
+    tầng ngoài 2,4-4,6 m và không lửng nào giải thích: vẫn đề xuất nhưng phải hỏi, soát A-F3/F4).
     """
 
     from_number: int
@@ -296,25 +297,35 @@ def _skips_mezzanine(pair_idx: tuple[int, int], levels: Sequence[FloorLevel], me
     return False
 
 
-def _height(low: tuple[int, FloorLevel], high: tuple[int, FloorLevel], skips: bool) -> StoreyHeight:
-    """Chiều cao giữa hai tầng đánh số liền nhau = hiệu cốt; thiếu cốt → 3,3 m mỗi tầng ở 0,4 "assumed"."""
+def _height(
+    low: tuple[int, FloorLevel], high: tuple[int, FloorLevel], skips: bool, mezz: Sequence[float]
+) -> StoreyHeight:
+    """Chiều cao giữa hai tầng đánh số liền nhau = hiệu cốt; thiếu cốt → 3,3 m mỗi tầng ở 0,4 "assumed".
+
+    Hiệu cốt chia số tầng ngoài 2,4-4,6 m (như `_gap_bad`) mà không lửng nào giải thích thì thêm cờ
+    "implausible": giá trị giữ nguyên (tầng hầm, lửng thấp 2,0-2,4 m vẫn có thể đúng), lớp trên hỏi.
+    """
     (n_low, a), (n_high, b) = low, high
     k = n_high - n_low
     flags = (["skips_mezzanine"] if skips else []) + (["spans_missing_storey"] if k >= 2 else [])
     if a.level_m is None or b.level_m is None:
         height = round(DEFAULT_HEIGHT_M * k, 3)
         return StoreyHeight(n_low, n_high, height, "default", _CONF_DEFAULT, (*flags, "assumed"))
+    gap = b.level_m - a.level_m
+    if not (_LOOSE[0] <= gap / k <= _LOOSE[1] or _mezz_explains(a.level_m, b.level_m, k, mezz)):
+        flags.append("implausible")
     source: HeightSource = "convention" if "convention" in (a.source, b.source) else "plan"
     confidence = min(a.confidence, b.confidence, _CONF_HEIGHT_MAX, _CONF_MISSING if k >= 2 else 1.0)
-    return StoreyHeight(n_low, n_high, round(b.level_m - a.level_m, 3), source, confidence, tuple(flags))
+    return StoreyHeight(n_low, n_high, round(gap, 3), source, confidence, tuple(flags))
 
 
 def _heights(
     numbered: Sequence[tuple[int, int]], levels: Sequence[FloorLevel], mezz_idx: Sequence[int]
 ) -> tuple[StoreyHeight, ...]:
     """Chiều cao mọi cặp tầng đánh số liền nhau, rồi tầng trên cùng (mặc định 3,3 m ở 0,4)."""
+    mezz = tuple(lv for m in mezz_idx if (lv := levels[m].level_m) is not None)
     out = [
-        _height((na, levels[ia]), (nb, levels[ib]), _skips_mezzanine((ia, ib), levels, mezz_idx))
+        _height((na, levels[ia]), (nb, levels[ib]), _skips_mezzanine((ia, ib), levels, mezz_idx), mezz)
         for (na, ia), (nb, ib) in pairwise(numbered)
     ]
     if numbered:

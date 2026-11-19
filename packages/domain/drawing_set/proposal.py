@@ -8,17 +8,24 @@ Luật ghép:
    hỏi `NOT_A_PLAN` khi chữ nói mặt cắt/mặt đứng/mái/khu đất/chi tiết với độ tin >= 0,7. Hình như vậy không
    có tầng, cốt hay chiều cao đề xuất và không vào bài toán của cả bộ.
  * Hình không có chữ nào: `NO_TEXT`, loại "other", độ tin 0, không đề xuất gì.
- * Mỗi số tầng một mặt bằng đại diện đưa vào `solve_heights`: bản thường (hoặc không tên) trước bản khác,
-   rồi nhiều cốt hơn, rồi vị trí thấp hơn. Hình cùng số tầng còn lại chép cốt và chiều cao của đại diện
-   (cùng độ tin), nhưng giữ độ tin tầng của chính nó. Lửng vào bài toán riêng từng hình (để thấy chúng
-   nằm giữa hai tầng); hình không rõ tầng không vào.
+ * Mỗi số tầng một mặt bằng đại diện đưa vào `solve_heights`: bản có tên đọc được trước bản không tên,
+   rồi bản thường trước bản khác, rồi nhiều cốt hơn, rồi vị trí thấp hơn (soát A-F4). Hình cùng số tầng còn
+   lại chép cốt và chiều cao của đại diện (cùng độ tin) chỉ khi nó không có cốt chính riêng hoặc cốt chính
+   riêng cách cốt đại diện không quá 0,25 m; ngược lại nó giữ cốt của chính nó (độ tin <= 0,65), không có
+   chiều cao, và hỏi `STOREY_CONFLICT`: hai bản vẽ khác nhau cùng nhận một tầng (soát A-F9). Lửng vào bài
+   toán riêng từng hình (để thấy chúng nằm giữa hai tầng); hình không rõ tầng không vào nhưng vẫn đề xuất cốt
+   chính của chính nó (soát A-F11): không bao giờ chép cốt của bản vẽ khác đè lên cốt hình tự ghi.
  * Độ tin cốt = min(độ tin cốt, độ tin tầng của hình đại diện). Độ tin chiều cao = min(độ tin chiều cao,
    độ tin tầng của hai tầng nó nối): chữ mâu thuẫn ở một tầng (0,65) kéo chiều cao 0,8 xuống 0,65, như nhân
    nghiên cứu.
  * Giá trị ngoài khoảng của sản phẩm (`to_db_ranges`) không được đề xuất (`None`) mà thành câu hỏi.
+ * Dải độ tin (soát A-F4, Codex 6): "chắc" >= 0,9; "một nguồn" phải lớn hơn hẳn 0,7. Độ tin đúng 0,70 trở
+   xuống là chưa chắc và phải có câu hỏi, bất kể bộ giải trả gì. Cốt nhập nhằng (hai nhóm cốt gần ngang
+   điểm) không quá 0,65; từ vựng chưa có mã "hai cốt có thể, hãy kiểm tra" nên chỉ hạ độ tin (soát A-F15).
 
-Mã câu hỏi: `STOREY_UNSURE` (độ tin tầng < 0,7, không bất đồng), `STOREY_CONFLICT` (có dấu hiệu mạnh chỉ
-tầng khác), `LEVEL_MISSING`, `HEIGHT_ASSUMED` (mặc định, giả định hay bắc qua tầng thiếu mặt bằng),
+Mã câu hỏi: `STOREY_UNSURE` (độ tin tầng <= 0,7, không bất đồng), `STOREY_CONFLICT` (có dấu hiệu mạnh chỉ
+tầng khác, hoặc cốt riêng lệch cốt đại diện cùng tầng), `LEVEL_MISSING` (không cốt, hoặc cốt theo quy ước
+<= 0,7), `HEIGHT_ASSUMED` (mặc định, giả định, bắc qua tầng thiếu mặt bằng hay mỗi tầng ngoài 2,4-4,6 m),
 `NOT_A_PLAN`, `NO_TEXT`. `ORDER_DIFFERS` KHÔNG bao giờ được nâng ở đây: lớp API nâng nó khi so thứ tự
 tầng đề xuất với thứ tự tầng của dự án; gói này chỉ nhận `order_known` để tắt dấu hiệu thứ tự.
 """
@@ -35,7 +42,7 @@ from packages.domain.drawing_set.heights import (
     solve_heights,
     to_db_ranges,
 )
-from packages.domain.drawing_set.levels import levels_from_texts
+from packages.domain.drawing_set.levels import levels_from_texts, main_floor_level
 from packages.domain.drawing_set.storeys import PlanView, StoreyChoice, StoreyLabel, solve_storeys
 from packages.domain.drawing_set.titles import Kind, KindGuess, OcrText, parse_title, pick_title, view_kind
 
@@ -47,7 +54,14 @@ HEIGHT_ASSUMED: Final = "HEIGHT_ASSUMED"
 NOT_A_PLAN: Final = "NOT_A_PLAN"
 NO_TEXT: Final = "NO_TEXT"
 
-_SURE: Final = 0.7  # độ tin tầng thấp hơn mức này thì hỏi; độ tin loại hình từ mức này thì tin là không phải mặt bằng
+CONFIDENT: Final = 0.9  # dải "chắc": hai nguồn độc lập đồng ý
+SINGLE_SOURCE: Final = 0.7  # dải "một nguồn" phải lớn hơn hẳn mức này; từ mức này trở xuống là chưa chắc, phải hỏi
+_SURE: Final = 0.7  # độ tin loại hình từ mức này thì tin là không phải mặt bằng
+_EPS: Final = 1e-9  # sai số dấu phẩy động khi so với ranh giới dải
+_OWN_CAP: Final = 0.65  # cốt riêng của hình không phải đại diện, cốt nhập nhằng, chiều cao vô lý: độ tin tối đa
+_COPY_TOL_MM: Final = 250  # cốt riêng cách cốt đại diện không quá mức này thì vẫn chép của đại diện
+_ASSUMED_SOURCES: Final = frozenset({"convention", "default"})
+_HEIGHT_FLAGS: Final = frozenset({"assumed", "spans_missing_storey", "implausible"})
 _NOT_PLAN_KINDS: Final = frozenset({"section", "elevation", "roof", "site", "detail"})
 _CONFLICT_CAP: Final = 0.65  # độ tin tầng tối đa khi có bất đồng (như `storeys`)
 _KNOWN_PLAN_CONF: Final = 0.5  # độ tin loại hình khi người dùng tải lên là mặt bằng mà chữ không xác nhận
@@ -113,6 +127,12 @@ class _Values:
     height_confidence: float | None = None
     height_source: str | None = None
     questions: tuple[str, ...] = (LEVEL_MISSING,)
+    level_conflict: bool = False  # cốt riêng của hình lệch cốt đại diện cùng số tầng (hai bản vẽ một tầng)
+
+
+def unsure(confidence: float) -> bool:
+    """Độ tin chưa đạt dải "một nguồn" (đúng 0,70 trở xuống): giá trị như vậy phải đi kèm câu hỏi."""
+    return confidence <= SINGLE_SOURCE + _EPS
 
 
 def _read(view: HouseView) -> _Read:
@@ -142,10 +162,12 @@ def _cap_title_conflicts(reads: Sequence[_Read], choices: dict[str, StoreyChoice
     return out
 
 
-def _rank(plan: PlanView) -> tuple[int, int, int, str]:
-    """Khoá chọn đại diện của một tầng (nhỏ hơn thì thắng); bản không tên tính như bản thường, như `storeys`."""
-    plain = plan.title is None or plan.title.variant == "plain"
-    return (0 if plain else 1, -len(plan.levels), plan.position, plan.view_id)
+def _rank(plan: PlanView) -> tuple[int, int, int, int, str]:
+    """Khoá chọn đại diện của một tầng (nhỏ hơn thì thắng): có tên trước không tên (soát A-F4), rồi bản
+    thường trước bản khác, nhiều cốt hơn, vị trí thấp hơn."""
+    titled = plan.title is not None
+    plain = plan.title is not None and plan.title.variant == "plain"
+    return (0 if titled else 1, 0 if plain else 1, -len(plan.levels), plan.position, plan.view_id)
 
 
 def _representatives(plans: Sequence[PlanView], choices: dict[str, StoreyChoice]) -> list[PlanView]:
@@ -163,26 +185,32 @@ def _representatives(plans: Sequence[PlanView], choices: dict[str, StoreyChoice]
 
 
 def _floor_values(level: FloorLevel, db_mm: int | None, storey_conf: float) -> _Values:
-    """Phần cốt của `_Values` cho một tầng: cốt hợp lệ + độ tin gấp độ tin tầng; không thì để trống."""
+    """Phần cốt của `_Values` cho một tầng: cốt hợp lệ + độ tin gấp độ tin tầng; không thì để trống.
+
+    Cốt nhập nhằng không quá 0,65 (soát A-F15). Cốt quy ước/mặc định chưa đạt dải "một nguồn" thì hỏi
+    `LEVEL_MISSING` dù vẫn đề xuất (soát A-F4: giá trị giả định phải được báo).
+    """
     if db_mm is None:
         return _Values()
-    return _Values(db_mm, min(level.confidence, storey_conf), level.source, questions=())
+    confidence = min(level.confidence, storey_conf, _OWN_CAP if level.ambiguous else 1.0)
+    assumed = level.source in _ASSUMED_SOURCES and unsure(confidence)
+    return _Values(db_mm, confidence, level.source, questions=(LEVEL_MISSING,) if assumed else ())
 
 
 def _with_height(base: _Values, height: StoreyHeight, db_mm: int | None, conf: dict[int, float]) -> _Values:
     """Thêm chiều cao vào `base`; độ tin gấp thêm độ tin tầng của hai tầng nó nối.
 
-    Mặc định, quy ước (một đầu cốt là 0.000 của trệt do giả định), giả định, bắc qua tầng thiếu mặt bằng hoặc
-    ngoài khoảng sản phẩm thì hỏi `HEIGHT_ASSUMED`. Cốt theo quy ước vẫn được đề xuất với độ tin thấp (0,6);
-    từ vựng hiện chưa có mã riêng "cốt này là giả định" nên không nâng `LEVEL_MISSING` cho nó.
+    Mặc định, quy ước (một đầu cốt là 0.000 của trệt do giả định), giả định, bắc qua tầng thiếu mặt bằng,
+    mỗi tầng ngoài 2,4-4,6 m ("implausible", vẫn đề xuất ở <= 0,65) hoặc ngoài khoảng sản phẩm thì hỏi
+    `HEIGHT_ASSUMED`.
     """
     ends = [conf[height.from_number]] + ([conf[height.to_number]] if height.to_number is not None else [])
-    flagged = bool({"assumed", "spans_missing_storey"} & set(height.flags))
-    assumed = db_mm is None or height.source in {"default", "convention"} or flagged
+    confidence = min(height.confidence, *ends, _OWN_CAP if "implausible" in height.flags else 1.0)
+    flagged = bool(_HEIGHT_FLAGS & set(height.flags))
+    assumed = db_mm is None or height.source in _ASSUMED_SOURCES or flagged
     questions = (*base.questions, HEIGHT_ASSUMED) if assumed else base.questions
     if db_mm is None:
         return replace(base, questions=questions)
-    confidence = min(height.confidence, *ends)
     return replace(
         base, height_mm=db_mm, height_confidence=confidence, height_source=height.source, questions=questions
     )
@@ -193,8 +221,22 @@ def _ok(db: DbValue) -> int | None:
     return db.value_mm if db.acceptable else None
 
 
+def _own_values(plan: PlanView, storey_conf: float, rep: _Values | None) -> _Values:
+    """Cốt của hình không phải đại diện: chép của đại diện cùng số tầng (`rep`) khi không có cốt chính
+    riêng hoặc cốt riêng cách cốt đại diện không quá 0,25 m; ngược lại cốt riêng ở <= 0,65 (gấp độ tin
+    tầng), không chiều cao, đánh dấu bất đồng khi đại diện có cốt khác (soát A-F9, A-F11)."""
+    own = main_floor_level(plan.levels)
+    if own is None:
+        return rep if rep is not None else _Values()
+    own_mm = round(own.value_m * 1000)  # `levels` đã giới hạn cốt trong [-10, 60] m: luôn trong khoảng sản phẩm
+    rep_mm = rep.elevation_mm if rep is not None else None
+    if rep is not None and rep_mm is not None and abs(own_mm - rep_mm) <= _COPY_TOL_MM:
+        return rep
+    return _Values(own_mm, min(_OWN_CAP, storey_conf), "plan", questions=(), level_conflict=rep_mm is not None)
+
+
 def _values_by_view(plans: Sequence[PlanView], choices: dict[str, StoreyChoice]) -> dict[str, _Values]:
-    """Cốt và chiều cao đề xuất cho từng mặt bằng: giải trên đại diện, hình cùng số tầng chép của đại diện."""
+    """Cốt và chiều cao đề xuất cho từng mặt bằng: giải trên đại diện, các hình còn lại qua `_own_values`."""
     reps = _representatives(plans, choices)
     floors, heights = solve_heights([StoreyPlan(choices[p.view_id].number, p.levels) for p in reps])
     elevations, height_db = to_db_ranges(floors, heights)
@@ -206,38 +248,41 @@ def _values_by_view(plans: Sequence[PlanView], choices: dict[str, StoreyChoice])
         number = choices[plan.view_id].number
         values = _floor_values(level, _ok(db), choices[plan.view_id].confidence)
         out[plan.view_id] = _with_height(values, *by_height[number], conf) if number is not None else values
-    for plan in plans:  # hình cùng số tầng với đại diện chép cốt và chiều cao của nó
-        number = choices[plan.view_id].number
-        if plan.view_id not in out and number is not None:
-            out[plan.view_id] = out[numbered[number].view_id]
+    for plan in plans:
+        choice = choices[plan.view_id]
+        if plan.view_id not in out:
+            rep = out[numbered[choice.number].view_id] if choice.number is not None else None
+            out[plan.view_id] = _own_values(plan, choice.confidence, rep)
     return out
 
 
-def _storey_questions(choice: StoreyChoice, title_conflict: bool = False) -> tuple[str, ...]:
-    """Câu hỏi về tầng: bất đồng (của `solve_storeys` hoặc hai nguồn tên) có ưu tiên; ngược lại độ tin dưới 0,7."""
-    if choice.conflict or title_conflict:
+def _storey_questions(choice: StoreyChoice, conflict: bool = False) -> tuple[str, ...]:
+    """Câu hỏi về tầng: bất đồng (của `solve_storeys`, hai nguồn tên hay cốt lệch đại diện) có ưu tiên;
+    ngược lại độ tin chưa đạt dải "một nguồn" (đúng 0,70 trở xuống)."""
+    if choice.conflict or conflict:
         return (STOREY_CONFLICT,)
-    return (STOREY_UNSURE,) if choice.confidence < _SURE else ()
+    return (STOREY_UNSURE,) if unsure(choice.confidence) else ()
 
 
 def _plan_floor(read: _Read, choice: StoreyChoice, values: _Values) -> FloorProposal:
     """Đề xuất của một mặt bằng: tầng từ `solve_storeys`, cốt/chiều cao từ `values`."""
     guess = read.guess
     kind_conf = guess.confidence if guess is not None and guess.kind == "plan" else _KNOWN_PLAN_CONF
+    storey_conf = min(choice.confidence, _CONFLICT_CAP) if values.level_conflict else choice.confidence
     return FloorProposal(
         read.view.floor_id,
         "plan",
         kind_conf,
         choice.label,
         choice.number,
-        choice.confidence,
+        storey_conf,
         values.elevation_mm,
         values.elevation_confidence,
         values.elevation_source,
         values.height_mm,
         values.height_confidence,
         values.height_source,
-        (*_storey_questions(choice, read.title_conflict), *values.questions),
+        (*_storey_questions(choice, read.title_conflict or values.level_conflict), *values.questions),
     )
 
 

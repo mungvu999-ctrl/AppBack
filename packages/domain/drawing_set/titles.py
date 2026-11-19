@@ -13,6 +13,8 @@ Thay đổi có chủ ý so với kernel (kernel gom mọi thứ vào số tần
  * Thêm loại `detail` (chi tiết) và đổi ISOMETRIC/PHỐI CẢNH thành `other`.
 """
 
+import bisect
+import math
 import re
 import statistics
 import unicodedata
@@ -36,7 +38,8 @@ class TitleInfo:
 
     `storey` là số như viết ("TẦNG 2" -> 2, "LẦU 1" -> 1, "2ND FLOOR" -> 2) hoặc một từ
     (`StoreyWord`), None khi không có; `numbering` cho biết số đó đếm theo kiểu nào (None với từ).
-    `norm` là tên đã gấp chữ.
+    `norm` là tên đã gấp chữ. `storey_rejected`: tên CÓ viết số tầng nhưng số đó bị loại (tầng suy ra
+    ngoài 1..MAX_FLOOR) -> `storey=None`; khác với "không viết số" ở chỗ nó vẫn là một lời khai về tầng.
     """
 
     kind: Kind
@@ -44,6 +47,7 @@ class TitleInfo:
     numbering: Numbering | None
     variant: Variant
     norm: str
+    storey_rejected: bool = False
 
 
 @dataclass(frozen=True)
@@ -135,7 +139,7 @@ _NUMBERED: tuple[tuple[re.Pattern[str], Numbering], ...] = (
     (re.compile(r"\bTANG\s*0?(\d+)"), "tang"),
     (re.compile(r"\b(\d+)\s*(?:ST|ND|RD|TH)\s+FLOOR"), "floor_ordinal"),
 )
-MAX_FLOOR = 80  # số tầng đọc được từ tên: 1..80; ngoài khoảng là lỗi OCR, tên không có tầng
+MAX_FLOOR = 80  # tầng suy ra (lầu N = N+1, "Nth floor" = N+1) phải trong 1..80; ngoài khoảng là lỗi OCR
 _ORDINALS = {"FIRST": 1, "SECOND": 2, "THIRD": 3, "FOURTH": 4, "FIFTH": 5, "SIXTH": 6}
 _ORDINAL_WORD = re.compile(r"\b(" + "|".join(_ORDINALS) + r")\s+FLOOR")
 # Thứ tự = thứ tự kernel: nền móng trước, nội thất cuối.
@@ -194,16 +198,26 @@ def _storey_number(n: str) -> tuple[int, Numbering] | None:
     return (_ORDINALS[match.group(1)], "floor_ordinal") if match else None
 
 
-def _storey_of(n: str) -> tuple[int | StoreyWord | None, Numbering | None]:
-    """Nhãn tầng của một mặt bằng: hầm/tum/sân thượng/lửng thắng số, số thắng "trệt"."""
+def _plausible(number: int, numbering: Numbering) -> bool:
+    """Số viết >= 1 và tầng suy ra (cộng một với lầu/"Nth floor", như `_storey_key`) <= MAX_FLOOR.
+
+    Giới hạn đặt lên tầng SUY RA để mọi cách viết cùng một trần: TẦNG 80 và LẦU 79 nhận, TẦNG 81 và LẦU 80 loại.
+    """
+    return number >= 1 and number + (numbering != "tang") <= MAX_FLOOR
+
+
+def _storey_of(n: str) -> tuple[int | StoreyWord | None, Numbering | None, bool]:
+    """Nhãn tầng của một mặt bằng: hầm/tum/sân thượng/lửng thắng số, số thắng "trệt".
+
+    Phần tử thứ ba: có viết số tầng nhưng số bị loại (0, 81, 999999999999 do OCR) -> không tầng, đánh dấu loại.
+    """
     word = _storey_word(n)
     if word:
-        return word, None
+        return word, None, False
     number = _storey_number(n)
     if number:
-        # Số tầng lạ (0, 999999999999 do OCR) không neo được gì: giữ loại hình, bỏ tầng.
-        return number if 1 <= number[0] <= MAX_FLOOR else (None, None)
-    return ("ground", None) if _GROUND.search(n) else (None, None)
+        return (*number, False) if _plausible(*number) else (None, None, True)
+    return ("ground", None, False) if _GROUND.search(n) else (None, None, False)
 
 
 def parse_title(text: str) -> TitleInfo | None:
@@ -217,8 +231,8 @@ def parse_title(text: str) -> TitleInfo | None:
     if kind is None:
         return None
     if kind == "plan":
-        storey, numbering = _storey_of(n)
-        return TitleInfo(kind, storey, numbering, _variant_of(n), n)
+        storey, numbering, rejected = _storey_of(n)
+        return TitleInfo(kind, storey, numbering, _variant_of(n), n, rejected)
     return TitleInfo(kind, None, None, "other" if kind in ("detail", "other") else "plain", n)
 
 
@@ -227,6 +241,8 @@ TALL = 1.6  # dòng tên cao >= TALL lần trung vị chiều cao chữ
 SAME_Y = 0.6  # sai số đường cơ sở, tính theo chiều cao dòng
 GAP_X = 2.0  # khoảng hở ngang tối đa khi nối chữ, tính theo chiều cao dòng
 MAX_LEN = 60  # tên hình dài tối đa (ký tự)
+MAX_TEXTS = 400  # số dòng OCR xét tối đa mỗi hình (chặn chi phí bậc hai của nối dòng/ghi chú)
+MAX_TEXT_LEN = 200  # một dòng OCR dài hơn bị cắt: tên hình <= MAX_LEN, phần đuôi chỉ tốn regex
 _SCALE = re.compile(r"\bTL\b|\bT\.?L\s*:|TI LE|\bSCALE|\b1\s*[/:]\s*\d{2,3}\b")
 _LABEL = re.compile(r"TEN BAN VE|DRAW\w{0,4} ?NAM\w*|DRAW\w{0,4} ?TITL\w*|NOI DUNG|HANG MUC")
 _BLOCK_LABEL = re.compile(
@@ -304,12 +320,23 @@ def _snap_word(word: str, prev: str, nxt: str) -> str:
     return _snap_mezzanine(word, prev, nxt)
 
 
+# Âm tiết tiếng Việt thật (đã gấp) cách LUNG một chữ: không bao giờ là LỬNG hỏng (LƯỢNG giao thông, LONG, LÀNG ...).
+_NEAR_LUNG_WORDS = frozenset(("LUONG", "LUON", "LONG", "LANG", "LUNA", "BUNG", "CUNG", "DUNG", "HUNG", "MUNG"))
+_NEAR_LUNG_WORDS |= {"NUNG", "RUNG", "SUNG", "TUNG", "VUNG"}
+
+
+def _storey_slot(nxt: str) -> bool:
+    """Từ kế cho thấy chữ đang ở chỗ nhãn tầng: hết tên, một số, hoặc TẦNG/LẦU (kể cả hỏng một chữ)."""
+    return not nxt or nxt[:1].isdigit() or nxt == "LAU" or _near_by_one_edit(nxt, "TANG")
+
+
 def _snap_mezzanine(word: str, prev: str, nxt: str) -> str:
-    """LUNG (lửng) hỏng OCR (LURNG, LUNGG, XLUNG, LUN) -> LUNG, chỉ khi đứng ngay sau BANG/TANG
-    (MAT BANG LURNG, TANG LURNG): chữ lạ cách LUNG một ký tự ở chỗ khác (KHOI LUONG = khối lượng)
-    giữ nguyên. Chạy sau các từ khoá khác (TUNG -> TANG); `nxt` không dùng (cùng chữ ký với `_snap_word`)."""
-    del nxt
-    return "LUNG" if prev in ("BANG", "TANG") and _near_by_one_edit(word, "LUNG") else word
+    """LUNG (lửng) hỏng OCR (LURNG, LUNGG, XLUNG, LUN) -> LUNG, chỉ khi đứng ngay sau BANG/TANG, ở chỗ nhãn
+    tầng (cuối tên, trước số hay TẦNG/LẦU) và không phải một từ thật (`_NEAR_LUNG_WORDS`): "MAT BANG LUONG
+    GIAO THONG" (luồng giao thông) hay "KHOI LUONG" giữ nguyên. Chạy sau các từ khoá khác (TUNG -> TANG)."""
+    if word in _NEAR_LUNG_WORDS or prev not in ("BANG", "TANG") or not _storey_slot(nxt):
+        return word
+    return "LUNG" if _near_by_one_edit(word, "LUNG") else word
 
 
 _GLUED = re.compile(r"\b([A-Z]{3,5}?)(TANG|LAU|\d{1,2})\b")
@@ -363,15 +390,40 @@ def _fix_vowel_drops(text: str) -> str:
     return text
 
 
+def _usable(item: object) -> tuple[str, Box] | None:
+    """(chữ đã cắt MAX_TEXT_LEN, hộp) của một dòng OCR; None khi chữ không phải chuỗi khác rỗng, hộp không
+    phải bốn số hữu hạn, rộng/cao <= 0, hoặc là chữ xoay (cao hơn 1,5 lần rộng). Không bao giờ ném lỗi."""
+    text, raw = getattr(item, "text", None), getattr(item, "box", None)
+    if not isinstance(text, str) or not text.strip():
+        return None
+    try:
+        x0, y0, x1, y1 = (float(v) for v in raw)  # type: ignore[union-attr]
+    except (TypeError, ValueError):
+        return None
+    if not all(math.isfinite(v) for v in (x0, y0, x1, y1)) or x1 <= x0 or not 0 < y1 - y0 <= 1.5 * (x1 - x0):
+        return None
+    return text.strip()[:MAX_TEXT_LEN], (x0, y0, x1, y1)
+
+
+def _capped(rows: list[tuple[str, Box]]) -> list[tuple[str, Box]]:
+    """Quá MAX_TEXTS dòng: giữ nửa cao nhất (tên hình là chữ to) và nửa nằm thấp nhất trang (tên dưới hình,
+    khung tên ở đáy trang); hai nửa trùng nhau thì ít hơn MAX_TEXTS. Thứ tự gốc giữ nguyên."""
+    if len(rows) <= MAX_TEXTS:
+        return rows
+    half = MAX_TEXTS // 2
+    order = range(len(rows))
+    tall = sorted(order, key=lambda i: rows[i][1][1] - rows[i][1][3])[:half]
+    low = sorted(order, key=lambda i: -rows[i][1][3])[:half]
+    return [rows[i] for i in sorted({*tall, *low})]
+
+
 def _lines(texts: Sequence[OcrText]) -> list[_Line]:
-    """Chỉ giữ dòng nằm ngang (hộp cao hơn 1,5 lần rộng là chữ xoay, không phải tên), sắp từ trên xuống."""
-    out: list[_Line] = []
-    for item in texts:
-        x0, y0, x1, y1 = item.box
-        text = item.text.strip()
-        if text and y1 - y0 <= 1.5 * (x1 - x0):
-            fixed = _better(_fix_vowel_drops(text))
-            out.append(_Line(fixed, (x0, y0, x1, y1), fold(fixed)))
+    """Dòng OCR dùng được (`_usable`, tối đa MAX_TEXTS theo `_capped`), đã sửa lỗi OCR, sắp từ trên xuống."""
+    rows = _capped([row for row in map(_usable, texts) if row is not None])
+    out = []
+    for text, box in rows:
+        fixed = _better(_fix_vowel_drops(text))
+        out.append(_Line(fixed, box, fold(fixed)))
     return sorted(out, key=lambda ln: (ln.box[1], ln.box[0]))
 
 
@@ -383,16 +435,19 @@ def _merge(a: _Line, b: _Line) -> _Line:
 
 
 def _short_merges(items: list[_Line]) -> list[_Line]:
-    """Các dòng cùng các bản nối tối đa 3 dòng cùng đường cơ sở, cao gần nhau (30 %), hở <= GAP_X dòng."""
+    """Các dòng cùng các bản nối tối đa 3 dòng cùng đường cơ sở, cao gần nhau (30 %), hở <= GAP_X dòng.
+
+    Chỉ xét dòng có đáy trong cửa sổ dọc +-SAME_Y dòng (tìm nhị phân trên danh sách sắp theo đáy).
+    """
     out = list(items)
+    by_bottom = sorted(range(len(items)), key=lambda k: items[k].box[3])
+    bottoms = [items[k].box[3] for k in by_bottom]
     for i, first in enumerate(items):
         cur = first
+        lo = bisect.bisect_left(bottoms, first.box[3] - SAME_Y * first.h)
+        hi = bisect.bisect_right(bottoms, first.box[3] + SAME_Y * first.h)
         right = sorted(
-            (
-                x
-                for x in items[i + 1 :]
-                if abs(x.box[3] - first.box[3]) <= SAME_Y * first.h and x.box[0] >= first.box[2] - first.h
-            ),
+            (items[k] for k in by_bottom[lo:hi] if k > i and items[k].box[0] >= first.box[2] - first.h),
             key=lambda x: x.box[0],
         )
         for nxt in right[:2]:
@@ -480,12 +535,41 @@ def _add_storey(best: _Line, items: list[_Line]) -> _Line:
     return replace(best, text=best.text + " " + min(near, key=lambda o: (o.box[1], o.box[0])).text)
 
 
+def _mid(o: _Line) -> float:
+    """Tung độ tâm hộp."""
+    return (o.box[1] + o.box[3]) / 2
+
+
+def _stack_window(c: _Line, by_mid: list[_Line], mids: list[float]) -> list[_Line]:
+    """Dòng có tâm cách tâm `c` trong (0, 2,2 dòng]: đúng tập `_is_note` có thể đếm (dòng cùng tâm bị bỏ,
+    nên một hàng dài chữ cùng đường cơ sở không làm việc thành bậc hai)."""
+    cy, reach = _mid(c), 2.2 * c.h
+    lo, eq_lo = bisect.bisect_left(mids, cy - reach), bisect.bisect_left(mids, cy)
+    eq_hi, hi = bisect.bisect_right(mids, cy), bisect.bisect_right(mids, cy + reach)
+    return [*by_mid[lo:eq_lo], *by_mid[eq_hi:hi]]
+
+
+def _page(size: tuple[float, float], items: list[_Line]) -> tuple[float, float]:
+    """Cỡ trang dùng làm mẫu số: `size` khi hai số hữu hạn > 0; không thì góc dưới phải của hộp bao các
+    dòng; vẫn <= 0 thì 1."""
+    out = []
+    for axis, value in enumerate(size):
+        if not (math.isfinite(value) and value > 0):
+            value = max((ln.box[axis + 2] for ln in items), default=1.0)
+        out.append(value if value > 0 else 1.0)
+    return out[0], out[1]
+
+
 def _best_candidate(cands: list[_Line], items: list[_Line], size: tuple[float, float]) -> _Line:
     """Tên dưới hình: ứng viên nhận ra được điểm cao nhất; không có thì dòng ngắn cao nhất."""
-    med = statistics.median(i.h for i in items)
-    good = [c for c in cands if _good(c, items)]
+    med = max(statistics.median(i.h for i in items), 1e-9)  # `_usable` đã bỏ hộp cao 0; chặn thêm cho chắc
+    size = _page(size, items)
+    by_mid = sorted(items, key=_mid)
+    mids = [_mid(o) for o in by_mid]
+    good = [c for c in cands if _good(c, _stack_window(c, by_mid, mids))]
     if good:
-        return max(good, key=lambda c: _rank(c, items, med, size))
+        scales = [o for o in items if _SCALE.search(o.n)]  # `_scale_near` chỉ nhìn các dòng tỉ lệ
+        return max(good, key=lambda c: _rank(c, scales, med, size))
     tall = [c for c in cands if len(c.text) <= MAX_LEN and c.h >= TALL * med]
     return max(tall or cands, key=lambda c: c.h)
 
@@ -551,11 +635,28 @@ def _block_title(items: list[_Line], cands: list[_Line]) -> str:
     return best[1] if best else ""
 
 
-def _storey_key(info: TitleInfo) -> int | str | None:
-    """Khoá so tầng khi hai nguồn tên cùng nói về một hình: lầu N và "Nth floor" đứng sau tầng trệt một bậc.
+_BASEMENT_DEPTH = re.compile(r"(?:\bHAM|BASEMENT)\s*B?\s*(\d+)")
+StoreyKey = int | str | tuple[str, int] | None
+
+
+def _basement_depth(n: str) -> int:
+    """Độ sâu hầm như viết (HẦM B2, HẦM 2 -> 2); không ghi số = hầm 1; số dài vô lý -> 0."""
+    match = _BASEMENT_DEPTH.search(n)
+    digits = match.group(1) if match else "1"
+    return int(digits) if len(digits) <= 3 else 0
+
+
+def _storey_key(info: TitleInfo) -> StoreyKey:
+    """Khoá so tầng khi hai nguồn tên cùng nói về một hình: lầu N và "Nth floor" đứng sau tầng trệt một bậc;
+    hầm kèm độ sâu; số bị loại vẫn là một khoá (("rejected", số viết)), chỉ "không viết gì" mới là None.
 
     Chỉ dùng để xét hai tên có khớp nhau không; quy ước tầng chính thức là việc của T3.
     """
+    if info.storey_rejected:
+        number = _storey_number(info.norm)
+        return "rejected", number[0] if number else 0
+    if info.storey == "basement":
+        return "basement", _basement_depth(info.norm)
     if isinstance(info.storey, int) and info.numbering in ("lau", "floor_ordinal"):
         return info.storey + 1
     return info.storey
@@ -572,7 +673,7 @@ _CONF_DISAGREE = 0.6
 def _agreement(a: str, b: str) -> float | None:
     """Độ tin khi hai tên khớp: cùng loại hình và cùng tầng 0,9; cùng loại, một bên thiếu tầng (OCR rớt số,
     "... Tang" so với "... Tang 1") 0,8 vì thiếu là "chưa biết" chứ không phải "khác". None khi lệch: khác
-    loại hình hoặc hai tầng có mặt mà khác nhau."""
+    loại hình hoặc hai khoá tầng có mặt mà khác nhau (số bị loại, độ sâu hầm cũng là khoá có mặt)."""
     pa, pb = parse_title(a), parse_title(b)
     if not (pa and pb and pa.kind == pb.kind):
         return None

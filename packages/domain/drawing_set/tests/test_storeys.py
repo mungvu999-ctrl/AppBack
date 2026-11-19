@@ -27,6 +27,7 @@ from packages.domain.drawing_set.storeys import (
     normalise_convention,
     solve_storeys,
     storey_confidence,
+    storeys_apart,
 )
 from packages.domain.drawing_set.titles import parse_title, pick_title
 
@@ -56,7 +57,7 @@ def test_kernel_scoring_rules() -> None:
     assert storey_confidence({"title": 0.95, "level": 0.7}, True, True) < 0.7
     assert storey_confidence({}, True) == 0.0
     assert storey_confidence({}, True, True) == 0.0
-    assert storey_confidence({"words": 0.5}, True) == 0.72
+    assert storey_confidence({"words": 0.8}, True) == 0.55  # phiếu chữ không tự mạnh (soát mã F2)
     assert _unary({"title": 0.9, "level": 0.7}) > _unary({"title": 0.9}) > _unary({"order": 0.3})
     got = _disagreeing({2: {"title": 0.9}, 3: {"words": 0.8, "order": 0.3}}, 2)
     assert [(c.source, c.family, c.number) for c in got] == [("words", "text", 3)]
@@ -111,7 +112,7 @@ def test_kernel_storey_cues_selfcheck() -> None:
     views = [plan(f"v{i:02d}", "MAT BANG TANG") for i in range(3)]
     assert _cue_rank(views, {}) == {"v00": [(1, 0.6)], "v01": [(2, 0.6)], "v02": [(3, 0.6)]}
     words = dict(_cue_words(plan("v00", "MAT BANG LAU 1", texts=("MAT BANG LAU 1", "CAU TAO SAN TANG TRET"))))
-    assert words[2] > words[1]
+    assert words == {2: 0.8}  # ghi chú cấu tạo "SAN TANG" không phải tên hình: không bỏ phiếu (soát mã F2)
 
 
 def test_dominant_ties() -> None:
@@ -177,19 +178,20 @@ def test_weak_only_below_07() -> None:
 
 def test_level_order_conflict_landing_shift() -> None:
     # DS-254: bậc cốt của lửng (3,0) làm chuỗi cốt lệch một bậc: LẦU 1 ở 5,7 là bậc 3 -> bất đồng, 0,65.
+    # 5,7 m cho một tầng trệt -> lầu 1 cũng hỏng phép thử khoảng cách: "level_gap", trệt không còn >= 0,9.
     got = solve(
         plan("v00", "MAT BANG TRET", 0.0, 0.0),
         plan("v01", "MAT BANG LUNG", 3.0),
         plan("v02", "MAT BANG LAU 1", 5.7),
         plan("v03", "MAT BANG LAU 2", 9.3),
     )
-    assert got[0].number == 1
-    assert got[0].confidence >= 0.9
+    assert (got[0].number, got[0].confidence) == (1, 0.85)
     assert got[1].label == "mezzanine"
     assert got[1].number is None
-    for c, wrong in zip(got[2:], (3, 4), strict=True):
+    wrong = ([("level_order", 3), ("level_gap", 3)], [("level_order", 4)])
+    for c, conflicts in zip(got[2:], wrong, strict=True):
         assert c.confidence == 0.65
-        assert [(x.source, x.number) for x in c.conflict] == [("level_order", wrong)]
+        assert [(x.source, x.number) for x in c.conflict] == conflicts
 
 
 def test_roof_terrace_and_attic_on_top() -> None:
@@ -279,6 +281,73 @@ def test_hostile_input_is_bounded() -> None:
     assert all(c.number is None and c.confidence == 0.0 for c in solve_storeys(over).values())
 
 
+# ---------------------------------------------------------------- sửa sau soát mã rvA (F1-F3)
+def test_tret_and_tang1_in_one_title_is_ground() -> None:
+    # F1: "TẦNG 1 (TRỆT)" là tầng trệt; không bật quy ước trệt + tầng 1 cho cả bộ.
+    views = [plan("v00", "MAT BANG TANG 1 (TRET)"), plan("v01", "MAT BANG TANG 2"), plan("v02", "MAT BANG TANG 3")]
+    assert normalise_convention(views)[0] == "unchanged"
+    assert [(c.number, c.confidence) for c in solve(*views)] == [(1, 0.85), (2, 0.85), (3, 0.85)]
+
+
+def test_unchecked_convention_asks() -> None:
+    # F1: quy ước khác mặc định mà không có cốt để kiểm -> tầng phụ thuộc nó dưới 0,7; tầng trệt không đổi.
+    got = solve(plan("v00", "MAT BANG TRET"), plan("v01", "MAT BANG TANG 1"), plan("v02", "MAT BANG TANG 2"))
+    assert [c.number for c in got] == [1, 2, 3]
+    assert got[0].confidence == 0.85
+    assert all(c.confidence < 0.7 for c in got[1:])
+    got = solve(plan("v00", "FIRST FLOOR PLAN"), plan("v01", "SECOND FLOOR PLAN"))
+    assert all(c.confidence < 0.7 for c in got)
+
+
+def test_project_and_stair_lines_do_not_vote() -> None:
+    # F2a: dòng mô tả công trình không phải tên hình -> không ai thành tầng 1 tự tin.
+    note = ("CONG TRINH: NHA PHO 1 TRET 2 LAU",)
+    views = [PlanView(f"v0{i}", None, (3.6 * i,), i, note) for i in range(3)]
+    assert all(c.confidence < 0.7 and c.conflict for c in solve(*views))
+    # F2b: ghi chú thang "LÊN TẦNG 3", kể cả khi bị chọn làm tên, không đặt hình ở tầng 3.
+    for title in (None, parse_title("LEN TANG 3")):
+        mid = PlanView("v01", title, (), 1, ("LEN TANG 3",))
+        got = solve(plan("v00", "MAT BANG TANG 1"), mid, plan("v02", "MAT BANG TANG 3"))
+        assert (got[1].number, got[1].confidence < 0.7, got[2].conflict) == (2, True, ())
+
+
+def test_duplicate_plain_storeys() -> None:
+    # F2: hai bản thường cùng tầng, cốt như nhau -> cả hai bất đồng 0,65.
+    got = solve(
+        plan("v00", "MAT BANG TANG 1", 0.0), plan("v01", "MAT BANG TANG 2", 3.6), plan("v02", "MAT BANG TANG 2", 3.6)
+    )
+    assert [(c.number, c.confidence) for c in got[1:]] == [(2, 0.65), (2, 0.65)]
+    assert all([(x.source, x.number) for x in c.conflict] == [("duplicate_storey", 2)] for c in got[1:])
+    # Cốt lệch > 0,5 m: bản khớp hàng xóm giữ số, bản kia không số và bất đồng.
+    got = solve(
+        plan("v00", "MAT BANG TANG 1", 0.0), plan("v01", "MAT BANG TANG 2", 3.6), plan("v02", "MAT BANG TANG 2", 9.0)
+    )
+    assert (got[1].number, got[1].conflict) == (2, ())
+    assert (got[2].label, got[2].number, got[2].confidence) == (None, None, 0.65)
+    # Biến thể nội thất của cùng tầng không phải trùng.
+    got = solve(
+        plan("v00", "MAT BANG TANG 1", 0.0),
+        plan("v01", "MAT BANG TANG 2", 3.6),
+        plan("v02", "MAT BANG NOI THAT TANG 2", 3.6),
+    )
+    assert all(c.confidence >= 0.9 and c.conflict == () for c in got)
+
+
+def test_level_gap_is_independent_evidence() -> None:
+    # F3: "TẦNG 2" (đọc sai, thật là tầng 3) ở 7,2 m trên TẦNG 1 ở 0: cốt nói hai tầng -> bất đồng.
+    got = solve(plan("v00", "MAT BANG TANG 1", 0.0, 0.0), plan("v01", "MAT BANG TANG 2", 7.2, 7.2), order_known=False)
+    assert (got[0].number, got[0].confidence) == (1, 0.85)
+    assert (got[1].number, got[1].confidence) == (2, 0.65)
+    assert [(x.source, x.number) for x in got[1].conflict] == [("level_order", 3), ("level_gap", 3)]
+    assert (storeys_apart(3.3), storeys_apart(7.2), storeys_apart(8.0), storeys_apart(1.8)) == (1, 2, None, None)
+    # Cốt trội là chiếu nghỉ (1,8) nhưng hình có cốt sàn 3,6: phép thử khoảng cách vẫn qua (không "level_gap");
+    # cốt trội 1,8 không nói tầng nào (thứ tự cốt đọc nó là lửng) nên tầng 2 chỉ có tên, dưới 0,9.
+    got = solve(plan("v00", "MAT BANG TANG 1", 0.0), plan("v01", "MAT BANG TANG 2", 3.6, 1.8, 1.8))
+    assert [(c.confidence, c.conflict) for c in got] == [(0.95, ()), (0.84, ())]
+    # Một tầng có cốt +-0.000 mà không hàng xóm nào có cốt: mốc tuyệt đối vẫn tính.
+    assert solve(plan("v00", "MAT BANG TANG 1", 0.0), plan("v01", "MAT BANG TANG 2"))[0].confidence >= 0.9
+
+
 def test_candidate_ranges_are_bounded() -> None:
     assert _cue_level("x", {"x": 5.0, "a": 0.0, "b": 900.0}, {"a": 1, "b": 80}) == []
     assert _cue_order("c", ["a", "c", "d"], {"a": 1, "d": 80}) == []
@@ -319,11 +388,16 @@ _ACCEPTED_BAND = {
 }
 
 
-def _own_words_conflict(exp: dict[str, Any]) -> bool:
-    """Bất đồng giả của kernel (soát mã, lỗi 1): chỉ phiếu chữ, đọc tên của chính hình theo quy ước mặc định
-    thay vì quy ước của bộ ("TANG 1" của bộ trệt + tầng 1, "FIRST FLOOR" của bộ kiểu Mỹ). Bản này áp quy ước
-    bộ cho phiếu chữ nên các hình đó không còn bất đồng và lên dải trên (cùng số tầng)."""
-    return bool(exp.get("conflict")) and all(x["source"] == "words" for x in exp["conflict"])
+# Hình mà bản này cố ý khác kernel: (độ tin đúng, nguồn bất đồng). Ghim bằng ĐẲNG THỨC (soát mã F14) để
+# lùi về một câu trả lời tự tin sai không lọt qua.
+#  * english_basement: kernel ghi bất đồng giả "words" (đọc tên của chính hình theo quy ước mặc định thay vì
+#    kiểu Mỹ). Ở đây số 1/2/3 đúng, đã kiểm bằng cốt; chuỗi không neo (hầm thấp nhất) -> 0,85, không bất đồng.
+#  * tret_tang1: bộ có HAI bản thường cho mỗi tầng (f01-f06 và f10-f15 cùng tên, cùng cốt): không biết bản
+#    nào là mặt bằng của tầng -> bất đồng "duplicate_storey" 0,65 cho cả hai (soát mã F2); số tầng vẫn đúng.
+_PINNED: dict[str, tuple[float, tuple[str, ...]]] = {
+    **{f"DS-836__f0{i}_plan": (0.85, ()) for i in (1, 2, 3)},
+    **{f"DS-266__f{i:02d}_plan": (0.65, ("duplicate_storey",)) for i in (*range(1, 7), *range(10, 16))},
+}
 
 
 @pytest.mark.parametrize("name", sorted(p.name for p in DATA.glob("*.json")))
@@ -333,8 +407,8 @@ def test_golden_parity(name: str) -> None:
     for exp in golden["expected_known"]["views"]:
         c = got[exp["id"]]
         assert c.number == exp.get("floor_no"), exp["id"]
-        if _own_words_conflict(exp):
-            assert (c.conflict, c.confidence >= 0.85) == ((), True), exp["id"]
+        if exp["id"] in _PINNED:
+            assert (c.confidence, tuple(x.source for x in c.conflict)) == _PINNED[exp["id"]], exp["id"]
             continue
         if exp["id"] not in _ACCEPTED_BAND:
             assert _band(c.confidence) == _band(exp.get("floor_confidence") or 0.0), exp["id"]

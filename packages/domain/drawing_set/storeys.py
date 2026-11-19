@@ -21,11 +21,11 @@ xếp lại theo khớp cao độ (`level_fit`), đánh số kiểu schema (`ren
 import re
 from collections import Counter, defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
-from itertools import count
+from dataclasses import dataclass, replace
+from itertools import count, pairwise
 from typing import Literal
 
-from packages.domain.drawing_set.titles import TitleInfo, fold
+from packages.domain.drawing_set.titles import TitleInfo, fold, parse_title
 
 Family = Literal["text", "level", "order"]
 StoreyLabel = Literal["ground", "basement", "mezzanine", "attic", "roof_terrace", "floor"]
@@ -60,6 +60,21 @@ _KIND_CONF = 0.92  # độ tin loại hình của mặt bằng đã biết (ch�
 _MERGE_DOM, _MERGE_STOREY, _NEAR0, _MEZZ_GAP = 0.03, 0.25, 0.6, 2.2
 _PLANISH = re.compile(r"MAT ?BANG|BINH DO|\bPLAN\b|FLOOR")
 _NONSTOREY = re.compile(r"CAU ?TAO|CHI TIET|DETAIL|\bWC\b|\bSAN\b(?! THUONG)")
+# Dòng KHÔNG phải tên hình dù có chữ tầng: mô tả công trình ("NHÀ PHỐ 1 TRỆT 2 LẦU", "3 TẦNG"),
+# ghi chú thang/mặt cắt ("LÊN TẦNG 3", "SÀN TẦNG 2", "CỐT ..."). Chúng không bỏ phiếu tầng (soát mã F2).
+_NOT_TITLE = re.compile(
+    r"CONG TRINH|DU AN|NHA PHO|BIET THU|CHU DAU TU|\d\s*(?:TRET|TANG|LAU)\b(?!\s*\d)"
+    r"|\bLEN\b|\bXUONG\b|\bUP\b|\bDN\b|\bDOWN\b|SAN TANG|\bCOT\b"
+)
+_GROUND_WORD = r"\bTRET\b|\bGRO\w{1,6}\s+FLOOR|\bGROUND\b"
+_FIRST_WORD = r"\b(?:TANG|LAU)\s*0?1\b"
+# Một tầng cao 2,6-4,2 m; tỉ số (chênh cốt / chênh số tầng) của hai mặt bằng kề nhau phải trong 2,4-4,6 m.
+_STOREY_H = (2.6, 4.2)
+_GAP_OK = (2.4, 4.6)
+_DATUM = 0.15  # cốt +-0.000 của tầng 1: mốc tuyệt đối mà tên không mã hoá được
+_DUP_LEVEL = 0.5  # hai mặt bằng thường cùng số tầng, cốt lệch hơn ngần này: giữ cái khớp hàng xóm
+_UNCHECKED_CAP = 0.6  # quy ước bộ khác mặc định mà không có cốt để kiểm: phải hỏi
+_TEXT_ONLY_CAP = 0.85  # trần khi họ cốt không qua phép thử khoảng cách tầng
 _ORD = {"FIRST": 2, "SECOND": 3, "THIRD": 4, "FOURTH": 5, "FIFTH": 6, "SIXTH": 7}
 _ENG = re.compile(r"\b(?:" + "|".join(_ORD) + r")\s+FLOOR|\b\d+\s*(?:ST|ND|RD|TH)\s+FLOOR")
 _RELAXED = (
@@ -184,11 +199,13 @@ def _has(views: Sequence[PlanView], pattern: str) -> bool:
 
 
 def _decide(views: Sequence[PlanView]) -> str:
-    """Quy ước do tên hình nêu: trệt + tầng 1 -> "tret_plus_tang1"; first floor không có ground -> "us_english"."""
-    ground = _has(views, r"\bTRET\b|\bGRO\w{1,6}\s+FLOOR|\bGROUND\b")
-    if ground and _has(views, r"\bTANG\s*0?1\b"):
+    """Quy ước do tên hình nêu: "trệt" và "tầng/lầu 1" trên HAI hình khác nhau -> "tret_plus_tang1" (một tên
+    nêu cả hai, "TẦNG 1 (TRỆT)", là tầng trệt và không bật quy ước: soát mã F1); first floor không có
+    ground -> "us_english"."""
+    marks = [(bool(re.search(_GROUND_WORD, n)), bool(re.search(_FIRST_WORD, n))) for n in map(_norm, views)]
+    if any(g and not f for g, f in marks) and any(f and not g for g, f in marks):
         return "tret_plus_tang1"
-    if _has(views, r"\bFIRST\s+FLOOR") and not ground:
+    if _has(views, r"\bFIRST\s+FLOOR") and not any(g for g, _ in marks):
         return "us_english"
     return "unchanged"
 
@@ -200,9 +217,10 @@ def _storeys(views: Sequence[PlanView], conv: str) -> dict[str, int]:
         t = _written_floor(v)
         if t is None:
             continue
-        if conv == "tret_plus_tang1" and re.search(r"\bTANG\s*0?\d", _norm(v)):
+        n = _norm(v)
+        if conv == "tret_plus_tang1" and re.search(r"\bTANG\s*0?\d", n) and not re.search(_GROUND_WORD, n):
             t += 1
-        elif conv == "us_english" and _ENG.search(_norm(v)):
+        elif conv == "us_english" and _ENG.search(n):
             t -= 1
         out[v.view_id] = t
     return out
@@ -241,6 +259,16 @@ def normalise_convention(views: Sequence[PlanView]) -> tuple[str, bool | None, d
         if alt:
             (conv, st), ok = alt, True
     return conv, ok, st
+
+
+def _unchecked_convention(views: Sequence[PlanView]) -> set[str]:
+    """Mã các mặt bằng mà số tầng chỉ đổi vì quy ước bộ khác mặc định, khi quy ước đó không kiểm được bằng
+    cốt (< 2 mặt bằng có số và cốt). Tầng của chúng phải dưới 0,7 để hạ nguồn hỏi (soát mã F1)."""
+    conv, ok, st = normalise_convention(views)
+    if conv == "unchanged" or ok is not None:
+        return set()
+    base = _storeys(views, "unchanged")
+    return {k for k, f in st.items() if base.get(k) != f}
 
 
 # ---------------------------------------------------------------- thứ tự cốt (level_floors)
@@ -358,13 +386,25 @@ def floor_relaxed(n: str, conv: str = "unchanged") -> int | None:
     return f - 1 if conv == "us_english" and how == "ordinal" else f
 
 
+def _title_like(n: str) -> bool:
+    """Dòng chữ (đã gấp) trông như tên hình: nêu loại bản vẽ (MAT BANG/PLAN, hoặc `parse_title` nhận ra mặt
+    bằng) và không phải mô tả công trình hay ghi chú thang/mặt cắt (`_NOT_TITLE`)."""
+    if not n or _NOT_TITLE.search(n):
+        return False
+    if _PLANISH.search(n):
+        return True
+    info = parse_title(n)
+    return info is not None and info.kind == "plan"
+
+
 def _cue_words(view: PlanView, conv: str = "unchanged") -> Cue:
-    """Từ chỉ tầng ở mọi dòng chữ của hình, đọc theo quy ước `conv` của bộ (nên tên của chính hình không
-    bỏ phiếu chống lại nó); dòng có MAT BANG/PLAN nặng hơn, ghi chú cấu tạo nhẹ hơn."""
+    """Từ chỉ tầng ở các dòng TRÔNG NHƯ TÊN HÌNH (`_title_like`), đọc theo quy ước `conv` của bộ (nên tên của
+    chính hình không bỏ phiếu chống lại nó); dòng có MAT BANG/PLAN nặng hơn, ghi chú cấu tạo nhẹ hơn.
+    Cùng họ chữ với tên: xác nhận hay chống tên, không bao giờ tự thành phiếu mạnh (`_is_strong`)."""
     votes: dict[int, float] = {}
     for text in view.texts or (_norm(view),):
         n = fold(text)
-        f = floor_relaxed(n, conv) if n else None
+        f = floor_relaxed(n, conv) if _title_like(n) else None
         if f is not None:
             w = 1.0 if _PLANISH.search(n) else 0.3 if _NONSTOREY.search(n) else 0.6
             votes[f] = max(votes.get(f, 0.0), w)
@@ -376,6 +416,13 @@ def _cue_level_rank(v: float, dom: dict[str, float | None]) -> Cue:
     """Không có neo: hạng cốt trong các mặt bằng, khi cốt thấp nhất là 0."""
     vals = sorted({round(x, 1) for x in dom.values() if x is not None and x > -0.3})
     return [(vals.index(round(v, 1)) + 1, 0.4)] if round(v, 1) in vals and abs(vals[0]) <= 0.15 else []
+
+
+def storeys_apart(diff_m: float) -> int | None:
+    """Số tầng giữa hai cốt cách nhau `diff_m` (m), mỗi tầng 2,6-4,2 m; None khi không số nào hoặc hơn một số
+    khớp (7,2 m = 2 tầng; 8,0 m mơ hồ 2/3; 1,8 m không phải tầng). Điều này cốt nói được mà tên không."""
+    ks = [k for k in range(1, _SPAN_CAP + 1) if _STOREY_H[0] * k <= diff_m <= _STOREY_H[1] * k]
+    return ks[0] if len(ks) == 1 else None
 
 
 def _span(lo: int, hi: int, n: int) -> range:
@@ -403,7 +450,12 @@ def _cue_level(vid: str, dom: dict[str, float | None], anchors: dict[str, int]) 
         return _cue_level_rank(v, dom)
     below = [f for f, lv in known.items() if lv < v]
     above = [f for f, lv in known.items() if lv > v]
-    lo, hi = (max(below) + 1 if below else 1), (min(above) - 1 if above else max(known) + 1)
+    if not above:
+        # Trên mọi neo: cách neo cao nhất bao nhiêu tầng do chênh cốt nói, không phải "ngay trên". Dưới ngưỡng
+        # mạnh: cốt trội của neo có thể là chiếu nghỉ, nên phiếu này không tự tạo bất đồng (đã có `_gap_check`).
+        k = storeys_apart(v - known[max(below)])
+        return [(max(below) + k, 0.4)] if k else []
+    lo, hi = (max(below) + 1 if below else 1), min(above) - 1
     span = _span(lo, hi, len(dom))
     return [(f, 0.5 / len(span)) for f in span]
 
@@ -476,9 +528,14 @@ def _candidates(
 
 
 # ---------------------------------------------------------------- gộp theo họ (solve_set bước 2-4)
+def _is_strong(source: str, score: float) -> bool:
+    """Phiếu mạnh cho độ tin; phiếu chữ ("words") không bao giờ tự mạnh (soát mã F2), chỉ chống được tên."""
+    return source != "words" and score >= _STRONG.get(source, 9.0)
+
+
 def _strong_fams(src: dict[str, float]) -> set[Family]:
     """Họ có ít nhất một phiếu mạnh."""
-    return {_FAMILY[s] for s, x in src.items() if x >= _STRONG.get(s, 9.0)}
+    return {_FAMILY[s] for s, x in src.items() if _is_strong(s, x)}
 
 
 def _unary(src: dict[str, float]) -> float:
@@ -515,16 +572,24 @@ def _anchored(dom: dict[str, float], ground: set[str]) -> bool:
 def _level_order(dom: dict[str, float], ground: set[str], anchored: bool) -> dict[str, int]:
     """Bậc thang cốt của cả bộ (thay chuỗi cốt `levels_chain` của kernel): {mã: tầng}.
 
-    Cốt trội của MỌI mặt bằng (cả lửng, mái) gom 0,25 m thành bậc; bậc của mặt bằng trệt là tầng 1,
-    bậc trên nó 2, 3 ... Chỉ dùng khi chuỗi được neo. Một bậc thừa (lửng, chiếu nghỉ ghi cốt nhiều như
-    sàn) đẩy các tầng trên lệch một bậc: đó là bất đồng mà kernel ghi ở DS-254.
+    Cốt trội của MỌI mặt bằng (cả lửng, mái) gom 0,25 m thành bậc; bậc của mặt bằng trệt là tầng 1, mỗi
+    bậc trên cộng số tầng mà chênh cốt nói (`storeys_apart`: 7,2 m = hai tầng), dừng ở chênh mơ hồ. Chỉ
+    dùng khi chuỗi được neo. Một bậc thừa (lửng, chiếu nghỉ ghi cốt nhiều như sàn) đẩy các tầng trên lệch
+    một bậc: đó là bất đồng mà kernel ghi ở DS-254.
     """
     if not anchored:
         return {}
     groups = _merge(list(dom.values()), _MERGE_STOREY)
     idx = {d: i for i, g in enumerate(groups) for d in g}
+    mean = [sum(g) / len(g) for g in groups]
     base = min(idx[dom[k]] for k in ground if k in dom)
-    return {k: idx[d] - base + 1 for k, d in dom.items() if idx[d] >= base}
+    nums = {base: 1}
+    for i in range(base + 1, len(groups)):
+        k = storeys_apart(mean[i] - mean[i - 1])
+        if k is None:
+            break
+        nums[i] = nums[i - 1] + k
+    return {k: nums[idx[d]] for k, d in dom.items() if idx[d] in nums}
 
 
 def _family_scores(row: _Row, cands: list[tuple[str, int, float]], anchored: bool, ladder: int | None) -> Votes:
@@ -564,7 +629,7 @@ def storey_confidence(src: dict[str, float], alt_far: bool, conflict: bool = Fal
     if len(strong) >= 2:
         c = (0.95 if "text" in strong else 0.9) if anchored else 0.85
     elif strong:
-        best = max(x for s, x in src.items() if x >= _STRONG.get(s, 9.0))
+        best = max(x for s, x in src.items() if _is_strong(s, x))
         c = 0.85 if src.get("title", 0.0) >= 0.9 else min(0.85, max(0.72, best))
     else:
         c = 0.55 if src else 0.0
@@ -660,6 +725,112 @@ def _word_choice(view: PlanView, top: int) -> StoreyChoice:
     return _NONE
 
 
+# ---------------------------------------------------------------- kiểm cả bộ sau khi chọn (soát mã F1-F3)
+def _plain(view: PlanView) -> bool:
+    """Bản thường (hoặc chưa rõ tên): hai bản như vậy cùng tầng không phải biến thể của nhau."""
+    return view.title is None or view.title.variant == "plain"
+
+
+def _main_marks(levels: Sequence[float]) -> list[float]:
+    """Tối đa 8 cốt hay gặp nhất của một hình (chặn khối lượng việc của phép thử khoảng cách)."""
+    return [v for v, _ in Counter(round(x, 2) for x in levels).most_common(8)]
+
+
+def _gap_fits(lo: Sequence[float], hi: Sequence[float], df: int) -> bool:
+    """Có cốt của hình dưới và hình trên mà (chênh cốt) / (chênh số tầng `df`) nằm trong 2,4-4,6 m: cốt trội
+    có thể là chiếu nghỉ (C4 của soát mã) nên xét các cốt chính, không chỉ cốt trội."""
+    return any(_GAP_OK[0] <= (b - a) / df <= _GAP_OK[1] for a in lo for b in hi)
+
+
+def _gap_check(
+    nums: dict[str, int], dom: dict[str, float], marks: dict[str, list[float]]
+) -> tuple[set[int], dict[int, int]]:
+    """(tầng qua phép thử khoảng cách ở mọi phía, {tầng trên của cặp hỏng: tầng mà chênh cốt trội chỉ}).
+
+    Cặp tầng có cốt kề nhau: (chênh cốt) / (chênh số tầng) phải trong 2,4-4,6 m, nếu không họ cốt chỉ là thứ
+    tự chứ không xác nhận số. Tầng qua khi có ít nhất một cặp và mọi cặp của nó đều qua; tầng 1 ở cốt
+    +-0.000 không hàng xóm nào có cốt cũng qua (mốc tuyệt đối). Cốt của một tầng: mã đầu tiên trong `nums`.
+    """
+    rep: dict[int, str] = {}
+    for vid, f in nums.items():
+        if vid in dom:
+            rep.setdefault(f, vid)
+    lv = {f: dom[k] for f, k in rep.items()}
+    fs = sorted(lv)
+    pairs = list(pairwise(fs))
+    bad = {
+        b: a + round((lv[b] - lv[a]) / (sum(_STOREY_H) / 2))
+        for a, b in pairs
+        if not _gap_fits(marks[rep[a]], marks[rep[b]], b - a)
+    }
+    broken = set(bad) | {a for a, b in pairs if b in bad}
+    datum = {1} if fs == [1] and abs(lv[1]) <= _DATUM else set()
+    return {f for p in pairs for f in p} - broken | datum, bad
+
+
+def _keeper(ids: list[str], nums: dict[str, int], dom: dict[str, float], marks: dict[str, list[float]]) -> str | None:
+    """Bản giữ số khi các bản thường trùng tầng có cốt lệch > 0,5 m: bản duy nhất ít cặp hỏng nhất với
+    hàng xóm (`_gap_check`); None khi cốt thiếu, gần nhau hoặc không bản nào khớp hơn."""
+    lv = [dom[k] for k in ids if k in dom]
+    if len(lv) < len(ids) or max(lv) - min(lv) <= _DUP_LEVEL:
+        return None
+    rest = {k: f for k, f in nums.items() if k not in ids}
+    bad = {k: len(_gap_check({k: nums[k], **rest}, dom, marks)[1]) for k in ids}
+    winners = [k for k, b in bad.items() if b == min(bad.values())]
+    return winners[0] if len(winners) == 1 else None
+
+
+def _duplicates(
+    nums: dict[str, int], dom: dict[str, float], marks: dict[str, list[float]], by_id: dict[str, PlanView]
+) -> tuple[set[str], set[str]]:
+    """(bản mất số, bản giữ số nhưng bất đồng) khi >= 2 bản thường (không là biến thể của nhau) cùng tầng."""
+    groups: dict[int, list[str]] = defaultdict(list)
+    for vid, f in nums.items():
+        if _plain(by_id[vid]):
+            groups[f].append(vid)
+    dropped: set[str] = set()
+    clash: set[str] = set()
+    for ids in groups.values():
+        keep = _keeper(ids, nums, dom, marks) if len(ids) > 1 else ids[0]
+        if keep is None:
+            clash |= set(ids)
+        else:
+            dropped |= set(ids) - {keep}
+    return dropped, clash
+
+
+def _flag(c: StoreyChoice, source: str, family: Family, number: int) -> StoreyChoice:
+    """Thêm một bất đồng của cả bộ; độ tin tối đa 0,65."""
+    return replace(
+        c, confidence=min(c.confidence, _CONFLICT), conflict=(*c.conflict, StoreyConflict(source, family, number))
+    )
+
+
+def _set_checks(out: dict[str, StoreyChoice], views: Sequence[PlanView]) -> None:
+    """Kiểm cả bộ sau khi chọn tầng, sửa `out` tại chỗ: bản thường trùng tầng ("duplicate_storey"), khoảng
+    cách cốt sai với chênh số tầng ("level_gap", họ cốt không tính cho >= 0,9), quy ước bộ không kiểm được."""
+    by_id = {v.view_id: v for v in views}
+    dom = _dominants(views)
+    marks = {v.view_id: _main_marks(v.levels) for v in views}
+    keyed = sorted(
+        (k for k, c in out.items() if c.label in ("ground", "floor")), key=lambda k: (not _plain(by_id[k]), k)
+    )
+    nums = {k: n for k in keyed if (n := out[k].number) is not None}
+    dropped, clash = _duplicates(nums, dom, marks, by_id)
+    for k in sorted(dropped):
+        out[k] = _flag(replace(out[k], label=None, number=None), "duplicate_storey", "order", nums.pop(k))
+    for k in clash:
+        out[k] = _flag(out[k], "duplicate_storey", "order", nums[k])
+    passed, bad = _gap_check(nums, dom, marks)
+    for k, f in nums.items():
+        if f in bad:
+            out[k] = _flag(out[k], "level_gap", "level", bad[f])
+        elif f not in passed:
+            out[k] = replace(out[k], confidence=min(out[k].confidence, _TEXT_ONLY_CAP))
+    for k in _unchecked_convention(views) & set(nums):
+        out[k] = replace(out[k], confidence=min(out[k].confidence, _UNCHECKED_CAP))
+
+
 def solve_storeys(views: Sequence[PlanView], order_known: bool = True) -> dict[str, StoreyChoice]:
     """{mã: StoreyChoice} cho mọi mặt bằng của MỘT bộ (gọi một lần cho cả bộ: dấu hiệu nhìn hàng xóm).
 
@@ -669,7 +840,11 @@ def solve_storeys(views: Sequence[PlanView], order_known: bool = True) -> dict[s
     """
     if len(views) > _MAX_VIEWS:
         return {v.view_id: _NONE for v in views}
-    ordered = sorted(views, key=lambda v: (v.position, v.view_id))
+    # Tên "mặt bằng" mà thật ra là ghi chú thang hay mô tả công trình ("LÊN TẦNG 3") không nói tầng.
+    ordered = [
+        replace(v, title=None) if v.title and v.title.kind == "plan" and not _title_like(v.title.norm) else v
+        for v in sorted(views, key=lambda v: (v.position, v.view_id))
+    ]
     by_id = {v.view_id: v for v in ordered}
     rows = _rows(ordered)
     plans = [v for v in ordered if v.view_id in rows]
@@ -694,4 +869,5 @@ def solve_storeys(views: Sequence[PlanView], order_known: bool = True) -> dict[s
             continue
         close = run is not None and gap < _CLOSE and run.get(v.view_id) != f
         out[v.view_id] = _explain(v, full[v.view_id], f, close, anchored)
+    _set_checks(out, ordered)
     return out

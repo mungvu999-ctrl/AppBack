@@ -68,6 +68,22 @@ def test_implausible_gap_lowers_confidence() -> None:
     assert [(f.level_m, f.confidence) for f in floors] == [(0.0, 0.6), (6.0, 0.6)]
     assert heights[0].height_m == 6.0
     assert heights[0].confidence == 0.6
+    assert heights[0].flags == ("implausible",)  # soát A-F3: lớp trên phải hỏi, không chỉ hạ độ tin
+
+
+@pytest.mark.parametrize(
+    ("upper", "flagged"), [(2.0, True), (2.39, True), (2.4, False), (3.3, False), (4.6, False), (4.61, True)]
+)
+def test_implausible_flag_band_per_storey(upper: float, flagged: bool) -> None:
+    """Ngoài 2,4-4,6 m mỗi tầng thì gắn cờ nhưng vẫn giữ giá trị (lửng thấp/tầng hầm 2,0-2,4 m vẫn có thể đúng)."""
+    _, heights = solve_heights(_plans([0.0], [upper]))
+    assert heights[0].height_m == upper
+    assert ("implausible" in heights[0].flags) is flagged
+
+
+def test_implausible_flag_counts_storeys_spanned() -> None:
+    _, heights = solve_heights([StoreyPlan(1, (0.0,)), StoreyPlan(3, (7.2,))])
+    assert heights[0].flags == ("spans_missing_storey",)  # 3,6 m mỗi tầng: hợp lý
 
 
 def test_ambiguous_split_three_to_two() -> None:

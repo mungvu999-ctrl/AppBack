@@ -508,3 +508,150 @@ def test_mezzanine_repair_needs_the_title_context(text: str, storey: object) -> 
     info = parse_title(titles._better(text))
     assert info is not None
     assert info.storey == storey
+
+
+# ---------------------------------------------------------------- chữ OCR hỏng (soát A-F5)
+@dataclass(frozen=True)
+class RawOcr:
+    """Dòng OCR không theo hợp đồng (hộp sai độ dài, chữ None ...)."""
+
+    text: object
+    box: object
+    confidence: float = 1.0
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        RawOcr("MẶT BẰNG TẦNG 1", (0, 5, 10, 5)),
+        RawOcr("MẶT BẰNG TẦNG 1", (10, 0, 0, 10)),
+        RawOcr("MẶT BẰNG TẦNG 1", (0, 0, float("nan"), 10)),
+        RawOcr("MẶT BẰNG TẦNG 1", (0, 0, float("inf"), 10)),
+        RawOcr("MẶT BẰNG TẦNG 1", (0, 0, 10)),
+        RawOcr("MẶT BẰNG TẦNG 1", None),
+        RawOcr("MẶT BẰNG TẦNG 1", ("a", "b", "c", "d")),
+        RawOcr(None, (0, 0, 100, 20)),
+        RawOcr(12, (0, 0, 100, 20)),
+    ],
+)
+def test_pick_title_drops_degenerate_texts(bad: RawOcr) -> None:
+    """Hộp không đủ bốn số hữu hạn, rộng/cao <= 0, hay chữ không phải chuỗi: bỏ dòng đó, không ném lỗi."""
+    assert pick_title([bad], SIZE) == PickedTitle("", "none", 0.0)  # type: ignore[list-item]
+    kept = pick_title([*SMALL, bad, line("MAT CAT A-A", 500, 900, 900, 980)], SIZE)  # type: ignore[list-item]
+    assert kept.text == "MAT CAT A-A"
+    assert view_kind([bad], SIZE).kind == "elevation"  # type: ignore[list-item]
+
+
+@pytest.mark.parametrize("size", [(0.0, 0.0), (-5.0, 100.0), (float("nan"), 1.0), (1.0, float("inf"))])
+def test_pick_title_survives_a_bad_page_size(size: tuple[float, float]) -> None:
+    """Cỡ trang không dùng được -> lấy hộp bao của chữ; tên vẫn đọc ra."""
+    picked = pick_title([*SMALL, line("MẶT BẰNG TẦNG 1", 500, 900, 900, 980)], size)
+    assert picked.text == "MẶT BẰNG TẦNG 1"
+    assert titles._page((0.0, 0.0), []) == (1.0, 1.0)
+
+
+def test_pick_title_cost_is_bounded() -> None:
+    """3000 chữ (lưới + một hàng dài cùng đường cơ sở) xong dưới 2 giây; tên hình vẫn tìm ra."""
+    import time
+
+    grid = [
+        line(f"P{i}", 10 + 30 * (i % 60), 10 + 20 * (i // 60), 30 + 30 * (i % 60), 25 + 20 * (i // 60))
+        for i in range(2000)
+    ]
+    row = [line("TẦNG", 10 + 30 * i, 1050, 38 + 30 * i, 1070) for i in range(999)]
+    title = line("MẶT BẰNG TẦNG 2", 700, 1100, 1300, 1180)
+    start = time.perf_counter()
+    picked = pick_title([*grid, *row, title, line("x" * 100_000, 0, 0, 10, 5)], (2000.0, 1200.0))
+    assert time.perf_counter() - start < 2.0
+    assert picked.text == "MẶT BẰNG TẦNG 2"
+
+
+def test_lines_cap_count_and_length() -> None:
+    """Quá MAX_TEXTS dòng: giữ nửa cao nhất và nửa thấp nhất trang; một dòng tối đa MAX_TEXT_LEN ký tự."""
+    many = [line(f"P{i}", 0, i, 10, i + 1 + (i % 7)) for i in range(titles.MAX_TEXTS + 50)]
+    kept = titles._lines([*many, line("y" * 500, 0, 0, 10, 2)])
+    assert len(kept) <= titles.MAX_TEXTS
+    assert all(len(ln.text) <= titles.MAX_TEXT_LEN for ln in kept)
+
+
+# ---------------------------------------------------------------- hai nguồn lệch tầng (Codex 1, 4)
+@pytest.mark.parametrize(
+    ("under", "block", "disagree"),
+    [
+        ("MAT BANG TANG 1", "MAT BANG TANG 81", True),
+        ("MAT BANG TANG 81", "MAT BANG TANG 1", True),
+        ("MAT BANG TANG 81", "MAT BANG TANG 81", False),
+        ("MAT BANG TANG 81", "MAT BANG", False),
+        ("MAT BANG TANG 81", "MAT BANG HAM", True),
+        ("MAT BANG HAM B1", "MAT BANG HAM B2", True),
+        ("MAT BANG HAM B1", "MAT BANG HAM", False),
+        ("MAT BANG HAM 2", "MAT BANG HAM B2", False),
+    ],
+)
+def test_agreement_sees_rejected_numbers_and_basement_depth(under: str, block: str, disagree: bool) -> None:
+    """Số bị loại ở một bên mà bên kia có tầng là lệch; thiếu hẳn số vẫn là 'chưa biết'; hầm so cả độ sâu."""
+    assert (titles._agreement(under, block) is None) is disagree
+
+
+def test_pick_title_reports_rejected_storey_disagreement() -> None:
+    """Tên dưới hình TẦNG 1, khung tên TẦNG 81 -> sources_disagree, tin cậy thấp."""
+    texts = [
+        *SMALL,
+        line("MAT BANG TANG 1", 700, 900, 1100, 980),
+        line("TEN BAN VE:", 1500, 1100, 1650, 1120),
+        line("MAT BANG TANG 81", 1660, 1100, 1800, 1120),
+    ]
+    assert pick_title(texts, SIZE) == PickedTitle("MAT BANG TANG 1", "under_drawing", 0.6, sources_disagree=True)
+
+
+@pytest.mark.parametrize(
+    ("text", "storey", "rejected"),
+    [
+        ("MAT BANG TANG 80", 80, False),
+        ("MAT BANG TANG 81", None, True),
+        ("MAT BANG LAU 79", 79, False),
+        ("MAT BANG LAU 80", None, True),
+        ("MAT BANG 79TH FLOOR", 79, False),
+        ("MAT BANG 80TH FLOOR", None, True),
+        ("MAT BANG TANG 0", None, True),
+        ("MAT BANG", None, False),
+    ],
+)
+def test_storey_bound_applies_to_the_resulting_storey(text: str, storey: object, rejected: bool) -> None:
+    """Giới hạn 1..MAX_FLOOR áp lên tầng sau khi tính lầu N = tầng N+1; số bị loại được đánh dấu."""
+    info = parse_title(text)
+    assert info is not None
+    assert (info.storey, info.storey_rejected) == (storey, rejected)
+
+
+# ---------------------------------------------------------------- lửng: từ thật không bị sửa (Codex 5)
+@pytest.mark.parametrize(
+    ("text", "storey"),
+    [
+        ("MAT BANG LUONG GIAO THONG TANG 2", 2),
+        ("MAT BANG LONG TANG 2", 2),
+        ("MAT BANG LANG TANG 2", 2),
+        ("MAT BANG LUON TANG 2", 2),
+        ("MAT BANG HUNG TANG 2", 2),
+        ("MAT BANG LURNG GIAO THONG TANG 2", 2),
+    ],
+)
+def test_mezzanine_repair_spares_real_words(text: str, storey: object) -> None:
+    """Từ thật cách LUNG một chữ (LƯỢNG, LONG, LANG ...) và chữ hỏng không đứng ở chỗ nhãn tầng giữ nguyên."""
+    picked = pick_title([*SMALL, line(text, 300, 500, 900, 560)], SIZE)
+    info = parse_title(picked.text)
+    assert info is not None
+    assert info.storey == storey
+
+
+def test_far_scale_note_does_not_lift_a_candidate() -> None:
+    """Ghi chú tỉ lệ ở xa (khác dòng, xa ngang) không cộng điểm: tên to hơn vẫn thắng."""
+    texts = [
+        *SMALL,
+        line("MAT BANG TANG 1", 100, 300, 500, 360),
+        line("MAT CAT A-A", 1200, 900, 1500, 940),
+        line("TL 1:100", 1510, 905, 1600, 935),
+        line("TL 1:50", 100, 1150, 200, 1180),
+    ]
+    assert titles._scale_near(titles._lines([texts[6]])[0], titles._lines(texts[-1:])) == 0.0
+    assert pick_title(texts, SIZE).text.startswith("MAT CAT A-A")  # có thể kèm "TL 1:100" nối cùng dòng

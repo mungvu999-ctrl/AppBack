@@ -248,3 +248,15 @@ def test_golden_parity(name: str) -> None:
         # Khác có chủ ý: lửng không cốt nằm giữa hai mặt bằng theo thứ tự bộ vẫn được gắn "skips_mezzanine";
         # nhân chỉ gắn khi lửng có cốt (nó không biết thứ tự bộ).
         assert ("skips_mezzanine" in got_h.flags) >= ("skips_mezzanine" in exp_h)
+
+
+def test_many_distinct_marks_solve_fast() -> None:
+    """rv2-1: 80 tầng, mỗi tầng 460 cốt khác nhau mất ~20 s (quy hoạch động 460² mỗi cặp tầng, tính lại cả
+    tổng điểm cho từng ứng viên thay thế, gom cụm O(k²)); API chờ 12 s và không huỷ được luồng."""
+    import time
+
+    marks = tuple(round(i * 0.13, 3) for i in range(460))
+    start = time.perf_counter()
+    floors, heights = solve_heights([StoreyPlan(n, marks) for n in range(1, 81)])
+    assert time.perf_counter() - start < 5.0
+    assert len(floors) == 80 and len(heights) == 80

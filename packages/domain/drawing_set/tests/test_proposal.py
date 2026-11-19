@@ -175,7 +175,7 @@ def test_height_out_of_product_range_is_not_proposed() -> None:
     first = solve_house(_stack("±0.000", "+12.000")).floors[0]
     assert (first.height_mm, first.height_confidence, first.height_source) == (None, None, None)
     assert first.elevation_mm == 0
-    assert first.questions == ("HEIGHT_ASSUMED",)
+    assert first.questions == ("LEVEL_MISSING", "HEIGHT_ASSUMED")  # cốt 0 bị hạ 0,6 vì khoảng 12 m vô lý: hỏi (rv2-5)
 
 
 def test_height_spanning_a_missing_storey_is_flagged() -> None:
@@ -206,7 +206,7 @@ def test_mezzanine_has_a_level_but_no_height() -> None:
     mezz = got["m"]
     assert (mezz.storey_label, mezz.storey_no) == ("mezzanine", None)
     assert (mezz.elevation_mm, mezz.height_mm) == (2800, None)
-    assert mezz.questions == ("STOREY_UNSURE",)
+    assert mezz.questions == ("STOREY_UNSURE", "LEVEL_MISSING")  # cốt gấp độ tin lửng 0,6: hỏi (rv2-5)
     assert (got["a"].height_mm, got["b"].storey_no) == (5200, 2)  # lửng chia khoảng cao nhưng không cắt cặp tầng
 
 
@@ -297,9 +297,9 @@ def test_copy_without_own_level_takes_the_representative() -> None:
     near = PlanView("n", None, (3.5,), 0)
     assert _own_values(near, 0.9, rep) is rep  # cách 0,2 m <= 0,25 m
     far = PlanView("f", None, (3.6,), 0)
-    assert _own_values(far, 0.9, rep) == _Values(3600, 0.65, "plan", questions=(), level_conflict=True)
+    assert _own_values(far, 0.9, rep) == _Values(3600, 0.65, "plan", questions=("LEVEL_MISSING",), level_conflict=True)
     no_rep_level = _Values()
-    assert _own_values(far, 0.5, no_rep_level) == _Values(3600, 0.5, "plan", questions=())
+    assert _own_values(far, 0.5, no_rep_level) == _Values(3600, 0.5, "plan", questions=("LEVEL_MISSING",))
 
 
 def test_untitled_set_proposes_each_view_its_own_level() -> None:
@@ -320,7 +320,7 @@ def test_untitled_set_proposes_each_view_its_own_level() -> None:
 
 def test_unknown_storey_with_marks_proposes_its_own_level() -> None:
     plan = PlanView("u", None, (3.3, 3.3), 0)
-    assert _own_values(plan, 0.3, None) == _Values(3300, 0.3, "plan", questions=())
+    assert _own_values(plan, 0.3, None) == _Values(3300, 0.3, "plan", questions=("LEVEL_MISSING",))
 
 
 def test_implausible_height_is_shown_but_asked() -> None:
@@ -341,13 +341,13 @@ def test_implausible_flag_caps_height_from_any_solver() -> None:
 
 def test_two_mm_levels_on_one_view_are_not_trusted() -> None:
     """Soát A-F15: "+3600" và "+3300" trên một hình: cốt nhập nhằng không quá 0,65. Từ vựng chưa có mã
-    "hai cốt có thể": `LEVEL_MISSING` ("không ghi cao độ") sai nghĩa nên chỉ hạ độ tin."""
+    "hai cốt có thể" nên hỏi `LEVEL_MISSING`, mã gần nhất: giá trị <= 0,70 không đứng một mình (rv2-5)."""
     views = [_view("a", "MẶT BẰNG TẦNG 1", "±0.000", position=0), _view("b", "MẶT BẰNG TẦNG 2", "+3600", "+3300")]
     second = _by_id(solve_house(views))["b"]
     assert second.elevation_mm in (3300, 3600)
     assert second.elevation_confidence is not None
     assert second.elevation_confidence <= 0.65
-    assert "LEVEL_MISSING" not in second.questions
+    assert "LEVEL_MISSING" in second.questions
     ambiguous = FloorLevel(3.3, "plan", 0.7, True, (3.6,))
     assert _floor_values(ambiguous, 3300, 0.95).elevation_confidence == 0.65
 
@@ -363,9 +363,11 @@ def test_band_boundary_sweep(confidence: float, asked: bool) -> None:
     choice = StoreyChoice("floor", 2, confidence, (), None, ())
     assert ("STOREY_UNSURE" in _storey_questions(choice)) is asked
     assert _storey_questions(StoreyChoice("floor", 2, confidence, (), None, (_CLASH,))) == ("STOREY_CONFLICT",)
-    convention = _floor_values(FloorLevel(0.0, "convention", confidence), 0, 0.95)
-    assert ("LEVEL_MISSING" in convention.questions) is asked
-    assert _floor_values(FloorLevel(0.0, "plan", confidence), 0, 0.95).questions == ()
+    for source in ("convention", "plan"):  # nguồn nào cũng vậy (rv2-5)
+        level = _floor_values(FloorLevel(0.0, source, confidence), 0, 0.95)
+        assert ("LEVEL_MISSING" in level.questions) is asked
+    height = _with_height(_Values(questions=()), StoreyHeight(1, 2, 3.0, "plan", confidence, ()), 3000, {1: 1, 2: 1})
+    assert ("HEIGHT_ASSUMED" in height.questions) is asked
     assert SINGLE_SOURCE == 0.7
     assert CONFIDENT == 0.9
 
@@ -378,7 +380,7 @@ def test_lone_terrace_sheet_is_unsure() -> None:
 
 
 def test_no_value_at_or_below_the_boundary_stands_without_a_question() -> None:
-    """Lời hứa sản phẩm trên các bộ thử: độ tin tầng <= 0,70 luôn kèm câu hỏi về tầng."""
+    """Lời hứa sản phẩm trên các bộ thử: tầng, cốt, chiều cao <= 0,70 luôn kèm câu hỏi về chính trường đó."""
     sets = [
         [
             _view("a", "MẶT BẰNG TẦNG 1", "±0.000"),
@@ -387,11 +389,68 @@ def test_no_value_at_or_below_the_boundary_stands_without_a_question() -> None:
         ],
         [_view("a", "MẶT BẰNG SÂN THƯỢNG")],
         [_view(f"v{i}", "MẶT BẰNG TẦNG", position=i) for i in range(3)],
+        _stack("±0.000", "+3.300", "+3.500"),
+        _stack("", "+2.100", "+12.000"),
+        _STACKED_READS,
+        _SAME_STOREY_CLASH,
     ]
     for views in sets:
         for floor in solve_house(views).floors:
             if floor.storey_no is not None and unsure(floor.storey_confidence):
                 assert {"STOREY_UNSURE", "STOREY_CONFLICT"} & set(floor.questions), floor.floor_id
+            if floor.elevation_confidence is not None and unsure(floor.elevation_confidence):
+                assert "LEVEL_MISSING" in floor.questions, floor.floor_id
+            if floor.height_confidence is not None and unsure(floor.height_confidence):
+                assert "HEIGHT_ASSUMED" in floor.questions, floor.floor_id
+
+
+# Soát rv2-3: bản nội thất cũng ghi "TẦNG 2" nhưng cốt +6.600 lệch +3.300 của bản kiến trúc tầng 2.
+_SAME_STOREY_CLASH = [
+    _view("a", "MẶT BẰNG TẦNG 1", "±0.000", position=0),
+    _view("b", "MẶT BẰNG TẦNG 2", "+3.300", position=1),
+    _view("c", "MẶT BẰNG NỘI THẤT TẦNG 2", "+6.600", position=2),
+    _view("d", "MẶT BẰNG TẦNG 3", "+6.600", position=3),
+]
+# Soát rv2-5: cốt nhập nhằng ở tầng 2, tầng 3 ghi lặp cốt tầng 2: các giá trị đọc được đều <= 0,70.
+_STACKED_READS = [
+    _view("a", "MẶT BẰNG TẦNG 1", "±0.000", position=0),
+    _view("b", "MẶT BẰNG TẦNG 2", "+3.300", "+3.500", position=1),
+    _view("c", "MẶT BẰNG TẦNG 3", "+3.300", "+3.300", "+6.600", position=2),
+]
+
+
+def test_same_storey_level_clash_flags_both_views_and_dependent_heights() -> None:
+    """Soát rv2-3: hai hình cùng "TẦNG 2" mà cốt lệch nhau: cả đại diện lẫn hình kia đều bị chặn 0,65 và
+    hỏi bất đồng; cốt đại diện và hai chiều cao nối tầng 2 cũng không quá 0,65 và hỏi."""
+    got = _by_id(solve_house(_SAME_STOREY_CLASH))
+    for fid in ("b", "c"):
+        assert got[fid].storey_no == 2
+        assert got[fid].storey_confidence <= 0.65
+        assert got[fid].questions[0] == "STOREY_CONFLICT", fid
+    rep = got["b"]
+    assert (rep.elevation_mm, rep.height_mm) == (3300, 3300)
+    assert rep.elevation_confidence is not None
+    assert rep.elevation_confidence <= 0.65
+    assert rep.height_confidence is not None
+    assert rep.height_confidence <= 0.65
+    below = got["a"]  # chiều cao 1 -> 2 dựa trên cốt tầng 2 đang tranh chấp
+    assert below.height_confidence is not None
+    assert below.height_confidence <= 0.65
+    assert "HEIGHT_ASSUMED" in below.questions
+    assert "STOREY_CONFLICT" not in got["a"].questions + got["d"].questions
+
+
+def test_low_confidence_read_values_always_ask() -> None:
+    """Soát rv2-5: cốt/chiều cao đọc từ chữ (không giả định, không cờ) mà <= 0,70 vẫn phải hỏi."""
+    got = _by_id(solve_house(_STACKED_READS))
+    first, second = got["a"], got["b"]
+    assert first.height_confidence is not None
+    assert first.height_confidence <= 0.7
+    assert "HEIGHT_ASSUMED" in first.questions
+    assert second.storey_confidence > 0.7
+    assert second.elevation_confidence is not None
+    assert second.elevation_confidence <= 0.65
+    assert second.questions == ("LEVEL_MISSING", "HEIGHT_ASSUMED")
 
 
 def test_copies_keep_their_own_storey_confidence_but_share_values() -> None:

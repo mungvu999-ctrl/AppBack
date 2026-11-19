@@ -9,6 +9,7 @@ import pytest
 
 from packages.domain.drawing_set import HouseProposal, HouseView, solve_house
 from packages.domain.drawing_set.proposal import ORDER_DIFFERS, FloorProposal
+from packages.domain.drawing_set.tests.test_storeys import _own_words_conflict
 
 _DATA = Path(__file__).parent / "data"
 _GOLDENS = ("conflict", "english_basement", "mezzanine_no_marks", "no_level_marks", "plain3_titles", "tret_tang1")
@@ -122,6 +123,34 @@ def test_level_missing_and_assumed_height() -> None:
     assert second.elevation_mm is None
     assert (second.elevation_confidence, second.elevation_source) == (None, None)
     assert second.questions == ("LEVEL_MISSING", "HEIGHT_ASSUMED")
+
+
+def test_title_sources_disagreeing_is_a_storey_conflict() -> None:
+    """Tên dưới hình "TẦNG 1", khung tên "TẦNG 2": `pick_title` báo lệch (0,6) thì tầng bị chặn 0,65 và hỏi."""
+    base = _view("a", "MAT BANG TANG 1", "+0.000")
+    block = [_Text("TEN BAN VE", (100, 700, 300, 730)), _Text("MAT BANG TANG 2", (320, 700, 700, 730))]
+    view = HouseView("a", [*base.texts, *block], _SIZE, 0)
+    got = solve_house([view]).floors[0]
+    assert got.storey_no == 1  # vẫn lấy tên dưới hình
+    assert got.storey_confidence <= 0.65
+    assert got.questions[0] == "STOREY_CONFLICT"
+    assert "STOREY_UNSURE" not in got.questions
+    assert got.elevation_confidence is not None
+    assert got.elevation_confidence <= 0.65
+    assert got.height_confidence is not None
+    assert got.height_confidence <= 0.65
+
+
+def test_height_built_on_the_ground_convention_is_flagged() -> None:
+    """Trệt không ghi cốt: cốt 0 và chiều cao 3300 đều "convention"; chiều cao phải hỏi, cốt giữ độ tin thấp."""
+    first, second = solve_house(_stack("", "+3.300")).floors
+    assert (first.elevation_mm, first.elevation_source) == (0, "convention")
+    assert (first.height_mm, first.height_source) == (3300, "convention")
+    assert first.questions == ("HEIGHT_ASSUMED",)
+    assert first.elevation_confidence is not None
+    assert first.elevation_confidence < 0.7  # chưa có mã "cốt này là giả định": giữ đề xuất với độ tin thấp
+    assert "LEVEL_MISSING" not in first.questions
+    assert second.height_source == "default"
 
 
 def test_height_out_of_product_range_is_not_proposed() -> None:
@@ -241,11 +270,16 @@ def _check_storeys(got: dict[str, FloorProposal], known: dict[str, Any]) -> None
         assert floor.storey_no == exp["floor_no"], exp["id"]
         if "NOT_A_PLAN" not in floor.questions:
             assert floor.kind == "plan", exp["id"]
+        if _own_words_conflict(exp):
+            assert floor.storey_confidence >= 0.85, exp["id"]
+            assert "STOREY_CONFLICT" not in floor.questions, exp["id"]
+            continue
         assert _band(floor.storey_confidence) == _band(exp.get("floor_confidence") or 0.0), exp["id"]
 
 
 def _check_levels(got: dict[str, FloorProposal], known: dict[str, Any]) -> None:
     """Cốt: giá trị trong 0,01 m, nguồn, và dải độ chắc = `confidence` của mẫu (đã gấp độ chắc tầng)."""
+    fixed = {v["id"] for v in known["views"] if _own_words_conflict(v)}
     for exp in known["floors"]:
         floor = got[exp["view_id"]]
         if exp["level_m"] is None:
@@ -257,6 +291,10 @@ def _check_levels(got: dict[str, FloorProposal], known: dict[str, Any]) -> None:
         assert floor.elevation_source == exp["level_source"]
         assert floor.elevation_confidence is not None
         expected = exp["confidence"]
+        if exp["view_id"] in fixed:
+            # Mẫu gấp độ chắc tầng 0,65 của bất đồng giả (soát mã, lỗi 1); ở đây tầng chắc hơn nên cốt không thấp hơn.
+            assert floor.elevation_confidence >= expected, exp["view_id"]
+            continue
         if exp["floor_no"] is None:
             # Lửng: mẫu giữ 0,7 của cốt; ở đây gấp thêm độ chắc tầng 0,6 của lửng theo luật min.
             expected = min(expected, floor.storey_confidence)
@@ -266,12 +304,18 @@ def _check_levels(got: dict[str, FloorProposal], known: dict[str, Any]) -> None:
 def _check_heights(got: dict[str, FloorProposal], known: dict[str, Any]) -> None:
     """Chiều cao: giá trị, nguồn, dải độ chắc bằng đúng của mẫu; tầng trên cùng luôn 3,3 m ở 0,4 và hỏi."""
     by_no = {f["floor_no"]: got[f["view_id"]] for f in known["floors"] if f["floor_no"] is not None}
+    wrong = {v["id"] for v in known["views"] if _own_words_conflict(v)}
+    fixed = {f["floor_no"] for f in known["floors"] if f["view_id"] in wrong}
     for exp in known["storey_heights"]:
         floor = by_no[exp["from"]]
         assert floor.height_mm is not None
         assert floor.height_mm / 1000 == pytest.approx(exp["height_m"], abs=0.01)
         assert floor.height_source == exp["source"]
         assert floor.height_confidence is not None
+        if {exp["from"], exp["to"]} & fixed:
+            # Mẫu gấp độ chắc 0,65 của bất đồng giả ở một đầu (soát mã, lỗi 1): ở đây không thấp hơn mẫu.
+            assert floor.height_confidence >= exp["confidence"], (exp["from"], exp["to"])
+            continue
         assert _band(floor.height_confidence) == _band(exp["confidence"]), (exp["from"], exp["to"])
     top = by_no[max(by_no)]
     assert (top.height_mm, top.height_confidence, top.height_source) == (3300, 0.4, "default")

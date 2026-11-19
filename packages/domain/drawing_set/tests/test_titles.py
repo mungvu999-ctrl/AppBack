@@ -180,7 +180,18 @@ def test_pick_title_sources_disagree() -> None:
         line("MAT BANG TANG 1", 700, 900, 1100, 980),
         *SMALL,
     ]
-    assert pick_title(texts, SIZE) == PickedTitle("MAT BANG TANG 1", "under_drawing", 0.6)
+    assert pick_title(texts, SIZE) == PickedTitle("MAT BANG TANG 1", "under_drawing", 0.6, sources_disagree=True)
+
+
+def test_pick_title_block_missing_storey_is_unknown_not_different() -> None:
+    """Khung tên rớt số tầng ("... Tang" so với "... Tang 1"): khớp yếu 0,8, không phải bất đồng."""
+    texts = [
+        line("TEN BAN VE:", 100, 300, 300, 330),
+        line("mat bang noi that Tang", 320, 300, 700, 330),
+        line("mat bang noi that Tang 1", 700, 900, 1100, 980),
+        *SMALL,
+    ]
+    assert pick_title(texts, SIZE) == PickedTitle("mat bang noi that Tang 1", "under_drawing", 0.8)
 
 
 def test_pick_title_block_only_when_the_title_sits_in_a_note() -> None:
@@ -340,13 +351,18 @@ def test_fix_vowel_drops() -> None:
     assert titles._fix_vowel_drops("khong doi") == "khong doi"
 
 
-def test_same_ignores_numbering_convention() -> None:
-    """ "LAU 1" và "TANG 2" là một tầng (lầu N = tầng N+1); loại hình khác hay không đọc được thì không."""
-    assert titles._same("MAT BANG LAU 1", "MAT BANG TANG 2")
-    assert titles._same("2ND FLOOR PLAN", "MAT BANG TANG 3")
-    assert not titles._same("MAT BANG LAU 1", "MAT BANG TANG 1")
-    assert not titles._same("MAT CAT A-A", "MAT BANG TANG 1")
-    assert not titles._same("xyz", "MAT BANG TANG 1")
+def test_agreement_ignores_numbering_convention() -> None:
+    """ "LAU 1" và "TANG 2" là một tầng (lầu N = tầng N+1); thiếu tầng một bên là khớp yếu; tầng khác,
+    loại hình khác hay không đọc được thì lệch."""
+    assert titles._agreement("MAT BANG LAU 1", "MAT BANG TANG 2") == 0.9
+    assert titles._agreement("2ND FLOOR PLAN", "MAT BANG TANG 3") == 0.9
+    assert titles._agreement("MAT BANG TANG", "MAT BANG TANG 1") == 0.8
+    assert titles._agreement("MAT BANG TANG 1", "MAT BANG") == 0.8
+    assert titles._agreement("MAT BANG LAU 1", "MAT BANG TANG 1") is None
+    assert titles._agreement("MAT BANG TRET", "MAT BANG TANG 2") is None
+    assert titles._agreement("MAT CAT A-A", "MAT BANG TANG 1") is None
+    assert titles._agreement("MAT CAT A-A", "MAT BANG") is None
+    assert titles._agreement("xyz", "MAT BANG TANG 1") is None
 
 
 def test_is_note_needs_two_stacked_neighbours() -> None:
@@ -438,3 +454,57 @@ def test_snap_still_repairs_ocr_damage() -> None:
     assert titles._fix_vowel_drops("MTBNG TNG 3") == "MAT BANG TANG 3"
     assert titles._snap("MAT BANG TAN 1") == "MAT BANG TANG 1"
     assert titles._snap("MAT BANG TRAT") == "MAT BANG TRET"
+
+
+# ---------------------------------------------------------------- số tầng lạ (soát mã, lỗi 3)
+@pytest.mark.parametrize(
+    ("text", "storey"),
+    [
+        ("MAT BANG TANG 1", 1),
+        ("MAT BANG TANG 80", 80),
+        ("MAT BANG TANG 81", None),
+        ("MAT BANG TANG 0", None),
+        ("MAT BANG TANG 999999999999", None),
+        ("MAT BANG LAU " + "9" * 5000, None),
+        ("MAT BANG TANG 999 TRET", None),
+    ],
+)
+def test_parse_title_rejects_implausible_storey_numbers(text: str, storey: object) -> None:
+    """Số tầng ngoài 1..80 (kể cả chuỗi số rất dài của OCR) -> giữ loại mặt bằng, không có tầng."""
+    info = parse_title(text)
+    assert info is not None
+    assert (info.kind, info.storey) == ("plan", storey)
+
+
+# ---------------------------------------------------------------- lửng hỏng OCR
+@pytest.mark.parametrize(
+    "text",
+    [
+        "mat bang lurng tang 1",
+        "MAT BANG LUNGG TANG 1",
+        "MAT BANG XLUNG TANG 1",
+        "MAT BANG LUN TANG 1",
+        "MAT BANG LUNGTANG 1",
+        "MAT BANG LURNG1",
+        "MAT BANG TANG LURNG",
+        "MẶT BẰNG LƯNG TẦNG 1",
+        "MẶT BẰNG LỬNG TẦNG 1",
+    ],
+)
+def test_damaged_mezzanine_is_repaired(text: str) -> None:
+    """LUNG hỏng (thêm/thiếu/sai một chữ, dính từ kế) sau MAT BANG/TANG -> lửng, không số, dù có số tầng sau."""
+    picked = pick_title([*SMALL, line(text, 300, 500, 900, 560)], SIZE)
+    info = parse_title(picked.text)
+    assert info is not None
+    assert (info.kind, info.storey, info.numbering) == ("plan", "mezzanine", None)
+
+
+@pytest.mark.parametrize(
+    ("text", "storey"),
+    [("KHOI LUONG TANG 1", 1), ("MAT BANG TUNG 1", 1), ("MAT BANG TANG 1", 1), ("MAT BANG BANGTANG 1", None)],
+)
+def test_mezzanine_repair_needs_the_title_context(text: str, storey: object) -> None:
+    """Chữ cách LUNG một ký tự ở chỗ khác (KHOI LUONG) giữ nguyên; TUNG gần TANG hơn nên thành TANG."""
+    info = parse_title(titles._better(text))
+    assert info is not None
+    assert info.storey == storey

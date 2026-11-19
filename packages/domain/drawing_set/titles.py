@@ -48,11 +48,13 @@ class TitleInfo:
 
 @dataclass(frozen=True)
 class PickedTitle:
-    """Tên hình chọn được từ chữ OCR: `text` rỗng khi `source == "none"`; `confidence` trong [0, 1]."""
+    """Tên hình chọn được từ chữ OCR: `text` rỗng khi `source == "none"`; `confidence` trong [0, 1];
+    `sources_disagree` khi tên dưới hình và tên khung tên nêu loại hình hoặc tầng khác nhau."""
 
     text: str
     source: TitleSource
     confidence: float
+    sources_disagree: bool = False
 
 
 @dataclass(frozen=True)
@@ -133,6 +135,7 @@ _NUMBERED: tuple[tuple[re.Pattern[str], Numbering], ...] = (
     (re.compile(r"\bTANG\s*0?(\d+)"), "tang"),
     (re.compile(r"\b(\d+)\s*(?:ST|ND|RD|TH)\s+FLOOR"), "floor_ordinal"),
 )
+MAX_FLOOR = 80  # số tầng đọc được từ tên: 1..80; ngoài khoảng là lỗi OCR, tên không có tầng
 _ORDINALS = {"FIRST": 1, "SECOND": 2, "THIRD": 3, "FOURTH": 4, "FIFTH": 5, "SIXTH": 6}
 _ORDINAL_WORD = re.compile(r"\b(" + "|".join(_ORDINALS) + r")\s+FLOOR")
 # Thứ tự = thứ tự kernel: nền móng trước, nội thất cuối.
@@ -185,7 +188,8 @@ def _storey_number(n: str) -> tuple[int, Numbering] | None:
     for pattern, numbering in _NUMBERED:
         match = pattern.search(n)
         if match:
-            return int(match.group(1)), numbering
+            digits = match.group(1)  # > 3 chữ số: không int() chuỗi dài vô hạn của OCR
+            return (int(digits) if len(digits) <= 3 else 0), numbering
     match = _ORDINAL_WORD.search(n)
     return (_ORDINALS[match.group(1)], "floor_ordinal") if match else None
 
@@ -197,7 +201,8 @@ def _storey_of(n: str) -> tuple[int | StoreyWord | None, Numbering | None]:
         return word, None
     number = _storey_number(n)
     if number:
-        return number
+        # Số tầng lạ (0, 999999999999 do OCR) không neo được gì: giữ loại hình, bỏ tầng.
+        return number if 1 <= number[0] <= MAX_FLOOR else (None, None)
     return ("ground", None) if _GROUND.search(n) else (None, None)
 
 
@@ -296,12 +301,28 @@ def _snap_word(word: str, prev: str, nxt: str) -> str:
         if key in _NEED_MAT and not after_mat and not (key == "BANG" and _near_by_one_edit(nxt, "TANG")):
             continue
         return key
-    return word
+    return _snap_mezzanine(word, prev, nxt)
+
+
+def _snap_mezzanine(word: str, prev: str, nxt: str) -> str:
+    """LUNG (lửng) hỏng OCR (LURNG, LUNGG, XLUNG, LUN) -> LUNG, chỉ khi đứng ngay sau BANG/TANG
+    (MAT BANG LURNG, TANG LURNG): chữ lạ cách LUNG một ký tự ở chỗ khác (KHOI LUONG = khối lượng)
+    giữ nguyên. Chạy sau các từ khoá khác (TUNG -> TANG); `nxt` không dùng (cùng chữ ký với `_snap_word`)."""
+    del nxt
+    return "LUNG" if prev in ("BANG", "TANG") and _near_by_one_edit(word, "LUNG") else word
+
+
+_GLUED = re.compile(r"\b([A-Z]{3,5}?)(TANG|LAU|\d{1,2})\b")
+
+
+def _unglue(n: str) -> str:
+    """Tách chữ giống LUNG dính vào từ/số kế ("LUNGTANG 1", "LURNG1") thành hai từ."""
+    return _GLUED.sub(lambda m: f"{m[1]} {m[2]}" if _near_by_one_edit(m[1], "LUNG") else m[0], n)
 
 
 def _snap(n: str) -> str:
-    """Tên đã gấp -> bỏ dấu câu trong từ, sửa từ khoá (MAT BANG TANG ...) và MAT/CAT bên cạnh."""
-    words = [re.sub(r"[';`]", "", w) for w in n.split()]
+    """Tên đã gấp -> bỏ dấu câu trong từ, sửa từ khoá (MAT BANG TANG ..., LUNG) và MAT/CAT bên cạnh."""
+    words = [re.sub(r"[';`]", "", w) for w in _unglue(n).split()]
     out: list[str] = []
     for i, word in enumerate(words):
         nxt = words[i + 1] if i + 1 < len(words) else ""
@@ -317,14 +338,22 @@ def _snap(n: str) -> str:
 
 
 def _better(text: str) -> str:
-    """`text`, hoặc bản đã sửa từ khoá khi bản đó nêu được loại hình/tầng mà `text` chưa nêu."""
+    """`text`, hoặc bản đã sửa từ khoá khi bản đó nêu được loại hình/tầng mà `text` chưa nêu, hoặc khi bản sửa
+    là lửng ("LURNG TANG 1": lửng trên tầng 1, không phải tầng 1)."""
     before = parse_title(text)
     n = fold(text)
     snapped = _snap(n)
     after = parse_title(snapped) if snapped != n else None
-    if after and (not before or (before.storey is None and after.storey is not None)):
+    if not after:
+        return text
+    if not before or (before.storey is None and after.storey is not None) or _became_mezzanine(before, after):
         return snapped
     return text
+
+
+def _became_mezzanine(before: TitleInfo, after: TitleInfo) -> bool:
+    """Bản sửa đọc ra lửng mà bản gốc không: lửng thắng số tầng đi sau nó."""
+    return after.storey == "mezzanine" != before.storey
 
 
 def _fix_vowel_drops(text: str) -> str:
@@ -532,18 +561,25 @@ def _storey_key(info: TitleInfo) -> int | str | None:
     return info.storey
 
 
-def _same(a: str, b: str) -> bool:
-    """Hai tên cùng loại hình và cùng tầng."""
-    pa, pb = parse_title(a), parse_title(b)
-    return bool(pa and pb and pa.kind == pb.kind and _storey_key(pa) == _storey_key(pb))
-
-
 # Độ tin cậy là hằng heuristic, chưa hiệu chỉnh trên dữ liệu sản phẩm.
 # ponytail: hiệu chỉnh lại theo tỉ lệ sai của từng nhóm nguồn khi T0/T5 đo xong.
 _CONF_BOTH_AGREE = 0.9
-_CONF_UNDER_ONLY = 0.8
+_CONF_UNDER_ONLY = 0.8  # cũng là độ tin khi hai nguồn khớp nhưng một bên thiếu tầng
 _CONF_BLOCK_ONLY = 0.7
 _CONF_DISAGREE = 0.6
+
+
+def _agreement(a: str, b: str) -> float | None:
+    """Độ tin khi hai tên khớp: cùng loại hình và cùng tầng 0,9; cùng loại, một bên thiếu tầng (OCR rớt số,
+    "... Tang" so với "... Tang 1") 0,8 vì thiếu là "chưa biết" chứ không phải "khác". None khi lệch: khác
+    loại hình hoặc hai tầng có mặt mà khác nhau."""
+    pa, pb = parse_title(a), parse_title(b)
+    if not (pa and pb and pa.kind == pb.kind):
+        return None
+    ka, kb = _storey_key(pa), _storey_key(pb)
+    if ka == kb:
+        return _CONF_BOTH_AGREE
+    return _CONF_UNDER_ONLY if ka is None or kb is None else None
 
 
 def pick_title(texts: Sequence[OcrText], size: tuple[float, float]) -> PickedTitle:
@@ -564,7 +600,10 @@ def pick_title(texts: Sequence[OcrText], size: tuple[float, float]) -> PickedTit
     under_ok, block_ok = parse_title(under) is not None, parse_title(block) is not None
     if under_ok:
         if block_ok:
-            return PickedTitle(under, "under_drawing", _CONF_BOTH_AGREE if _same(under, block) else _CONF_DISAGREE)
+            agree = _agreement(under, block)
+            if agree is None:
+                return PickedTitle(under, "under_drawing", _CONF_DISAGREE, sources_disagree=True)
+            return PickedTitle(under, "under_drawing", agree)
         return PickedTitle(under, "under_drawing", _CONF_UNDER_ONLY)
     if block_ok:
         return PickedTitle(block, "title_block", _CONF_BLOCK_ONLY)

@@ -1,6 +1,7 @@
 """Kiểm thử chọn tầng cho bộ bản vẽ (HS-01, T3): ca selfcheck của kernel, từng luật, sáu bộ vàng."""
 
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -217,6 +218,76 @@ def test_order_known_false_turns_off_order_cues() -> None:
     assert solve(*views, order_known=False)[0].confidence < 0.7
 
 
+# ---------------------------------------------------------------- sửa sau soát mã
+def test_set_convention_applies_to_word_cues() -> None:
+    # Lỗi 1: bộ trệt + tầng 1, "TANG 1" ở 3,3 m là tầng 2; chữ tên của chính nó không được bỏ phiếu tầng 1.
+    got = solve(plan("v00", "MAT BANG TRET", 0.0), plan("v01", "MAT BANG TANG 1", 3.3))
+    assert [c.number for c in got] == [1, 2]
+    assert got[1].conflict == ()
+    assert got[1].confidence >= 0.9
+    got = solve(plan("v00", "FIRST FLOOR PLAN", 0.0), plan("v01", "SECOND FLOOR PLAN", 3.2))
+    assert [(c.number, c.conflict) for c in got] == [(1, ()), (2, ())]
+    assert floor_relaxed("MAT BANG TANG 1", "tret_plus_tang1") == 2
+    assert floor_relaxed("MAT BANG LAU 1", "tret_plus_tang1") == 2
+    assert floor_relaxed("FIRST FLOOR", "us_english") == 1
+    assert floor_relaxed("MAT BANG TANG HAM", "tret_plus_tang1") is None
+
+
+@pytest.mark.parametrize(
+    ("title", "number"),
+    [
+        ("BASEMENT 4 FLOOR PLAN", -3),
+        ("MAT BANG TANG HAM 4", -3),
+        ("MAT BANG HAM B4", -3),
+        ("MAT BANG TANG HAM 1", 0),
+        ("MAT BANG TANG HAM 6", -5),
+        ("MAT BANG TANG HAM", 0),
+        ("MAT BANG HAM B10", None),
+        ("MAT BANG TANG HAM 0", None),
+        ("MAT BANG TANG HAM " + "4" * 40, None),
+    ],
+)
+def test_deep_basements_keep_their_depth(title: str, number: int | None) -> None:
+    # Lỗi 2: hầm N -> 1 - N với N = 1..6; không ghi = hầm duy nhất; ngoài khoảng -> không số, độ tin < 0,7.
+    got = solve(plan("v00", title))[0]
+    assert (got.label, got.number) == ("basement", number)
+    assert (got.confidence == 0.8) if number is not None else (got.confidence < 0.7)
+
+
+def test_hostile_input_is_bounded() -> None:
+    # Lỗi 3: số tầng lạ, 10 000 dòng chữ, 200 hình không được làm bùng khối lượng việc.
+    noise = tuple(f"ROOM {i}" for i in range(10_000))
+    big = [
+        plan("v00", "MAT BANG TANG 1"),
+        plan("v01", "MAT BANG TANG 999999999999"),
+        PlanView("v02", None, (), 2, ("ROOM",)),
+        PlanView("v03", None, (), 3, noise),
+    ]
+    start = time.perf_counter()
+    for order_known in (True, False):
+        got = solve(*big, order_known=order_known)
+        assert got[0].number == 1
+        assert got[1].number != 999999999999
+    # ~0,1 s không đo độ phủ (cổng đo độ phủ chậm ~12 lần nên chặn rộng); trước khi sửa: list 10^12 tầng, không xong.
+    assert time.perf_counter() - start < 3.0
+    many = [plan(f"v{i:03d}", f"MAT BANG TANG {i % 80 + 1}", 3.0 * i) for i in range(200)]
+    start = time.perf_counter()
+    assert len(solve_storeys(many)) == 200
+    # ~0,06 s không đo độ phủ; cổng đo độ phủ chậm ~12 lần nên chặn rộng.
+    assert time.perf_counter() - start < 3.0
+    over = [*many, plan("v999", "MAT BANG TANG 1")]
+    assert all(c.number is None and c.confidence == 0.0 for c in solve_storeys(over).values())
+
+
+def test_candidate_ranges_are_bounded() -> None:
+    assert _cue_level("x", {"x": 5.0, "a": 0.0, "b": 900.0}, {"a": 1, "b": 80}) == []
+    assert _cue_order("c", ["a", "c", "d"], {"a": 1, "d": 80}) == []
+    assert _cue_elim("x", {"a": 1, "b": 80}, 3) == []
+    assert _cue_elim("x", {"a": 1, "b": 3}, 3) == [(2, 0.5)]
+    views = [plan(f"v{i:02d}", "MAT BANG TANG") for i in range(2)]
+    assert _cue_rank(views, {"z": 10**9}) == {"v00": [(1, 0.6)], "v01": [(2, 0.6)]}
+
+
 # ---------------------------------------------------------------- sáu bộ vàng
 @dataclass(frozen=True)
 class _Text:
@@ -248,6 +319,13 @@ _ACCEPTED_BAND = {
 }
 
 
+def _own_words_conflict(exp: dict[str, Any]) -> bool:
+    """Bất đồng giả của kernel (soát mã, lỗi 1): chỉ phiếu chữ, đọc tên của chính hình theo quy ước mặc định
+    thay vì quy ước của bộ ("TANG 1" của bộ trệt + tầng 1, "FIRST FLOOR" của bộ kiểu Mỹ). Bản này áp quy ước
+    bộ cho phiếu chữ nên các hình đó không còn bất đồng và lên dải trên (cùng số tầng)."""
+    return bool(exp.get("conflict")) and all(x["source"] == "words" for x in exp["conflict"])
+
+
 @pytest.mark.parametrize("name", sorted(p.name for p in DATA.glob("*.json")))
 def test_golden_parity(name: str) -> None:
     golden = json.loads((DATA / name).read_text(encoding="utf-8"))
@@ -255,6 +333,9 @@ def test_golden_parity(name: str) -> None:
     for exp in golden["expected_known"]["views"]:
         c = got[exp["id"]]
         assert c.number == exp.get("floor_no"), exp["id"]
+        if _own_words_conflict(exp):
+            assert (c.conflict, c.confidence >= 0.85) == ((), True), exp["id"]
+            continue
         if exp["id"] not in _ACCEPTED_BAND:
             assert _band(c.confidence) == _band(exp.get("floor_confidence") or 0.0), exp["id"]
         if exp.get("conflict"):

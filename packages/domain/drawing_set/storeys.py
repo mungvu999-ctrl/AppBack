@@ -22,6 +22,7 @@ import re
 from collections import Counter, defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
+from itertools import count
 from typing import Literal
 
 from packages.domain.drawing_set.titles import TitleInfo, fold
@@ -62,11 +63,16 @@ _NONSTOREY = re.compile(r"CAU ?TAO|CHI TIET|DETAIL|\bWC\b|\bSAN\b(?! THUONG)")
 _ORD = {"FIRST": 2, "SECOND": 3, "THIRD": 4, "FOURTH": 5, "FIFTH": 6, "SIXTH": 7}
 _ENG = re.compile(r"\b(?:" + "|".join(_ORD) + r")\s+FLOOR|\b\d+\s*(?:ST|ND|RD|TH)\s+FLOOR")
 _RELAXED = (
-    (re.compile(r"LAU\s*0?(\d{1,2})(?!\d)"), 1),
-    (re.compile(r"T[AC]NG\s*0?(\d{1,2})(?!\d)"), 0),
-    (re.compile(r"\b(\d)\s*(?:ST|ND|RD|TH)\s+FLOOR"), 1),
+    (re.compile(r"LAU\s*0?(\d{1,2})(?!\d)"), 1, "lau"),
+    (re.compile(r"T[AC]NG\s*0?(\d{1,2})(?!\d)"), 0, "tang"),
+    (re.compile(r"\b(\d)\s*(?:ST|ND|RD|TH)\s+FLOOR"), 1, "ordinal"),
 )
-_BASEMENT_NO = re.compile(r"(?:HAM|BASEMENT|TANG AM)\s*(\d)\b")
+_BASEMENT_NO = re.compile(r"(?:HAM|BASEMENT|TANG AM)\s*B?\s*(\d+)")
+_MAX_BASEMENT = 6  # hầm sâu nhất đọc được; sâu hơn hoặc số lạ -> hầm không số
+_UNSURE_BASEMENT = 0.5
+# Chặn khối lượng việc: chữ OCR là dữ liệu ngoài, số tầng lạ không được sinh hàng triệu ứng viên.
+_MAX_VIEWS = 200  # quá số hình này trong một lần gọi: không chọn tầng cho hình nào (độ tin 0)
+_SPAN_CAP = 40  # dải tầng ứng viên rộng tối đa (và không rộng hơn số mặt bằng)
 
 Votes = dict[int, dict[str, float]]
 
@@ -323,26 +329,42 @@ _ORD_WORD = re.compile(r"\b(" + "|".join(_ORD) + r")\s+FLOOR")
 Cue = list[tuple[int, float]]
 
 
-def floor_relaxed(n: str) -> int | None:
-    """Số tầng (quy ước mặc định) trong một chữ đã gấp, nới biên phải ("BANGTRET", "LAU1"); None nếu không có."""
+def _relaxed(n: str) -> tuple[int, str] | None:
+    """(số tầng quy ước mặc định, cách viết "lau" | "tang" | "ordinal" | "ground") trong chữ đã gấp, hoặc None."""
     if _BASEMENT_WORD.search(n):
         return None
-    for pattern, add in _RELAXED:
+    for pattern, add, how in _RELAXED:
         m = pattern.search(n)
         if m and 0 < int(m.group(1)) < 30:
-            return int(m.group(1)) + add
+            return int(m.group(1)) + add, how
     if re.search(r"TRET|TRIET|GROUND", n):
-        return 1
+        return 1, "ground"
     m = _ORD_WORD.search(n)
-    return _ORD[m.group(1)] if m else None
+    return (_ORD[m.group(1)], "ordinal") if m else None
 
 
-def _cue_words(view: PlanView) -> Cue:
-    """Từ chỉ tầng ở mọi dòng chữ của hình; dòng có MAT BANG/PLAN nặng hơn, ghi chú cấu tạo nhẹ hơn."""
+def floor_relaxed(n: str, conv: str = "unchanged") -> int | None:
+    """Số tầng trong một chữ đã gấp, nới biên phải ("BANGTRET", "LAU1"); None nếu không có.
+
+    `conv` là quy ước của BỘ (`normalise_convention`), áp như `_storeys` áp cho tên: bộ trệt + tầng 1
+    thì "TANG N" = N + 1, bộ "first floor" kiểu Mỹ thì tầng thứ tự tiếng Anh lùi một.
+    """
+    r = _relaxed(n)
+    if r is None:
+        return None
+    f, how = r
+    if conv == "tret_plus_tang1" and how == "tang":
+        return f + 1
+    return f - 1 if conv == "us_english" and how == "ordinal" else f
+
+
+def _cue_words(view: PlanView, conv: str = "unchanged") -> Cue:
+    """Từ chỉ tầng ở mọi dòng chữ của hình, đọc theo quy ước `conv` của bộ (nên tên của chính hình không
+    bỏ phiếu chống lại nó); dòng có MAT BANG/PLAN nặng hơn, ghi chú cấu tạo nhẹ hơn."""
     votes: dict[int, float] = {}
     for text in view.texts or (_norm(view),):
         n = fold(text)
-        f = floor_relaxed(n) if n else None
+        f = floor_relaxed(n, conv) if n else None
         if f is not None:
             w = 1.0 if _PLANISH.search(n) else 0.3 if _NONSTOREY.search(n) else 0.6
             votes[f] = max(votes.get(f, 0.0), w)
@@ -354,6 +376,11 @@ def _cue_level_rank(v: float, dom: dict[str, float | None]) -> Cue:
     """Không có neo: hạng cốt trong các mặt bằng, khi cốt thấp nhất là 0."""
     vals = sorted({round(x, 1) for x in dom.values() if x is not None and x > -0.3})
     return [(vals.index(round(v, 1)) + 1, 0.4)] if round(v, 1) in vals and abs(vals[0]) <= 0.15 else []
+
+
+def _span(lo: int, hi: int, n: int) -> range:
+    """Tầng lo..hi; rỗng khi dải rộng hơn số mặt bằng `n` (hoặc `_SPAN_CAP`): dải đó không nói gì mà tốn việc."""
+    return range(lo, hi + 1) if 0 <= hi - lo < min(n, _SPAN_CAP) else range(0)
 
 
 def _cue_level(vid: str, dom: dict[str, float | None], anchors: dict[str, int]) -> Cue:
@@ -377,7 +404,8 @@ def _cue_level(vid: str, dom: dict[str, float | None], anchors: dict[str, int]) 
     below = [f for f, lv in known.items() if lv < v]
     above = [f for f, lv in known.items() if lv > v]
     lo, hi = (max(below) + 1 if below else 1), (min(above) - 1 if above else max(known) + 1)
-    return [(f, 0.5 / (hi - lo + 1)) for f in range(lo, hi + 1)] if lo <= hi else []
+    span = _span(lo, hi, len(dom))
+    return [(f, 0.5 / len(span)) for f in span]
 
 
 def _cue_order(vid: str, ids: list[str], anchors: dict[str, int]) -> Cue:
@@ -390,15 +418,19 @@ def _cue_order(vid: str, ids: list[str], anchors: dict[str, int]) -> Cue:
     if prev is None:
         return [(nxt, 0.3), (nxt - 1, 0.3)] if nxt >= 2 else [(nxt, 0.3)]
     lo, hi = sorted((prev, nxt))
-    return [(f, 0.6 / (hi - lo + 1)) for f in range(lo, hi + 1)]
+    span = _span(lo, hi, len(ids))
+    return [(f, 0.6 / len(span)) for f in span]
 
 
-def _cue_elim(vid: str, anchors: dict[str, int]) -> Cue:
-    """Tầng 1..đỉnh chưa mặt bằng neo nào giữ (đỉnh + 1 khi không còn chỗ trống)."""
+def _cue_elim(vid: str, anchors: dict[str, int], n: int = _MAX_VIEWS) -> Cue:
+    """Tầng 1..đỉnh chưa mặt bằng neo nào giữ (đỉnh + 1 khi không còn chỗ trống); không gì khi số chỗ trống
+    vượt số mặt bằng `n` (hoặc `_SPAN_CAP`)."""
     if vid in anchors:
         return []
     top = max(anchors.values(), default=0)
     used = set(anchors.values())
+    if top - len(used) > min(n, _SPAN_CAP):  # neo đều >= 1 nên top - len(used) là số chỗ trống
+        return []
     free = [f for f in range(1, top + 1) if f not in used] or [top + 1]
     return [(f, 0.5 / len(free)) for f in free]
 
@@ -415,16 +447,16 @@ def _cue_rank(views: Sequence[PlanView], anchors: dict[str, int]) -> dict[str, C
     for ids in groups.values():
         if len(ids) < 2:
             continue
-        free = [f for f in range(1, max(anchors.values(), default=0) + len(ids) + 1) if f not in used]
+        free = (f for f in count(1) if f not in used)  # lười: chỉ sinh đủ len(ids) tầng trống
         for vid, f in zip(ids, free, strict=False):
             out[vid] = [(f, 0.6)]
     return out
 
 
 def _candidates(
-    plans: Sequence[PlanView], rows: dict[str, _Row], order_known: bool
+    plans: Sequence[PlanView], rows: dict[str, _Row], order_known: bool, conv: str = "unchanged"
 ) -> dict[str, list[tuple[str, int, float]]]:
-    """{mã: [(nguồn, tầng, điểm)]} cho mọi mặt bằng có số hoặc chưa rõ tên; chưa gộp."""
+    """{mã: [(nguồn, tầng, điểm)]} cho mọi mặt bằng có số hoặc chưa rõ tên; chưa gộp; `conv` = quy ước bộ."""
     anchors = {v.view_id: f for v in plans if (f := rows[v.view_id].floor) is not None}
     ids = [v.view_id for v in plans]
     dom = {v.view_id: dominant(v.levels, near_zero=True) for v in plans}
@@ -433,10 +465,10 @@ def _candidates(
     for v in plans:
         own = {k: f for k, f in anchors.items() if k != v.view_id}
         cues = {
-            "words": _cue_words(v),
+            "words": _cue_words(v, conv),
             "level": _cue_level(v.view_id, dom, own),
             "order": _cue_order(v.view_id, ids, own) if order_known else [],
-            "elim": _cue_elim(v.view_id, anchors),
+            "elim": _cue_elim(v.view_id, anchors, len(plans)),
             "rank": rank.get(v.view_id, []),
         }
         out[v.view_id] = [(s, f, round(x, 3)) for s, c in cues.items() for f, x in c]
@@ -602,6 +634,17 @@ def _explain(view: PlanView, full: Votes, f: int, close: bool, anchored: bool) -
     return StoreyChoice("ground" if f == 1 else "floor", f, round(c, 3), fams, alt, conflict)
 
 
+def _basement(norm: str) -> StoreyChoice:
+    """Hầm sâu N (1.._MAX_BASEMENT, nhiều chữ số được) -> số 1 - N ở 0,8; không ghi độ sâu = hầm duy nhất (0);
+    độ sâu ngoài khoảng hoặc không đọc được -> hầm không số, độ tin < 0,7."""
+    m = _BASEMENT_NO.search(norm)
+    digits = m.group(1) if m else "1"
+    depth = int(digits) if len(digits) <= 2 else 0
+    if 1 <= depth <= _MAX_BASEMENT:
+        return StoreyChoice("basement", 1 - depth, 0.8, ("text",), None, ())
+    return StoreyChoice("basement", None, _UNSURE_BASEMENT, ("text",), None, ())
+
+
 def _word_choice(view: PlanView, top: int) -> StoreyChoice:
     """Hầm 0, -1 theo số hầm (0,8); lửng không số (0,6); tum/sân thượng = tầng cao nhất + 1, tối đa 0,7
     (quy ước đáp án tính nó là tầng khi có phòng, tên không cho biết điều đó); còn lại không rõ."""
@@ -609,9 +652,7 @@ def _word_choice(view: PlanView, top: int) -> StoreyChoice:
     if t is None:
         return _NONE
     if t.storey == "basement":
-        m = _BASEMENT_NO.search(t.norm)
-        depth = int(m.group(1)) if m and m.group(1) in "23" else 1
-        return StoreyChoice("basement", 1 - depth, 0.8, ("text",), None, ())
+        return _basement(t.norm)
     if t.storey == "mezzanine":
         return StoreyChoice("mezzanine", None, 0.6, ("text",), None, ())
     if t.storey == "attic" or t.storey == "roof_terrace":
@@ -623,13 +664,16 @@ def solve_storeys(views: Sequence[PlanView], order_known: bool = True) -> dict[s
     """{mã: StoreyChoice} cho mọi mặt bằng của MỘT bộ (gọi một lần cho cả bộ: dấu hiệu nhìn hàng xóm).
 
     `order_known=False` khi vị trí trong bộ không chắc: tắt dấu hiệu thứ tự và đánh số theo thứ tự
-    (kernel đo được thứ tự sai sinh lỗi tự tin).
+    (kernel đo được thứ tự sai sinh lỗi tự tin). Quá `_MAX_VIEWS` hình trong một lần gọi: mọi hình
+    không tầng, độ tin 0 (chặn khối lượng việc; một nhà thật không có ngần ấy mặt bằng).
     """
+    if len(views) > _MAX_VIEWS:
+        return {v.view_id: _NONE for v in views}
     ordered = sorted(views, key=lambda v: (v.position, v.view_id))
     by_id = {v.view_id: v for v in ordered}
     rows = _rows(ordered)
     plans = [v for v in ordered if v.view_id in rows]
-    cands = _candidates(plans, rows, order_known)
+    cands = _candidates(plans, rows, order_known, normalise_convention(ordered)[0])
     ground, dom = _ground_ids(rows, cands), _dominants(ordered)
     anchored = _anchored(dom, ground)
     ladder = _level_order(dom, ground, anchored)

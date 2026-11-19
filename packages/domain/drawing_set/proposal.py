@@ -49,6 +49,7 @@ NO_TEXT: Final = "NO_TEXT"
 
 _SURE: Final = 0.7  # độ tin tầng thấp hơn mức này thì hỏi; độ tin loại hình từ mức này thì tin là không phải mặt bằng
 _NOT_PLAN_KINDS: Final = frozenset({"section", "elevation", "roof", "site", "detail"})
+_CONFLICT_CAP: Final = 0.65  # độ tin tầng tối đa khi có bất đồng (như `storeys`)
 _KNOWN_PLAN_CONF: Final = 0.5  # độ tin loại hình khi người dùng tải lên là mặt bằng mà chữ không xác nhận
 
 
@@ -98,6 +99,7 @@ class _Read:
     view: HouseView
     guess: KindGuess | None
     plan: PlanView | None
+    title_conflict: bool = False  # tên dưới hình và tên khung tên lệch nhau (`pick_title` báo bất đồng)
 
 
 @dataclass(frozen=True)
@@ -124,7 +126,20 @@ def _read(view: HouseView) -> _Read:
     info = parse_title(picked.text) if picked.text else None
     marks = tuple(m.value_m for m in levels_from_texts(view.texts))
     plan = PlanView(view.floor_id, info, marks, view.position, tuple(t.text for t in view.texts))
-    return _Read(view, guess, plan)
+    return _Read(view, guess, plan, picked.sources_disagree)
+
+
+def _cap_title_conflicts(reads: Sequence[_Read], choices: dict[str, StoreyChoice]) -> dict[str, StoreyChoice]:
+    """Hình có hai nguồn tên lệch nhau: độ tin tầng không quá 0,65, bất kể `solve_storeys` nói gì.
+
+    Làm trước khi tính cốt/chiều cao để độ tin của chúng theo luật min.
+    """
+    out = dict(choices)
+    for read in reads:
+        if read.title_conflict and read.plan is not None:
+            choice = choices[read.plan.view_id]
+            out[read.plan.view_id] = replace(choice, confidence=min(choice.confidence, _CONFLICT_CAP))
+    return out
 
 
 def _rank(plan: PlanView) -> tuple[int, int, int, str]:
@@ -157,11 +172,13 @@ def _floor_values(level: FloorLevel, db_mm: int | None, storey_conf: float) -> _
 def _with_height(base: _Values, height: StoreyHeight, db_mm: int | None, conf: dict[int, float]) -> _Values:
     """Thêm chiều cao vào `base`; độ tin gấp thêm độ tin tầng của hai tầng nó nối.
 
-    Mặc định, giả định, bắc qua tầng thiếu mặt bằng hoặc ngoài khoảng sản phẩm thì hỏi `HEIGHT_ASSUMED`.
+    Mặc định, quy ước (một đầu cốt là 0.000 của trệt do giả định), giả định, bắc qua tầng thiếu mặt bằng hoặc
+    ngoài khoảng sản phẩm thì hỏi `HEIGHT_ASSUMED`. Cốt theo quy ước vẫn được đề xuất với độ tin thấp (0,6);
+    từ vựng hiện chưa có mã riêng "cốt này là giả định" nên không nâng `LEVEL_MISSING` cho nó.
     """
     ends = [conf[height.from_number]] + ([conf[height.to_number]] if height.to_number is not None else [])
     flagged = bool({"assumed", "spans_missing_storey"} & set(height.flags))
-    assumed = db_mm is None or height.source == "default" or flagged
+    assumed = db_mm is None or height.source in {"default", "convention"} or flagged
     questions = (*base.questions, HEIGHT_ASSUMED) if assumed else base.questions
     if db_mm is None:
         return replace(base, questions=questions)
@@ -196,9 +213,9 @@ def _values_by_view(plans: Sequence[PlanView], choices: dict[str, StoreyChoice])
     return out
 
 
-def _storey_questions(choice: StoreyChoice) -> tuple[str, ...]:
-    """Câu hỏi về tầng: bất đồng có ưu tiên; ngược lại độ tin dưới 0,7."""
-    if choice.conflict:
+def _storey_questions(choice: StoreyChoice, title_conflict: bool = False) -> tuple[str, ...]:
+    """Câu hỏi về tầng: bất đồng (của `solve_storeys` hoặc hai nguồn tên) có ưu tiên; ngược lại độ tin dưới 0,7."""
+    if choice.conflict or title_conflict:
         return (STOREY_CONFLICT,)
     return (STOREY_UNSURE,) if choice.confidence < _SURE else ()
 
@@ -220,7 +237,7 @@ def _plan_floor(read: _Read, choice: StoreyChoice, values: _Values) -> FloorProp
         values.height_mm,
         values.height_confidence,
         values.height_source,
-        (*_storey_questions(choice), *values.questions),
+        (*_storey_questions(choice, read.title_conflict), *values.questions),
     )
 
 
@@ -252,6 +269,6 @@ def solve_house(views: Sequence[HouseView], *, order_known: bool = False) -> Hou
         raise ValueError("floor_id trùng nhau")
     reads = [_read(v) for v in views]
     plans = [r.plan for r in reads if r.plan is not None]
-    choices = solve_storeys(plans, order_known)
+    choices = _cap_title_conflicts(reads, solve_storeys(plans, order_known))
     values = _values_by_view(plans, choices)
     return HouseProposal(tuple(_floor(r, choices, values) for r in reads))

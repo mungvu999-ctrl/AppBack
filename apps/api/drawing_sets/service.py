@@ -1,15 +1,23 @@
 """Đề xuất tầng, cốt và chiều cao cho cả nhà từ chữ OCR đã có của từng tầng (HS-02, chỉ đọc).
 
-Một câu SQL lấy mọi tầng của dự án theo `floor_order` kèm lượt `completed` mới nhất chưa bị thay
-(cùng luật `spatial_read.detected.latest_run`) và cỡ trang bản vẽ; `text.json` của các lượt ấy đọc
-song song qua cổng kho, rồi `solve_house` (thuần, tốn CPU) chạy ngoài vòng sự kiện (R-23).
+Một câu SQL lấy các tầng của dự án theo `floor_order` kèm lượt `completed` mới nhất chưa bị thay
+(cùng luật `spatial_read.detected.latest_run`) và cỡ trang của bản vẽ **cùng lượt tải** với lượt ấy. Xong câu
+SQL là trả kết nối (`rollback`, K36: route không ghi gì). `text.json` của các lượt đọc song song qua cổng kho
+(`TaskGroup`: lỗi kho đầu tiên huỷ các lượt đọc còn lại), rồi phân tích JSON + dựng hình + `solve_house` chạy
+trong **một** hàm đồng bộ ở `asyncio.to_thread` (R-23).
+
+Trần mỗi request: `MAX_FLOORS` tầng đầu theo `(floor_order, pk)` — tầng thứ 201 trở đi bị **bỏ khỏi** phản hồi
+(trùng trần `_MAX_VIEWS` của bộ giải; nhà thật không có ngần ấy tầng); mỗi artifact tối đa
+`ARTIFACT_JSON_MAX_BYTES` (bộ đọc dừng khi vượt); cả phần đọc + giải trong `DEADLINE_S` (dưới trần 15 s của
+W11), quá hạn → 503 `DEPENDENCY_UNAVAILABLE`, không trả nửa kết quả.
 
 Không ghi DB, không gọi ML. Tầng chưa có lượt, artifact vắng, quá trần hay sai hợp đồng chỉ có nghĩa
-"không có chữ" — miền trả `NO_TEXT` cho tầng đó, người gọi không nhận lỗi. Lỗi kho tạm thời
-(`DEPENDENCY_UNAVAILABLE`) thì lan nguyên để client thử lại (R-16).
+"không có chữ" — miền trả `NO_TEXT` cho tầng đó (ghi log một dòng mỗi tầng, không kèm nội dung), người gọi
+không nhận lỗi. Lỗi kho tạm thời (`DEPENDENCY_UNAVAILABLE`) thì lan nguyên để client thử lại (R-16).
 """
 
 import asyncio
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Final
@@ -17,15 +25,20 @@ from typing import Any, Final
 from sqlalchemy import Select, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.api.spatial_read.detected import parse_texts, read_artifact
+from apps.api.spatial_read.detected import read_artifact
+from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
 from packages.db.models.drawings import DrawingRow, PipelineRunRow
 from packages.db.models.floors import FloorRow
 from packages.domain.drawing_set import HouseProposal, HouseView, solve_house
-from packages.ml_contracts.artifacts import TextPx
+from packages.ml_contracts.artifacts import TextPx, text_from_json
 from packages.storage.port import ObjectStorage
 
-MAX_FLOORS: Final = 1000
-"""Trần số tầng đọc: `floor_order` của sản phẩm chỉ trong 0..999 (CHECK `floor_order_range`)."""
+MAX_FLOORS: Final = 200
+"""Trần số tầng một request xét (= `_MAX_VIEWS` của bộ giải); tầng sau đó theo `floor_order` bị bỏ khỏi phản hồi."""
+DEADLINE_S: Final = 12.0
+"""Trần thời gian đọc + giải của một request (W11: < 15 s)."""
+RETRY_AFTER_S: Final = 5
+"""`Retry-After` của 503 khi quá `DEADLINE_S` (W9: ≤ 10 s)."""
 _READ_CONCURRENCY: Final = 4
 """Số artifact đọc cùng lúc: đủ gối đầu độ trễ kho mà không chiếm hết kết nối."""
 
@@ -57,10 +70,14 @@ class _Ocr:
     confidence: float
 
 
+_log: Final = logging.getLogger(__name__)
+
+
 def _sources_stmt(project_id: str) -> Select[Any]:
     """Mọi tầng chưa xoá của dự án theo `(floor_order, pk)`; lượt mới nhất dựng bằng `LATERAL`, một câu cho cả bộ.
 
-    Tầng chưa có lượt `completed` vẫn ra (cột lượt `NULL`). `drawings.floor_pk` unique nên join không nhân dòng.
+    Tầng chưa có lượt `completed` vẫn ra (cột lượt `NULL`). `drawings.floor_pk` unique nên join không nhân dòng;
+    bản vẽ chỉ khớp khi cùng lượt tải với lượt chạy (như `drawings/latest.py`), lệch thì cỡ lấy từ hộp bao chữ.
     """
     latest = (
         select(PipelineRunRow.id.label("run_id"), PipelineRunRow.upload_id.label("upload_id"))
@@ -83,7 +100,7 @@ def _sources_stmt(project_id: str) -> Select[Any]:
         )
         .select_from(FloorRow)
         .outerjoin(latest, true())
-        .outerjoin(DrawingRow, DrawingRow.floor_pk == FloorRow.pk)
+        .outerjoin(DrawingRow, (DrawingRow.floor_pk == FloorRow.pk) & (DrawingRow.upload_id == latest.c.upload_id))
         .where(FloorRow.project_id == project_id, FloorRow.deleted_at.is_(None))
         .order_by(FloorRow.floor_order, FloorRow.pk)
         .limit(MAX_FLOORS)
@@ -103,23 +120,43 @@ async def _load_sources(db: AsyncSession, project_id: str) -> list[_FloorSource]
     ]
 
 
-async def _read_texts(
-    storage: ObjectStorage, project_id: str, sources: Sequence[_FloorSource]
-) -> list[tuple[TextPx, ...]]:
-    """`text.json` của từng tầng theo thứ tự `sources`, tối đa `_READ_CONCURRENCY` lượt đọc cùng lúc."""
+async def _read_blobs(storage: ObjectStorage, project_id: str, sources: Sequence[_FloorSource]) -> list[bytes | None]:
+    """Bytes `text.json` của từng tầng theo thứ tự `sources` (`None`: chưa có lượt, vắng hay quá trần).
+
+    Tối đa `_READ_CONCURRENCY` lượt đọc cùng lúc. `TaskGroup` huỷ các lượt còn lại ngay khi một lượt lỗi
+    (`gather` thì không); lỗi đầu tiên được ném lại nguyên dạng thay vì `ExceptionGroup`.
+    """
     gate = asyncio.Semaphore(_READ_CONCURRENCY)
 
-    async def one(source: _FloorSource) -> tuple[TextPx, ...]:
-        """Chữ của một tầng; chưa có lượt hay artifact vắng/hỏng → rỗng."""
+    async def one(source: _FloorSource) -> bytes | None:
+        """Bytes của một tầng."""
         if source.run is None:
-            return ()
+            return None
         async with gate:
-            data = await read_artifact(
+            return await read_artifact(
                 storage, project_id=project_id, floor_id=source.floor_id, run=source.run, step="dimensionReading"
             )
-        return parse_texts(data)
 
-    return list(await asyncio.gather(*(one(source) for source in sources)))
+    try:
+        async with asyncio.TaskGroup() as group:
+            tasks = [group.create_task(one(source)) for source in sources]
+    except ExceptionGroup as failed:
+        raise failed.exceptions[0] from None
+    return [task.result() for task in tasks]
+
+
+def _texts_of(source: _FloorSource, data: bytes | None) -> tuple[TextPx, ...]:
+    """Chữ của một tầng; artifact vắng, quá trần hay sai hợp đồng → rỗng và một dòng log (không nội dung)."""
+    if source.run is None:
+        return ()
+    if data is None:
+        _log.warning("house_proposal_text_missing", extra={"floor_id": source.floor_id, "run_id": source.run[0]})
+        return ()
+    try:
+        return text_from_json(data).items
+    except ValueError:
+        _log.warning("house_proposal_text_invalid", extra={"floor_id": source.floor_id, "run_id": source.run[0]})
+        return ()
 
 
 def _view(source: _FloorSource, texts: tuple[TextPx, ...], position: int) -> HouseView:
@@ -155,18 +192,30 @@ def order_differs_of(storeys: Sequence[tuple[str, int | None]]) -> frozenset[str
     return frozenset(flagged)
 
 
-async def read_house_proposal(session: AsyncSession, storage: ObjectStorage, project_id: str) -> HouseProposalRead:
-    """Đề xuất cho cả dự án từ `text.json` của lượt mới nhất của từng tầng.
-
-    Dự án không có tầng → đề xuất rỗng. `solve_house` chạy trong `asyncio.to_thread` vì nó tốn CPU và
-    chạy lại trên chữ cả trang của mọi tầng.
-    """
-    sources = await _load_sources(session, project_id)
-    texts = await _read_texts(storage, project_id, sources)
+def _solve(sources: Sequence[_FloorSource], blobs: Sequence[bytes | None]) -> HouseProposalRead:
+    """Phần tốn CPU, đồng bộ (chạy trong `to_thread`): phân tích JSON, dựng hình, `solve_house`."""
+    texts = [_texts_of(source, data) for source, data in zip(sources, blobs, strict=True)]
     views = [_view(source, found, index) for index, (source, found) in enumerate(zip(sources, texts, strict=True))]
-    proposal = await asyncio.to_thread(solve_house, views, order_known=False)
+    proposal = solve_house(views, order_known=False)
     return HouseProposalRead(
         proposal=proposal,
         run_ids=tuple(source.run[0] for source, found in zip(sources, texts, strict=True) if source.run and found),
         order_differs=order_differs_of([(floor.floor_id, floor.storey_no) for floor in proposal.floors]),
     )
+
+
+async def read_house_proposal(session: AsyncSession, storage: ObjectStorage, project_id: str) -> HouseProposalRead:
+    """Đề xuất cho cả dự án từ `text.json` của lượt mới nhất của từng tầng (tối đa `MAX_FLOORS` tầng đầu).
+
+    Dự án không có tầng → đề xuất rỗng. Trả kết nối DB ngay sau câu SQL (K36). Đọc + giải quá `DEADLINE_S`
+    → 503 `DEPENDENCY_UNAVAILABLE`.
+    """
+    sources = await _load_sources(session, project_id)
+    await session.rollback()
+    try:
+        async with asyncio.timeout(DEADLINE_S):
+            blobs = await _read_blobs(storage, project_id, sources)
+            # ponytail: quá hạn không dừng được luồng giải đang chạy; nó tự xong (bộ giải có trần `_MAX_VIEWS`).
+            return await asyncio.to_thread(_solve, sources, blobs)
+    except TimeoutError as exc:
+        raise DEPENDENCY_UNAVAILABLE.error(retry_after=RETRY_AFTER_S) from exc

@@ -4,12 +4,12 @@ Postgres thật cho thành viên/dự án (K23); `service.read_house_proposal` �
 kiểm nhánh công tắc và hình dạng dây (R-29), còn `__real_service` chạy cả service trên dự án thật.
 """
 
+import logging
 from collections.abc import Iterator
 from typing import Any, Final, get_args
 
 import httpx
 import pytest
-from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.drawing_sets import router as router_module
@@ -81,17 +81,14 @@ def _read(
 async def test_drawing_sets_read_house_proposal__disabled(
     api_client: httpx.AsyncClient, db_session: AsyncSession, drawing_set_off: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Công tắc tắt → 503 `DRAWING_SET_DISABLED` (khoá gốc `code`, có `Retry-After`) và service không được gọi."""
+    """Công tắc tắt → 200 `enabled: false`, mảng rỗng (mẫu N47, không 503 để FE khỏi thử lại), service không chạy."""
     scene = await make_scene(db_session)
     spy = _stub(monkeypatch, _read())
 
     response = await api_client.get(_path(scene.project.id), headers=headers_of(scene.owner))
 
-    assert response.status_code == 503
-    body = response.json()
-    assert body["code"] == "DRAWING_SET_DISABLED"
-    assert set(body) == {"code", "requestId"}
-    assert response.headers["Retry-After"] == "10"
+    assert (response.status_code, response.json()) == (200, {"enabled": False, "floors": [], "runIds": []})
+    assert "Retry-After" not in response.headers
     assert spy.calls == []
 
 
@@ -127,6 +124,7 @@ async def test_drawing_sets_read_house_proposal__C01(
 
     assert response.status_code == 200, response.text
     assert response.json() == {
+        "enabled": True,
         "floors": [
             {
                 "floorId": "L-A",
@@ -174,13 +172,13 @@ async def test_drawing_sets_read_house_proposal__viewer_reads(
 async def test_drawing_sets_read_house_proposal__empty_project(
     api_client: httpx.AsyncClient, db_session: AsyncSession, drawing_set_on: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Dự án không tầng → 200 `{"floors": [], "runIds": []}`: mảng rỗng vẫn có khoá."""
+    """Dự án không tầng → 200 `{"enabled": true, "floors": [], "runIds": []}`: mảng rỗng vẫn có khoá."""
     scene = await make_scene(db_session, floors=0)
     _stub(monkeypatch, _read())
 
     response = await api_client.get(_path(scene.project.id), headers=headers_of(scene.owner))
 
-    assert (response.status_code, response.json()) == (200, {"floors": [], "runIds": []})
+    assert (response.status_code, response.json()) == (200, {"enabled": True, "floors": [], "runIds": []})
 
 
 async def test_drawing_sets_read_house_proposal__real_service(
@@ -196,7 +194,7 @@ async def test_drawing_sets_read_house_proposal__real_service(
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["runIds"] == []
+    assert (body["enabled"], body["runIds"]) == (True, [])
     assert [f["floorId"] for f in body["floors"]] == [f.level_id for f in scene.floors]
     assert all(f["questions"] == [{"code": "NO_TEXT"}] and f["kind"] == "other" for f in body["floors"])
 
@@ -239,20 +237,34 @@ def test_house_proposal_out__every_question_code(code: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "bad",
+    ("bad", "field", "expected"),
     [
-        {"kind": "garage"},
-        {"storey_label": "penthouse"},
-        {"elevation_source": "guess"},
-        {"height_source": "guess"},
-        {"questions": ("TOO_TALL",)},
+        ({"kind": "garage"}, "kind", "other"),
+        ({"storey_label": "penthouse"}, "storeyLabel", None),
+        ({"elevation_mm": 0, "elevation_source": "guess"}, "elevationSource", "default"),
+        ({"height_mm": 3000, "height_source": "guess"}, "heightSource", "default"),
+        ({"questions": ("TOO_TALL",)}, "questions", [{"code": "STOREY_UNSURE"}]),
     ],
 )
-def test_house_proposal_out__domain_value_outside_wire_enum_fails(bad: dict[str, Any]) -> None:
-    """Giá trị miền ngoài enum dây làm `ValidationError`, không lọt ra FE."""
+def test_house_proposal_out__domain_value_outside_wire_enum_falls_back(
+    bad: dict[str, Any], field: str, expected: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Giá trị miền ngoài enum dây không làm 500: đổi về giá trị dè dặt nhất (vắng nếu `None`) và ghi một dòng log."""
     floor = FloorProposal(**{"floor_id": "L", "kind": "plan", "kind_confidence": 0.5, **bad})
-    with pytest.raises(ValidationError):
-        house_proposal_out(HouseProposal((floor,)), (), frozenset())
+    with caplog.at_level(logging.WARNING, logger="apps.api.drawing_sets.schemas"):
+        wire = _wire(floor)
+    assert wire.get(field) == expected
+    assert [r.message for r in caplog.records] == ["house_proposal_unknown_value"]
+
+
+def test_house_proposal_out__confidences_clamped_to_unit() -> None:
+    """Độ tin ngoài [0, 1] của miền bị kẹp lại trên dây (W3)."""
+    floor = FloorProposal(
+        "L", "plan", 1.4, "ground", 1, -0.2, elevation_mm=0, elevation_confidence=7.0, height_confidence=-1.0
+    )
+    wire = _wire(floor)
+    assert (wire["kindConfidence"], wire["storeyConfidence"]) == (1.0, 0.0)
+    assert (wire["elevationConfidence"], wire["heightConfidence"]) == (1.0, 0.0)
 
 
 def test_wire_enums_cover_what_the_domain_can_produce() -> None:

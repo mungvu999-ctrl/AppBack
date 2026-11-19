@@ -3,16 +3,23 @@
 Dữ liệu dựng thật (DB + kho trên đĩa): tầng, lượt `completed`, bản vẽ và artifact `dimensionReading/text.json`.
 """
 
+import asyncio
+import logging
 from datetime import timedelta
+from typing import Any
 
 import pytest
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.api.drawing_sets import service
 from apps.api.drawing_sets.service import HouseProposalRead, order_differs_of, read_house_proposal
 from apps.api.drawings.runs import start_run
 from apps.api.projects.tests.sql_count import count_sql
+from apps.api.spatial_read import detected
 from apps.api.spatial_read.tests._helpers import Scene, make_scene
+from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
+from packages.core.errors import AppError
 from packages.db.models.drawings import PipelineRunRow
 from packages.db.models.floors import FloorRow
 from packages.ml_contracts.artifacts import BoxPx, TextPx, TextResult, text_to_json
@@ -85,9 +92,10 @@ async def test_drawing_sets_read_house_proposal__three_floors(
         scene,
         [("MẶT BẰNG TẦNG 1", "±0.000"), ("MẶT BẰNG TẦNG 2", "+3.300"), ("MẶT BẰNG TẦNG 3", "+6.600")],
     )
+    ids = [f.level_id for f in scene.floors]  # `rollback` của service làm hết hạn đối tượng ORM
     got = await read_house_proposal(db_session, local_storage, scene.project.id)
     assert isinstance(got, HouseProposalRead)
-    assert [f.floor_id for f in got.proposal.floors] == [f.level_id for f in scene.floors]
+    assert [f.floor_id for f in got.proposal.floors] == ids
     assert [f.storey_no for f in got.proposal.floors] == [1, 2, 3]
     assert [f.elevation_mm for f in got.proposal.floors] == [0, 3300, 6600]
     assert [f.height_mm for f in got.proposal.floors][:2] == [3300, 3300]
@@ -103,8 +111,9 @@ async def test_drawing_sets_read_house_proposal__floor_without_run(
     body = text_to_json(_texts("MẶT BẰNG TẦNG 1", "±0.000"))
     first = await _seed_run(db_session, local_storage, fake_clock, scene, scene.floors[0], body=body)
     await _seed_run(db_session, local_storage, fake_clock, scene, scene.floors[2], body=body, status="running")
+    ids = [f.level_id for f in scene.floors]  # `rollback` của service làm hết hạn đối tượng ORM
     got = await read_house_proposal(db_session, local_storage, scene.project.id)
-    assert [f.floor_id for f in got.proposal.floors] == [f.level_id for f in scene.floors]
+    assert [f.floor_id for f in got.proposal.floors] == ids
     assert got.proposal.floors[1].questions == ("NO_TEXT",)
     assert got.proposal.floors[2].questions == ("NO_TEXT",)
     assert got.proposal.floors[0].storey_no == 1
@@ -196,9 +205,10 @@ async def test_drawing_sets_read_house_proposal__order_differs(
         scene,
         [("MẶT BẰNG TẦNG 1", "±0.000"), ("MẶT BẰNG TẦNG 3", "+6.600"), ("MẶT BẰNG TẦNG 2", "+3.300")],
     )
+    ids = [f.level_id for f in scene.floors]  # `rollback` của service làm hết hạn đối tượng ORM
     got = await read_house_proposal(db_session, local_storage, scene.project.id)
     assert [f.storey_no for f in got.proposal.floors] == [1, 3, 2]
-    assert got.order_differs == {scene.floors[1].level_id, scene.floors[2].level_id}
+    assert got.order_differs == {ids[1], ids[2]}
 
 
 async def test_drawing_sets_read_house_proposal__empty_project(
@@ -220,8 +230,9 @@ async def test_drawing_sets_read_house_proposal__deleted_floor_is_ignored(
         update(FloorRow).where(FloorRow.pk == scene.floors[1].pk).values(deleted_at=fake_clock.now())
     )
     await db_session.commit()
+    ids = [f.level_id for f in scene.floors]  # `rollback` của service làm hết hạn đối tượng ORM
     got = await read_house_proposal(db_session, local_storage, scene.project.id)
-    assert [f.floor_id for f in got.proposal.floors] == [scene.floors[0].level_id]
+    assert [f.floor_id for f in got.proposal.floors] == [ids[0]]
 
 
 async def test_drawing_sets_read_house_proposal__query_count_constant(
@@ -242,6 +253,99 @@ async def test_drawing_sets_read_house_proposal__query_count_constant(
             await read_house_proposal(db_session, local_storage, scene.project.id)
         counts.append(counter.count)
     assert counts == [1, 1]
+
+
+async def test_drawing_sets_read_house_proposal__connection_released_before_reads(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """K36: lúc đọc artifact, phiên không còn giao dịch (kết nối đã trả pool)."""
+    scene = await make_scene(db_session, floors=2)
+    await _seed_titles(db_session, local_storage, fake_clock, scene, [("MẶT BẰNG TẦNG 1", "±0.000")] * 2)
+    in_tx: list[bool] = []
+    real_read = detected.read_artifact
+
+    async def spy(*args: Any, **kwargs: Any) -> bytes | None:
+        """Ghi trạng thái giao dịch rồi đọc thật."""
+        in_tx.append(db_session.in_transaction())
+        return await real_read(*args, **kwargs)
+
+    monkeypatch.setattr(service, "read_artifact", spy)
+    await read_house_proposal(db_session, local_storage, scene.project.id)
+    assert in_tx == [False, False]
+
+
+async def test_drawing_sets_read_house_proposal__oversized_artifact(
+    db_session: AsyncSession,
+    local_storage: LocalDiskStorage,
+    fake_clock: FakeClock,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Artifact vượt trần bộ đọc → tầng NO_TEXT, một dòng log cho tầng đó, không ném lỗi."""
+    scene = await make_scene(db_session, floors=1)
+    body = text_to_json(_texts("MẶT BẰNG TẦNG 1", "±0.000"))
+    await _seed_run(db_session, local_storage, fake_clock, scene, scene.floors[0], body=body)
+    monkeypatch.setattr(detected, "ARTIFACT_JSON_MAX_BYTES", len(body) - 1)
+    with caplog.at_level(logging.WARNING, logger="apps.api.drawing_sets.service"):
+        got = await read_house_proposal(db_session, local_storage, scene.project.id)
+    assert got.proposal.floors[0].questions == ("NO_TEXT",)
+    assert [r.message for r in caplog.records if r.name == service.__name__] == ["house_proposal_text_missing"]
+
+
+async def test_drawing_sets_read_blobs__storage_failure_cancels_siblings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Lỗi kho đầu tiên lan nguyên (không `ExceptionGroup`) và các lượt đọc còn lại bị huỷ."""
+    cancelled: list[str] = []
+
+    async def fake_read(storage: object, *, floor_id: str, **_: object) -> bytes | None:
+        """Tầng `bad` lỗi ngay; các tầng khác chờ mãi tới khi bị huỷ."""
+        if floor_id == "bad":
+            raise DEPENDENCY_UNAVAILABLE.error(retry_after=1)
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            cancelled.append(floor_id)
+            raise
+        return None
+
+    monkeypatch.setattr(service, "read_artifact", fake_read)
+    sources = [service._FloorSource(fid, ("run", "upl"), None) for fid in ("a", "b", "bad")]
+    with pytest.raises(AppError) as caught:
+        await service._read_blobs(object(), "prj", sources)  # type: ignore[arg-type]
+    assert caught.value.code is DEPENDENCY_UNAVAILABLE
+    assert sorted(cancelled) == ["a", "b"]
+
+
+async def test_drawing_sets_read_house_proposal__deadline(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Đọc + giải quá `DEADLINE_S` → 503 `DEPENDENCY_UNAVAILABLE` có `Retry-After`, không nửa kết quả."""
+    scene = await make_scene(db_session, floors=1)
+
+    async def slow_read(*_: object, **__: object) -> bytes | None:
+        await asyncio.sleep(30)
+        return None
+
+    async def one_source(*_: object) -> list[Any]:
+        return [service._FloorSource(scene.floors[0].level_id, ("run", "upl"), None)]
+
+    monkeypatch.setattr(service, "_load_sources", one_source)
+    monkeypatch.setattr(service, "read_artifact", slow_read)
+    monkeypatch.setattr(service, "DEADLINE_S", 0.05)
+    with pytest.raises(AppError) as caught:
+        await read_house_proposal(db_session, local_storage, scene.project.id)
+    assert (caught.value.code, caught.value.retry_after) == (DEPENDENCY_UNAVAILABLE, service.RETRY_AFTER_S)
+
+
+async def test_drawing_sets_read_house_proposal__max_floors(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Quá `MAX_FLOORS`: chỉ các tầng đầu theo `floor_order` vào phản hồi, phần còn lại bị bỏ."""
+    assert service.MAX_FLOORS == 200
+    scene = await make_scene(db_session, floors=3)
+    monkeypatch.setattr(service, "MAX_FLOORS", 2)
+    ids = [f.level_id for f in scene.floors]  # `rollback` của service làm hết hạn đối tượng ORM
+    got = await read_house_proposal(db_session, local_storage, scene.project.id)
+    assert [f.floor_id for f in got.proposal.floors] == ids[:2]
 
 
 @pytest.mark.parametrize(

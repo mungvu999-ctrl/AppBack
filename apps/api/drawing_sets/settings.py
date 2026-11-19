@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class DrawingSetSettings(BaseSettings):
-    """`drawing_set_enabled` mặc định tắt: tắt thì `GET …/house-proposal` trả 503 `DRAWING_SET_DISABLED`."""
+    """`drawing_set_enabled` mặc định tắt: tắt thì `GET …/house-proposal` trả 200 `enabled: false`, rỗng."""
 
     model_config = SettingsConfigDict(extra="ignore", env_file=None)
 

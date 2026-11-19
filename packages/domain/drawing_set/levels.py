@@ -219,6 +219,24 @@ def _is_round(value: float) -> bool:
     return abs(steps - round(steps)) < 1e-6
 
 
+def level_groups(values: Iterable[float], *, prefer_zero: bool = False) -> list[tuple[float, int]]:
+    """Các sàn của một mặt bằng, tăng dần: `(giá trị đại diện, tổng số lần của nhóm)`.
+
+    Cốt cách nhau dưới 0,12 m là một sàn. Đại diện là giá trị tròn (bội 0,05 m) và cao hơn; với
+    `prefer_zero` (mặt bằng tầng trệt) thì 0.000 thắng mọi giá trị khác trong nhóm. Rỗng khi không có cốt.
+    """
+    return [
+        (
+            max(
+                (v for v, _ in group),
+                key=lambda v: (prefer_zero and abs(v) <= _CLUSTER_TOL_M, _is_round(v), v),
+            ),
+            sum(count for _, count in group),
+        )
+        for group in _floor_groups(_clusters(values))
+    ]
+
+
 def main_floor_level(values: Iterable[float]) -> MainLevel | None:
     """Cốt sàn chính của một mặt bằng từ các cốt trên nó; `None` khi không có cốt nào.
 
@@ -226,15 +244,8 @@ def main_floor_level(values: Iterable[float]) -> MainLevel | None:
     diện là giá trị tròn (bội 0,05 m) và cao hơn: cốt WC trũng thua dù xuất hiện nhiều hơn. Sàn
     chính là nhóm đông nhất, hoà thì nhóm cao hơn; các nhóm còn lại trả ở `alternatives`.
     """
-    groups = _floor_groups(_clusters(values))
-    if not groups:
+    ranked = sorted(level_groups(values), key=lambda item: (-item[1], -item[0]))
+    if not ranked:
         return None
-    ranked = sorted(
-        (
-            (sum(count for _, count in group), max((v for v, _ in group), key=lambda v: (_is_round(v), v)))
-            for group in groups
-        ),
-        key=lambda item: (-item[0], -item[1]),
-    )
-    (count, value), rest = ranked[0], ranked[1:]
-    return MainLevel(value, count, tuple(v for _, v in rest))
+    (value, count), rest = ranked[0], ranked[1:]
+    return MainLevel(value, count, tuple(v for v, _ in rest))

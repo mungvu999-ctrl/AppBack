@@ -9,6 +9,7 @@ import pytest
 from packages.domain.drawing_set.levels import (
     LevelMark,
     MainLevel,
+    level_groups,
     levels_from_texts,
     main_floor_level,
     norm_zero,
@@ -275,3 +276,14 @@ def test_main_floor_level_is_order_independent() -> None:
     """Thứ tự đầu vào không đổi kết quả."""
     values = [0.0, 3.6, 0.0, 3.55, 0.0, 3.6]
     assert main_floor_level(values) == main_floor_level(values[::-1])
+
+
+def test_level_groups_returns_ascending_floors_with_counts() -> None:
+    assert level_groups([3.6, -0.45, 0.0, 0.0, 3.55, 3.6]) == [(-0.45, 1), (0.0, 2), (3.6, 3)]
+    assert level_groups([]) == []
+
+
+def test_level_groups_prefer_zero_only_when_asked() -> None:
+    values = [0.0, 0.1, 0.1]  # một sàn: 0.000 và 0.100 cách nhau dưới 0,12 m
+    assert level_groups(values) == [(0.1, 3)]
+    assert level_groups(values, prefer_zero=True) == [(0.0, 3)]

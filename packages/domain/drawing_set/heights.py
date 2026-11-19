@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import Final, Literal
 
-from packages.domain.drawing_set.levels import _clusters, _floor_groups, _is_round
+from packages.domain.drawing_set.levels import level_groups
 
 DEFAULT_HEIGHT_M: Final = 3.3  # chiều cao giả định khi không có cốt (solve_set.DEFAULT_H)
 ELEVATION_RANGE_MM: Final = (-30000, 300000)  # FloorRow.elevation_mm
@@ -128,14 +128,9 @@ class _Problem:
 def _plan_values(marks: Sequence[float], ground: bool) -> list[tuple[float, int]]:
     """Cốt riêng của một mặt bằng `(giá trị, số lần)` sau luật "sàn hoàn thiện chính" của heights3.
 
-    Cốt cách nhau dưới 0,12 m là một sàn và lấy cả số lần của nhóm; đại diện là 0.000 trên mặt bằng trệt,
-    nếu không thì giá trị tròn (bội 0,05 m) và cao hơn. Khác `levels.main_floor_level`: giữ mọi nhóm kèm số lần.
+    Khác `levels.main_floor_level`: giữ mọi nhóm kèm số lần; đại diện là 0.000 trên mặt bằng trệt.
     """
-    out: list[tuple[float, int]] = []
-    for group in _floor_groups(_clusters(marks)):
-        best = max(group, key=lambda c: (ground and abs(c[0]) <= _TOL_M, _is_round(c[0]), c[0]))
-        out.append((best[0], sum(n for _, n in group)))
-    return out
+    return level_groups(marks, prefer_zero=ground)
 
 
 def _ground_anchor(marks: Sequence[float]) -> float:

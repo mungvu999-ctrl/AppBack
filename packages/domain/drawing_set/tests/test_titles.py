@@ -659,7 +659,20 @@ def test_far_scale_note_does_not_lift_a_candidate() -> None:
 
 def test_keyword_index_matches_the_plain_comparison() -> None:
     """Bảng tra từ khoá cho đúng kết quả của phép so từng từ khoá, kể cả với chữ rác."""
-    words = {"TANG", "TNG", "TAANG", "TUNG", "BANH", "FLOR", "SECTON", "GROUNDS", "ELEVATIONS", "NGAT", "XYZ", "ABCDEFGH"}
+    words = {
+        "TANG",
+        "TNG",
+        "TAANG",
+        "TUNG",
+        "BANH",
+        "FLOR",
+        "SECTON",
+        "GROUNDS",
+        "ELEVATIONS",
+        "NGAT",
+        "XYZ",
+        "ABCDEFGH",
+    }
     for key in titles._SNAP_WORDS:
         words |= titles._one_off(key) | {key[:i] + "X" + key[i:] for i in range(len(key) + 1)}
     for word in words:

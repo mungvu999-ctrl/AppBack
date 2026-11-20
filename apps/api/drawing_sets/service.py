@@ -4,7 +4,7 @@ Một câu SQL lấy các tầng của dự án theo `floor_order` kèm lượt 
 (cùng luật `spatial_read.detected.latest_run`) và cỡ trang của bản vẽ **cùng lượt tải** với lượt ấy. Xong câu
 SQL là trả kết nối (`rollback`, K36: route không ghi gì). `text.json` của các lượt đọc song song qua cổng kho
 (`TaskGroup`: lỗi kho đầu tiên huỷ các lượt đọc còn lại), rồi phân tích JSON + dựng hình + `solve_house` chạy
-trong **một** hàm đồng bộ ở `asyncio.to_thread` (R-23).
+trong **một** hàm đồng bộ ở nhóm luồng riêng `_SOLVERS` (R-23).
 
 Trần mỗi request: `MAX_FLOORS` tầng đầu theo `(floor_order, pk)` — tầng thứ 201 trở đi bị **bỏ khỏi** phản hồi
 (trùng trần `_MAX_VIEWS` của bộ giải; nhà thật không có ngần ấy tầng); mỗi artifact tối đa
@@ -19,6 +19,7 @@ không nhận lỗi. Lỗi kho tạm thời (`DEPENDENCY_UNAVAILABLE`) thì lan 
 import asyncio
 import logging
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -41,6 +42,9 @@ RETRY_AFTER_S: Final = 5
 """`Retry-After` của 503 khi quá `DEADLINE_S` (W9: ≤ 10 s)."""
 _READ_CONCURRENCY: Final = 4
 """Số artifact đọc cùng lúc: đủ gối đầu độ trễ kho mà không chiếm hết kết nối."""
+_SOLVERS: Final = ThreadPoolExecutor(max_workers=2, thread_name_prefix="house-proposal")
+"""Luồng giải riêng: quá hạn không dừng được luồng đang chạy, nên số luồng là trần CPU của cả tính năng; request
+tới sau xếp hàng và bị bỏ khỏi hàng khi quá `DEADLINE_S`."""
 
 
 @dataclass(frozen=True)
@@ -193,7 +197,7 @@ def order_differs_of(storeys: Sequence[tuple[str, int | None]]) -> frozenset[str
 
 
 def _solve(sources: Sequence[_FloorSource], blobs: Sequence[bytes | None]) -> HouseProposalRead:
-    """Phần tốn CPU, đồng bộ (chạy trong `to_thread`): phân tích JSON, dựng hình, `solve_house`."""
+    """Phần tốn CPU, đồng bộ (chạy trong `_SOLVERS`): phân tích JSON, dựng hình, `solve_house`."""
     texts = [_texts_of(source, data) for source, data in zip(sources, blobs, strict=True)]
     views = [_view(source, found, index) for index, (source, found) in enumerate(zip(sources, texts, strict=True))]
     proposal = solve_house(views, order_known=False)
@@ -215,7 +219,7 @@ async def read_house_proposal(session: AsyncSession, storage: ObjectStorage, pro
     try:
         async with asyncio.timeout(DEADLINE_S):
             blobs = await _read_blobs(storage, project_id, sources)
-            # ponytail: quá hạn không dừng được luồng giải đang chạy; nó tự xong (bộ giải có trần `_MAX_VIEWS`).
-            return await asyncio.to_thread(_solve, sources, blobs)
+            # ponytail: quá hạn không dừng được luồng giải đang chạy; nó tự xong và chỉ chiếm một chỗ của `_SOLVERS`.
+            return await asyncio.get_running_loop().run_in_executor(_SOLVERS, _solve, sources, blobs)
     except TimeoutError as exc:
         raise DEPENDENCY_UNAVAILABLE.error(retry_after=RETRY_AFTER_S) from exc

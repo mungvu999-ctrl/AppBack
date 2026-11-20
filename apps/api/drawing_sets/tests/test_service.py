@@ -5,6 +5,7 @@ Dữ liệu dựng thật (DB + kho trên đĩa): tầng, lượt `completed`, b
 
 import asyncio
 import logging
+import threading
 from datetime import timedelta
 from typing import Any
 
@@ -334,6 +335,30 @@ async def test_drawing_sets_read_house_proposal__deadline(
     with pytest.raises(AppError) as caught:
         await read_house_proposal(db_session, local_storage, scene.project.id)
     assert (caught.value.code, caught.value.retry_after) == (DEPENDENCY_UNAVAILABLE, service.RETRY_AFTER_S)
+
+
+async def test_drawing_sets_read_house_proposal__solver_slots(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hai luồng giải đang bận: request thứ ba quá hạn trong hàng chờ và không bao giờ được chạy."""
+    scene = await make_scene(db_session, floors=1)
+    project_id = scene.project.id  # `rollback` của service làm hết hạn đối tượng ORM
+    release, started = threading.Event(), []
+
+    def blocked_solve(*_: object) -> None:
+        started.append(1)
+        release.wait(10)
+
+    monkeypatch.setattr(service, "_solve", blocked_solve)
+    monkeypatch.setattr(service, "DEADLINE_S", 0.2)
+    try:
+        for _ in range(3):
+            with pytest.raises(AppError) as caught:
+                await read_house_proposal(db_session, local_storage, project_id)
+            assert caught.value.code is DEPENDENCY_UNAVAILABLE
+        assert len(started) == 2
+    finally:
+        release.set()
 
 
 async def test_drawing_sets_read_house_proposal__max_floors(

@@ -47,7 +47,7 @@ from packages.domain.drawing_set.heights import (
 )
 from packages.domain.drawing_set.levels import levels_from_texts, main_floor_level
 from packages.domain.drawing_set.storeys import PlanView, StoreyChoice, StoreyLabel, solve_storeys
-from packages.domain.drawing_set.titles import Kind, KindGuess, OcrText, parse_title, pick_title, view_kind
+from packages.domain.drawing_set.titles import Kind, KindGuess, OcrText, kind_from_picked, parse_title, pick_title
 
 STOREY_UNSURE: Final = "STOREY_UNSURE"
 STOREY_CONFLICT: Final = "STOREY_CONFLICT"
@@ -142,10 +142,10 @@ def _read(view: HouseView) -> _Read:
     """Đọc một hình: không chữ -> không mặt bằng; chữ nói không phải mặt bằng chắc chắn -> loại."""
     if not view.texts:
         return _Read(view, None, None)
-    guess = view_kind(view.texts, view.size)
+    picked = pick_title(view.texts, view.size)  # thuần: chọn một lần cho cả loại hình lẫn tên
+    guess = kind_from_picked(view.texts, picked)
     if guess.kind in _NOT_PLAN_KINDS and guess.confidence >= _SURE:
         return _Read(view, guess, None)
-    picked = pick_title(view.texts, view.size)
     info = parse_title(picked.text) if picked.text else None
     marks = tuple(m.value_m for m in levels_from_texts(view.texts))
     plan = PlanView(view.floor_id, info, marks, view.position, tuple(t.text for t in view.texts))

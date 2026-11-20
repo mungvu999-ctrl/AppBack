@@ -14,12 +14,14 @@ Thay đổi có chủ ý so với kernel (kernel gom mọi thứ vào số tần
 """
 
 import bisect
+import heapq
 import math
 import re
 import statistics
 import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from functools import lru_cache
 from typing import Literal, Protocol
 
 from packages.domain.drawing_set.legacy_text import decode_legacy
@@ -101,11 +103,17 @@ def _ascii_base(char: str) -> str:
 
 def _fold_unicode(text: str) -> str:
     """Unicode -> ASCII hoa: bỏ dấu, đ/Đ -> D, ký tự lạ không quy được thành khoảng trắng."""
+    if text.isascii():  # NFD và combining() không đổi ký tự ASCII: kết quả như vòng dưới, nhanh hơn nhiều
+        return text.upper()
     text = text.replace("đ", "d").replace("Đ", "D")
     text = "".join(c for c in unicodedata.normalize("NFD", text) if not unicodedata.combining(c))
     return "".join(c if c.isascii() else (_ascii_base(c) or " ") for c in text).upper()
 
 
+_CACHE = 1 << 15  # mục tối đa của mỗi bộ nhớ đệm hàm thuần str -> giá trị bất biến (chữ lặp lại trong và giữa các hình)
+
+
+@lru_cache(maxsize=_CACHE)
 def fold(text: str) -> str:
     """Chữ bản vẽ -> ASCII hoa một khoảng trắng: giải mã VNI/TCVN3, bỏ dấu, Đ -> D, xuống dòng -> cách.
 
@@ -220,6 +228,7 @@ def _storey_of(n: str) -> tuple[int | StoreyWord | None, Numbering | None, bool]
     return ("ground", None, False) if _GROUND.search(n) else (None, None, False)
 
 
+@lru_cache(maxsize=_CACHE)  # TitleInfo bất biến (frozen, trường str/int/bool)
 def parse_title(text: str) -> TitleInfo | None:
     """Đọc tên hình; None khi không nhận ra từ nào chỉ loại bản vẽ (kể cả chuỗi rỗng).
 
@@ -242,6 +251,14 @@ SAME_Y = 0.6  # sai số đường cơ sở, tính theo chiều cao dòng
 GAP_X = 2.0  # khoảng hở ngang tối đa khi nối chữ, tính theo chiều cao dòng
 MAX_LEN = 60  # tên hình dài tối đa (ký tự)
 MAX_TEXTS = 400  # số dòng OCR xét tối đa mỗi hình (chặn chi phí bậc hai của nối dòng/ghi chú)
+# ponytail: trần sửa lỗi OCR theo dòng. Dòng dài hơn 3 x MAX_LEN không bao giờ là tên (<= MAX_LEN) hay dòng nhãn
+# khung tên (`_block_title` chỉ đọc dòng <= 3 x MAX_LEN) nên không sửa từ khoá/rớt nguyên âm: 400 dòng x 200
+# hình x 200 ký tự sửa từng từ tốn hàng chục giây. Chỉ đổi kết quả khi không còn ứng viên nào và tên dự phòng là
+# chính dòng dài đó. Nâng nếu thấy tên thật dài hơn.
+_REPAIR_MAX = 3 * MAX_LEN
+# ponytail: trần số từ được sửa lỗi OCR mỗi hình, dòng ngắn trước. Một mặt bằng thật có vài trăm dòng, mỗi dòng
+# vài từ; quá trần thì các dòng dài nhất giữ nguyên chữ OCR. Nâng nếu gặp hình thật vượt trần.
+_REPAIR_WORDS = 2000
 MAX_TEXT_LEN = 200  # một dòng OCR dài hơn bị cắt: tên hình <= MAX_LEN, phần đuôi chỉ tốn regex
 _SCALE = re.compile(r"\bTL\b|\bT\.?L\s*:|TI LE|\bSCALE|\b1\s*[/:]\s*\d{2,3}\b")
 _LABEL = re.compile(r"TEN BAN VE|DRAW\w{0,4} ?NAM\w*|DRAW\w{0,4} ?TITL\w*|NOI DUNG|HANG MUC")
@@ -293,6 +310,7 @@ class _Line:
         return self.box[3] - self.box[1]
 
 
+@lru_cache(maxsize=_CACHE)
 def _near_by_one_edit(a: str, b: str) -> bool:
     """`a` và `b` hơn kém nhau tối đa một lần thay, chèn hoặc xoá ký tự."""
     if abs(len(a) - len(b)) > 1:
@@ -303,6 +321,30 @@ def _near_by_one_edit(a: str, b: str) -> bool:
     return any(long[:i] + long[i + 1 :] == short for i in range(len(long)))
 
 
+_SNAP_LEN = (min(map(len, _SNAP_WORDS)) - 1, max(map(len, _SNAP_WORDS)) + 1)
+
+
+def _one_off(word: str) -> set[str]:
+    """`word` và mọi bản bỏ một ký tự: hai chuỗi cách nhau tối đa một lần sửa luôn có chung một phần tử."""
+    return {word, *(word[:i] + word[i + 1 :] for i in range(len(word)))}
+
+
+_SNAP_INDEX: dict[str, set[str]] = {}
+for _key in _SNAP_WORDS:
+    for _variant in _one_off(_key):
+        _SNAP_INDEX.setdefault(_variant, set()).add(_key)
+
+
+@lru_cache(maxsize=_CACHE)
+def _near_keys(word: str) -> tuple[str, ...]:
+    """Các từ khoá `_SNAP_WORDS` cách `word` tối đa một lần sửa, theo thứ tự `_SNAP_WORDS`. Tra bảng
+    `_SNAP_INDEX` trước (chung phần tử là điều kiện cần), rồi mới so kỹ: chữ rác không tốn một lượt so nào."""
+    if not _SNAP_LEN[0] <= len(word) <= _SNAP_LEN[1]:
+        return ()
+    found = set().union(*(_SNAP_INDEX.get(v, ()) for v in _one_off(word)))
+    return tuple(key for key in _SNAP_WORDS if key in found and _near_by_one_edit(word, key))
+
+
 def _snap_word(word: str, prev: str, nxt: str) -> str:
     """Từ khoá cách `word` một lần sửa (từ >= 3 chữ), không thì giữ nguyên; `prev`/`nxt` là từ lân cận.
 
@@ -310,8 +352,8 @@ def _snap_word(word: str, prev: str, nxt: str) -> str:
     """
     if len(word) < 3 or word in _VOCAB:
         return word
-    for key in _SNAP_WORDS:
-        if not _near_by_one_edit(word, key) or (len(word) == 3 and not nxt[:1].isdigit()):
+    for key in _near_keys(word):
+        if (len(word) == 3 and not nxt[:1].isdigit()):
             continue
         after_mat = _near_by_one_edit(prev, "MAT") and len(prev) <= 4
         if key in _NEED_MAT and not after_mat and not (key == "BANG" and _near_by_one_edit(nxt, "TANG")):
@@ -347,9 +389,12 @@ def _unglue(n: str) -> str:
     return _GLUED.sub(lambda m: f"{m[1]} {m[2]}" if _near_by_one_edit(m[1], "LUNG") else m[0], n)
 
 
+_PUNCT_IN_WORD = str.maketrans("", "", "';`")  # = re.sub(r"[';`]", "", w), không qua regex mỗi từ
+
+
 def _snap(n: str) -> str:
     """Tên đã gấp -> bỏ dấu câu trong từ, sửa từ khoá (MAT BANG TANG ..., LUNG) và MAT/CAT bên cạnh."""
-    words = [re.sub(r"[';`]", "", w) for w in _unglue(n).split()]
+    words = [w.translate(_PUNCT_IN_WORD) for w in _unglue(n).split()]
     out: list[str] = []
     for i, word in enumerate(words):
         nxt = words[i + 1] if i + 1 < len(words) else ""
@@ -366,7 +411,9 @@ def _snap(n: str) -> str:
 
 def _better(text: str) -> str:
     """`text`, hoặc bản đã sửa từ khoá khi bản đó nêu được loại hình/tầng mà `text` chưa nêu, hoặc khi bản sửa
-    là lửng ("LURNG TANG 1": lửng trên tầng 1, không phải tầng 1)."""
+    là lửng ("LURNG TANG 1": lửng trên tầng 1, không phải tầng 1). Dòng dài hơn `_REPAIR_MAX` giữ nguyên."""
+    if len(text) > _REPAIR_MAX:
+        return text
     before = parse_title(text)
     n = fold(text)
     snapped = _snap(n)
@@ -420,10 +467,14 @@ def _capped(rows: list[tuple[str, Box]]) -> list[tuple[str, Box]]:
 def _lines(texts: Sequence[OcrText]) -> list[_Line]:
     """Dòng OCR dùng được (`_usable`, tối đa MAX_TEXTS theo `_capped`), đã sửa lỗi OCR, sắp từ trên xuống."""
     rows = _capped([row for row in map(_usable, texts) if row is not None])
-    out = []
-    for text, box in rows:
-        fixed = _better(_fix_vowel_drops(text))
-        out.append(_Line(fixed, box, fold(fixed)))
+    budget = _REPAIR_WORDS
+    fixed = [text for text, _ in rows]
+    for i in sorted(range(len(rows)), key=lambda i: len(rows[i][0])):  # dòng ngắn trước: tên hình là dòng ngắn
+        if len(fixed[i]) > _REPAIR_MAX or budget <= 0:
+            break
+        budget -= fixed[i].count(" ") + 1
+        fixed[i] = _better(_fix_vowel_drops(fixed[i]))
+    out = [_Line(text, box, fold(text)) for text, (_, box) in zip(fixed, rows, strict=True)]
     return sorted(out, key=lambda ln: (ln.box[1], ln.box[0]))
 
 
@@ -446,11 +497,12 @@ def _short_merges(items: list[_Line]) -> list[_Line]:
         cur = first
         lo = bisect.bisect_left(bottoms, first.box[3] - SAME_Y * first.h)
         hi = bisect.bisect_right(bottoms, first.box[3] + SAME_Y * first.h)
-        right = sorted(
+        right = heapq.nsmallest(  # = sorted(...)[:2], ổn định như sorted, khỏi sắp cả cửa sổ cho mỗi dòng
+            2,
             (items[k] for k in by_bottom[lo:hi] if k > i and items[k].box[0] >= first.box[2] - first.h),
             key=lambda x: x.box[0],
         )
-        for nxt in right[:2]:
+        for nxt in right:
             if abs(nxt.h - cur.h) > 0.3 * max(nxt.h, cur.h) or nxt.box[0] - cur.box[2] > GAP_X * cur.h:
                 break
             cur = _merge(cur, nxt)
@@ -490,11 +542,12 @@ def _scale_near(c: _Line, items: list[_Line]) -> float:
 
 def _good(c: _Line, items: list[_Line]) -> bool:
     """Ứng viên tên dưới hình: ngắn, ít chữ số, nhận ra loại hình, không phải nhãn ô tên/ghi chú."""
+    if len(c.text) > MAX_LEN:  # điều kiện rẻ nhất trước; các vế dưới đều thuần nên thứ tự không đổi kết quả
+        return False
     digits = sum(ch.isdigit() for ch in c.n) / max(len(c.n), 1)
     weak = not _PLAN_OR_VIEW.search(c.n) and len(c.n) > 14  # "nha 3 tang", "ba mai"
     return (
-        len(c.text) <= MAX_LEN
-        and digits < 0.35
+        digits < 0.35
         and parse_title(c.text) is not None
         and not weak
         and not _LABEL.search(c.n)
@@ -746,8 +799,12 @@ def view_kind(texts: Sequence[OcrText], size: tuple[float, float]) -> KindGuess:
     Có tên: tin cậy = min(độ tin của tên, độ tin loại hình). Không tên: mặt bằng 0,5, đứng 0,3
     (không phân biệt được mặt cắt/mặt đứng nên đoán mặt đứng), còn lại `other` 0,1.
     """
+    return kind_from_picked(texts, pick_title(texts, size))
+
+
+def kind_from_picked(texts: Sequence[OcrText], picked: PickedTitle) -> KindGuess:
+    """`view_kind` khi đã có `pick_title(texts, size)` (người gọi cần cả hai thì khỏi chọn tên hai lần)."""
     cue, cue_reason = _content_cue(len(texts))
-    picked = pick_title(texts, size)
     info = parse_title(picked.text) if picked.text else None
     if info is not None:
         kind_conf, reason = _kind_from_title(info.kind, cue)

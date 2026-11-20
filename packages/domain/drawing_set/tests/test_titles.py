@@ -655,3 +655,21 @@ def test_far_scale_note_does_not_lift_a_candidate() -> None:
     ]
     assert titles._scale_near(titles._lines([texts[6]])[0], titles._lines(texts[-1:])) == 0.0
     assert pick_title(texts, SIZE).text.startswith("MAT CAT A-A")  # có thể kèm "TL 1:100" nối cùng dòng
+
+
+def test_keyword_index_matches_the_plain_comparison() -> None:
+    """Bảng tra từ khoá cho đúng kết quả của phép so từng từ khoá, kể cả với chữ rác."""
+    words = {"TANG", "TNG", "TAANG", "TUNG", "BANH", "FLOR", "SECTON", "GROUNDS", "ELEVATIONS", "NGAT", "XYZ", "ABCDEFGH"}
+    for key in titles._SNAP_WORDS:
+        words |= titles._one_off(key) | {key[:i] + "X" + key[i:] for i in range(len(key) + 1)}
+    for word in words:
+        plain = tuple(key for key in titles._SNAP_WORDS if titles._near_by_one_edit(word, key))
+        assert titles._near_keys(word) == plain, word
+
+
+def test_repair_budget_serves_short_lines_first() -> None:
+    """Hình quá nhiều chữ: tên ngắn vẫn được sửa lỗi OCR, các dòng dài nhất mới bị bỏ qua."""
+    noise = [Ocr("GHI CHU SO " * 16, (10.0, 10.0 + 12 * i, 900.0, 20.0 + 12 * i)) for i in range(90)]
+    assert sum(len(n.text.split()) for n in noise) > titles._REPAIR_WORDS
+    picked = pick_title([*noise, Ocr("MAT BANH TUNG 2", (600.0, 1130.0, 1200.0, 1170.0))], SIZE)
+    assert picked.text == "MAT BANG TANG 2"

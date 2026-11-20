@@ -34,7 +34,7 @@ _MEZZ_MARGIN_M: Final = 0.5  # lửng nằm trong khoảng tầng khi cách hai 
 _BASEMENT_TOP_M: Final = -0.3  # cốt tầng hầm thấp hơn mốc trệt ít nhất mức này
 _RAISED_MIN_M: Final = 0.3  # trệt tự ghi cốt chủ đạo ≥ mức này (không có 0.000 riêng) thì giữ cốt đó
 # ponytail: trần ứng viên mỗi tầng. Mặt bằng thật có dưới 30 cốt khác nhau; quá số này thì giữ các sàn
-# gặp nhiều lần nhất (trệt luôn giữ sàn gần mốc trệt) để quy hoạch động O(tầng × trần²) xong trong thời hạn API.
+# gặp nhiều lần nhất (trệt luôn giữ sàn gần mốc trệt) để quy hoạch động O(tầng x trần²) xong trong thời hạn API.
 _MAX_CANDS: Final = 30
 _TIGHT: Final = (2.6, 4.2)  # chiều cao mỗi tầng "chắc chắn hợp lý"
 _LOOSE: Final = (2.4, 4.6)  # chiều cao mỗi tầng "còn hợp lý"

@@ -259,4 +259,5 @@ def test_many_distinct_marks_solve_fast() -> None:
     start = time.perf_counter()
     floors, heights = solve_heights([StoreyPlan(n, marks) for n in range(1, 81)])
     assert time.perf_counter() - start < 5.0
-    assert len(floors) == 80 and len(heights) == 80
+    assert len(floors) == 80
+    assert len(heights) == 80

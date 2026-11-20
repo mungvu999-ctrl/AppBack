@@ -353,7 +353,7 @@ def _snap_word(word: str, prev: str, nxt: str) -> str:
     if len(word) < 3 or word in _VOCAB:
         return word
     for key in _near_keys(word):
-        if (len(word) == 3 and not nxt[:1].isdigit()):
+        if len(word) == 3 and not nxt[:1].isdigit():
             continue
         after_mat = _near_by_one_edit(prev, "MAT") and len(prev) <= 4
         if key in _NEED_MAT and not after_mat and not (key == "BANG" and _near_by_one_edit(nxt, "TANG")):

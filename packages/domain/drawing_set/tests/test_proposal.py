@@ -648,3 +648,13 @@ def test_unreadable_section_changes_nothing() -> None:
     views = _stack("±0.000", "+3.300")
     poor = [_section(("+3.300", 670.0)), SectionView((), _SIZE)]
     assert solve_house(views, order_known=True, sections=poor) == solve_house(views, order_known=True)
+
+
+def test_section_rung_stands_in_for_a_storey_without_a_drawing() -> None:
+    """Dự án thiếu bản vẽ tầng 2: chiều cao tầng 1 lấy tới bậc thang 3,3 m, nguồn mặt cắt, chưa chắc nên hỏi."""
+    views = [_view("a", "MẶT BẰNG TẦNG 1", "±0.000", position=0), _view("c", "MẶT BẰNG TẦNG 3", "+6.600", position=1)]
+    got = _by_id(solve_house(views, order_known=True, sections=[_SECTION, _SECTION]))
+    assert (got["a"].height_mm, got["a"].height_source) == (3300, "section")
+    assert got["a"].height_confidence is not None
+    assert got["a"].height_confidence <= 0.6
+    assert "HEIGHT_ASSUMED" in got["a"].questions

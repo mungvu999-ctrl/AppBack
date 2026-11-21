@@ -71,6 +71,7 @@ _HEIGHT_FLAGS: Final = frozenset({"assumed", "spans_missing_storey", "implausibl
 _NOT_PLAN_KINDS: Final = frozenset({"section", "elevation", "roof", "site", "detail"})
 _CONFLICT_CAP: Final = 0.65  # độ tin tầng tối đa khi có bất đồng (như `storeys`)
 _KNOWN_PLAN_CONF: Final = 0.5  # độ tin loại hình khi người dùng tải lên là mặt bằng mà chữ không xác nhận
+_NO_PLAN_STOREY: Final = 0.6  # độ tin tầng của số tầng không có mặt bằng, chèn từ thang cốt (nhân: `sconf[None]`)
 
 
 @dataclass(frozen=True)
@@ -218,7 +219,8 @@ def _with_height(base: _Values, height: StoreyHeight, db_mm: int | None, conf: d
     mỗi tầng ngoài 2,4-4,6 m ("implausible", vẫn đề xuất ở <= 0,65), ngoài khoảng sản phẩm hoặc độ tin chưa
     đạt dải "một nguồn" (soát rv2-5) thì hỏi `HEIGHT_ASSUMED`.
     """
-    ends = [conf[height.from_number]] + ([conf[height.to_number]] if height.to_number is not None else [])
+    upper = [] if height.to_number is None else [conf.get(height.to_number, _NO_PLAN_STOREY)]
+    ends = [conf[height.from_number], *upper]
     confidence = min(height.confidence, *ends, _OWN_CAP if "implausible" in height.flags else 1.0)
     flagged = bool(_HEIGHT_FLAGS & set(height.flags))
     assumed = db_mm is None or height.source in _ASSUMED_SOURCES or flagged or unsure(confidence)

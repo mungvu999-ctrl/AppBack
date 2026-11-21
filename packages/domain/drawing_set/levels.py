@@ -226,17 +226,27 @@ def _is_round(value: float) -> bool:
     return abs(steps - round(steps)) < 1e-6
 
 
-def level_groups(values: Iterable[float], *, prefer_zero: bool = False) -> list[tuple[float, int]]:
+def level_groups(
+    values: Iterable[float], *, prefer_zero: bool = False, ladder: Iterable[float] = ()
+) -> list[tuple[float, int]]:
     """Các sàn của một mặt bằng, tăng dần: `(giá trị đại diện, tổng số lần của nhóm)`.
 
     Cốt cách nhau dưới 0,12 m là một sàn. Đại diện là giá trị tròn (bội 0,05 m) và cao hơn; với
-    `prefer_zero` (mặt bằng tầng trệt) thì 0.000 thắng mọi giá trị khác trong nhóm. Rỗng khi không có cốt.
+    `prefer_zero` (mặt bằng tầng trệt) thì 0.000 thắng mọi giá trị khác trong nhóm. `ladder` (các bậc
+    thang cốt đọc từ mặt cắt) chen giữa hai luật: giá trị cách một bậc ≤ 0,03 m thắng giá trị tròn
+    (heights3.main_floor). Rỗng khi không có cốt.
     """
+    rungs = tuple(ladder)
     return [
         (
             max(
                 (v for v, _ in group),
-                key=lambda v: (prefer_zero and abs(v) <= _CLUSTER_TOL_M, _is_round(v), v),
+                key=lambda v: (
+                    prefer_zero and abs(v) <= _CLUSTER_TOL_M,
+                    any(abs(v - r) <= _CLUSTER_TOL_M for r in rungs),
+                    _is_round(v),
+                    v,
+                ),
             ),
             sum(count for _, count in group),
         )

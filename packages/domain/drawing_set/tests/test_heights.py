@@ -13,10 +13,11 @@ from packages.domain.drawing_set.heights import (
     FloorLevel,
     StoreyHeight,
     StoreyPlan,
+    _sunk_rung,
     solve_heights,
     to_db_ranges,
 )
-from packages.domain.drawing_set.levels import levels_from_texts
+from packages.domain.drawing_set.levels import level_groups, levels_from_texts
 
 _DATA = Path(__file__).parent / "data"
 _GOLDENS = ("conflict", "english_basement", "mezzanine_no_marks", "no_level_marks", "plain3_titles", "tret_tang1")
@@ -261,3 +262,153 @@ def test_many_distinct_marks_solve_fast() -> None:
     assert time.perf_counter() - start < 5.0
     assert len(floors) == 80
     assert len(heights) == 80
+
+
+# ---- Thang cốt từ mặt cắt (HS-02): các ca `heights3.selfcheck` có `sides`, và luật hậu xử lý của solve_set.
+
+_TWO = 2  # mỗi ca của selfcheck lặp một mặt cắt hai lần: bậc có trên hai mặt cắt
+
+
+def _sides(*values: float) -> list[list[float]]:
+    return [list(values)] * _TWO
+
+
+def test_ladder_ground_rule_beats_frequent_yard_mark() -> None:
+    floors, heights = solve_heights(_plans([-0.45] * 3 + [0.0] * 2, [3.6] * 4), _sides(0, 3.6, 7.2))
+    assert floors[0].level_m == 0.0
+    assert heights[0].height_m == 3.6
+
+
+def test_ladder_only_storeys_are_section_at_08() -> None:
+    floors, _ = solve_heights(_plans([0.0] * 3, [], []), _sides(0, 3.3, 6.6))
+    assert _levels(floors) == [0.0, 3.3, 6.6]
+    assert [(f.source, f.confidence) for f in floors[1:]] == [("section", 0.8)] * 2
+
+
+def test_plan_and_section_with_tight_gaps_reach_093() -> None:
+    floors, _ = solve_heights(_plans([0.0], [3.6] * 4 + [3.3], [6.9]), _sides(0, 3.3, 3.6, 6.9))
+    assert floors[1].level_m == 3.6
+    assert floors[1].source == "plan+section"
+    assert floors[1].confidence == 0.93
+    assert not floors[1].ambiguous
+
+
+def test_ladder_without_zero_keeps_ground_convention() -> None:
+    floors, _ = solve_heights(_plans([], [], [], []), _sides(-1.9, 3.9, 7.5, 11.1, 14.7))
+    assert _levels(floors) == [0.0, 3.9, 7.5, 11.1]
+    assert floors[0].source == "convention"
+    assert floors[0].confidence < 0.9
+
+
+def test_unlabelled_mezzanine_rung_explains_tall_ground_gap() -> None:
+    floors, heights = solve_heights(_plans([-0.15, 0.0, 0.15], [5.7, 5.7], [9.0, 9.0]), _sides(3.2, 5.7, 9.0, 12.3))
+    assert _levels(floors) == [0.0, 5.7, 9.0]
+    assert heights[0].height_m == 5.7
+    assert heights[0].confidence <= 0.8
+    assert "implausible" not in heights[0].flags
+
+
+def test_unmarked_rung_higher_up_is_not_skipped() -> None:
+    floors, _ = solve_heights(_plans([0.0], [], [10.4] * 3, [13.6]), _sides(4.4, 7.2, 10.4, 13.6))
+    assert floors[1].level_m == 7.2
+
+
+def test_ladder_basement_below_ground() -> None:
+    plans = [StoreyPlan(0, (-3.0,)), StoreyPlan(1, (0.0,)), StoreyPlan(2, (3.0,))]
+    floors, heights = solve_heights(plans, _sides(-3.0, 0.0, 3.0))
+    assert _levels(floors) == [-3.0, 0.0, 3.0]
+    assert heights[0].height_m == 3.0
+    unmarked = [StoreyPlan(0, ()), StoreyPlan(1, ()), StoreyPlan(2, ())]
+    assert _levels(solve_heights(unmarked, _sides(-3.0, 0.0, 3.0, 6.0))[0]) == [-3.0, 0.0, 3.0]
+
+
+def test_ladder_basement_misread_zero_is_unknown() -> None:
+    plans = [StoreyPlan(0, (0.0,)), StoreyPlan(1, (0.0, 0.1, 1.6)), StoreyPlan(2, (4.4,))]
+    floors, _ = solve_heights(plans, _sides(0.0, 4.4, 7.2))
+    assert _levels(floors) == [None, 0.0, 4.4]
+
+
+def test_ladder_main_floor_prefers_rung() -> None:
+    floors, _ = solve_heights(_plans([0.0], [3.55] * 3 + [3.6]), _sides(0.0, 3.6, 7.2))
+    assert _levels(floors) == [0.0, 3.6]
+    assert level_groups([0.0, 0.1, 0.2], prefer_zero=True, ladder=(0.0, 0.2)) == [(0.0, 2), (0.2, 1)]
+
+
+def test_ladder_raised_ground_keeps_its_own_mark() -> None:
+    floors, heights = solve_heights(_plans([1.3] * 3 + [0.9], [4.6] * 2, [7.9]), _sides(0.0, 1.3, 4.6, 7.9))
+    assert _levels(floors) == [1.3, 4.6, 7.9]
+    assert heights[0].height_m == 3.3
+    ladder = _sides(0.0, 1.3)
+    assert _levels(solve_heights([StoreyPlan(1, (1.3,))], ladder)[0]) == [0.0]  # gặp một lần: 0.000 giữ
+    assert _levels(solve_heights([StoreyPlan(1, (0.0, 1.3, 1.3))], ladder)[0]) == [0.0]  # 0.000 riêng thắng
+
+
+def test_labelled_mezzanine_rung_not_given_to_storey() -> None:
+    plans = [StoreyPlan(1, (0.0,)), StoreyPlan(None, (2.8,)), StoreyPlan(2, ()), StoreyPlan(3, (8.4,))]
+    floors, heights = solve_heights(plans, _sides(0.0, 2.8, 5.2, 8.4))
+    assert _levels(floors) == [0.0, 2.8, 5.2, 8.4]
+    assert floors[1] == FloorLevel(2.8, "plan+section", 0.8)  # lửng có cốt trên thang (solve_set.mezz_floors)
+    assert heights[0].height_m == 5.2
+    assert "skips_mezzanine" in heights[0].flags
+
+
+def test_sunken_wc_mark_snaps_to_rung() -> None:
+    floors, heights = solve_heights(_plans([0.0], [3.55, 3.55], [6.9]), _sides(0, 3.6, 6.9))
+    assert _levels(floors) == [0.0, 3.6, 6.9]
+    assert floors[1].source == "plan+section"
+    assert floors[1].snapped_from_m == 3.55  # thấp hơn cốt tầng: sàn trũng
+    assert [h.height_m for h in heights[:2]] == [3.6, 3.3]
+
+
+@pytest.mark.parametrize(
+    ("value", "ladder", "expected"),
+    [
+        (3.55, {0.0: 2, 3.6: 2, 6.9: 2}, 3.6),  # trũng
+        (3.62, {3.6: 2}, 3.6),  # nâng
+        (3.6, {3.6: 2}, None),  # trên bậc
+        (3.59, {3.6: 2}, None),
+        (3.55, {3.55: 2, 3.6: 2}, None),  # bậc khác
+        (3.45, {3.6: 2}, None),  # quá xa dưới
+        (3.68, {3.6: 2}, None),  # quá xa trên
+    ],
+)
+def test_sunk_rung(value: float, ladder: dict[float, int], expected: float | None) -> None:
+    assert _sunk_rung(value, ladder) == expected
+
+
+def test_missing_storey_filled_from_rung() -> None:
+    plans = [StoreyPlan(1, (0.0,)), StoreyPlan(3, (7.0,))]
+    floors, heights = solve_heights(plans, _sides(0.0, 3.6, 7.0))
+    assert _levels(floors) == [0.0, 7.0]
+    assert heights[0] == StoreyHeight(1, 2, 3.6, "section", 0.6, ("missing_storey_filled",))
+    _, heights = solve_heights(plans, _sides(0.0, 7.0))  # không có bậc chia: giữ cờ bắc qua
+    assert heights[0].flags == ("spans_missing_storey",)
+    assert heights[0].confidence == 0.65
+
+
+def test_chain_ok_lets_height_reach_093() -> None:
+    plans = _plans([0.0], [3.6])
+    sides = _sides(0.0, 3.6, 7.2)
+    floors, heights = solve_heights(plans, sides, ((0.0, 0.9, True), (3.6, 0.9, True)))
+    assert [(f.source, f.confidence) for f in floors] == [("plan+section", 0.93)] * 2
+    assert heights[0] == StoreyHeight(1, 2, 3.6, "plan+section", 0.93)
+    assert solve_heights(plans, sides)[1][0].confidence == 0.85  # không có chuỗi neo
+    assert solve_heights(plans, sides, ((0.0, 0.9, True), (3.7, 0.9, True)))[1][0].confidence == 0.85  # lệch > 0,05
+    assert solve_heights(plans, (), ((0.0, 0.9, False), (3.6, 0.9, False)))[1][0].confidence == 0.8  # chỉ mặt bằng
+
+
+def test_chain_fills_missing_level_at_most_085() -> None:
+    floors, heights = solve_heights(_plans([0.0], []), (), ((0.0, 0.9, False), (3.3, 0.95, True)))
+    assert floors[1] == FloorLevel(3.3, "plan+section", 0.85)
+    assert heights[0].height_m == 3.3
+    assert heights[0].confidence == 0.8  # chain_ok sai với cốt lấy từ chuỗi
+
+
+def test_fill_defaults_takes_plausible_rung_above() -> None:
+    # Bậc duy nhất là cốt lửng nên tầng 2 không có ứng viên; chiều cao mặc định thay bằng bậc phía trên.
+    plans = [StoreyPlan(1, (0.0,)), StoreyPlan(None, (3.0,)), StoreyPlan(2, ())]
+    floors, heights = solve_heights(plans, _sides(3.0))
+    assert heights[0] == StoreyHeight(1, 2, 3.0, "section", 0.55, ("skips_mezzanine",))
+    assert floors[2] == FloorLevel(3.0, "section", 0.55)
+    _, heights = solve_heights(plans)  # không có thang: vẫn mặc định
+    assert (heights[0].source, heights[0].confidence) == ("default", 0.4)

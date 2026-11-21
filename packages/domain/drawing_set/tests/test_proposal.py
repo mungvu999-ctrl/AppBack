@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from packages.domain.drawing_set import HouseProposal, HouseView, solve_house
+from packages.domain.drawing_set import HouseProposal, HouseView, SectionView, solve_house
 from packages.domain.drawing_set.heights import FloorLevel, StoreyHeight
 from packages.domain.drawing_set.order import OrderConflict
 from packages.domain.drawing_set.proposal import (
@@ -610,3 +610,41 @@ def test_order_known_project_with_mezzanine() -> None:
     assert (got["t"].storey_label, got["x"].questions) == ("tum", ("NO_TEXT",))
     assert not any(f.order_conflict for f in got.values())
     assert 0.7 < got["b"].storey_confidence < CONFIDENT  # chỉ suy từ thứ tự: một nguồn
+
+
+# ---------------------------------------------------------------- mặt cắt của dự án (HS-03)
+def _section(*marks: tuple[str, float]) -> SectionView:
+    """Mặt cắt thử: mỗi cốt một dòng chữ ở cao độ px cho trước (cốt cao hơn nằm cao hơn trên trang)."""
+    return SectionView([_Text(text, (1500, y - 15, 1620, y + 15)) for text, y in marks], _SIZE)
+
+
+_SECTION = _section(("±0.000", 1000.0), ("+3.300", 670.0), ("+6.600", 340.0), ("+9.900", 10.0))
+
+
+def test_sections_make_levels_and_heights_two_source() -> None:
+    """Mặt bằng và mặt cắt cùng ý, thứ tự dự án khớp tên hình: cốt và chiều cao đạt >= 0,9, nguồn "plan+section"."""
+    views = _stack("±0.000", "+3.300", "+6.600")
+    alone = solve_house(views, order_known=True).floors
+    assert all(f.height_confidence is not None and f.height_confidence < CONFIDENT for f in alone)
+    got = solve_house(views, order_known=True, sections=[_SECTION, _SECTION]).floors
+    assert [f.elevation_mm for f in got] == [0, 3300, 6600]
+    assert [(f.elevation_source, f.elevation_confidence) for f in got] == [("plan+section", 0.93)] * 3
+    assert [(f.height_mm, f.height_source, f.height_confidence) for f in got[:2]] == [(3300, "plan+section", 0.93)] * 2
+    assert not got[0].questions
+    assert not got[1].questions
+
+
+def test_sections_fill_a_plan_without_level_marks() -> None:
+    """Mặt bằng không ghi cốt: cốt lấy từ bậc thang của mặt cắt (một nguồn, dưới 0,9)."""
+    views = _stack("±0.000", "", "+6.600")
+    got = solve_house(views, order_known=True, sections=[_SECTION, _SECTION]).floors
+    assert (got[1].elevation_mm, got[1].elevation_source) == (3300, "section")
+    assert got[1].elevation_confidence is not None
+    assert 0.7 < got[1].elevation_confidence < CONFIDENT
+
+
+def test_unreadable_section_changes_nothing() -> None:
+    """Mặt cắt chỉ có một cốt (không khớp dọc được) hay không có chữ: kết quả như khi không có mặt cắt."""
+    views = _stack("±0.000", "+3.300")
+    poor = [_section(("+3.300", 670.0)), SectionView((), _SIZE)]
+    assert solve_house(views, order_known=True, sections=poor) == solve_house(views, order_known=True)

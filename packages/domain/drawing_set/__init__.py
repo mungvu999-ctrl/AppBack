@@ -12,7 +12,7 @@ from packages.domain.drawing_set.heights import (
     to_db_ranges,
 )
 from packages.domain.drawing_set.legacy_text import decode_legacy, detect_encoding
-from packages.domain.drawing_set.proposal import FloorProposal, HouseProposal, HouseView, solve_house
+from packages.domain.drawing_set.proposal import FloorProposal, HouseProposal, HouseView, SectionView, solve_house
 from packages.domain.drawing_set.storeys import (
     Alternative,
     PlanView,
@@ -42,6 +42,7 @@ __all__ = [
     "OcrText",
     "PickedTitle",
     "PlanView",
+    "SectionView",
     "StoreyChoice",
     "StoreyConflict",
     "StoreyHeight",

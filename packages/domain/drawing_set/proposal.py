@@ -37,6 +37,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Final
 
+from packages.domain.drawing_set.chain import solve_chain
 from packages.domain.drawing_set.heights import (
     DbValue,
     FloorLevel,
@@ -47,6 +48,7 @@ from packages.domain.drawing_set.heights import (
 )
 from packages.domain.drawing_set.levels import levels_from_texts, main_floor_level
 from packages.domain.drawing_set.order import OrderConflict, Slot, follow_order
+from packages.domain.drawing_set.sections import side_levels
 from packages.domain.drawing_set.storeys import PlanView, StoreyChoice, StoreyLabel, solve_storeys
 from packages.domain.drawing_set.titles import Kind, KindGuess, OcrText, kind_from_picked, parse_title, pick_title
 
@@ -79,6 +81,14 @@ class HouseView:
     texts: Sequence[OcrText]
     size: tuple[int, int]
     position: int
+
+
+@dataclass(frozen=True)
+class SectionView:
+    """Một bản vẽ mặt cắt (hay mặt đứng có ghi cốt) của dự án, không thuộc tầng nào: chữ OCR cả trang, cỡ ảnh."""
+
+    texts: Sequence[OcrText]
+    size: tuple[int, int]
 
 
 @dataclass(frozen=True)
@@ -252,14 +262,37 @@ def _own_values(plan: PlanView, storey_conf: float, rep: _Values | None) -> _Val
     return _Values(own_mm, conf, "plan", questions=(LEVEL_MISSING,), level_conflict=rep_mm is not None)
 
 
-def _values_by_view(plans: Sequence[PlanView], choices: dict[str, StoreyChoice]) -> dict[str, _Values]:
+def _anchored_chain(
+    plans: Sequence[PlanView], choices: dict[str, StoreyChoice], sides: Sequence[Sequence[float]]
+) -> list[tuple[float, float, bool]] | None:
+    """Chuỗi cốt của cả nhà cho `solve_heights`, chỉ khi được NEO: mọi mặt bằng tầng 1 mà chuỗi gắn được đều
+    nằm ở bậc thấp nhất (ít nhất một), như `chain_index` + `anchored` của nhân. Không mặt cắt, không neo hay
+    đầu vào vượt trần của `solve_chain` -> `None` (chiều cao khi đó không vượt 0,85)."""
+    if not sides:
+        return None
+    try:
+        chain = solve_chain([p.levels for p in plans], sides)
+    except ValueError:
+        return None
+    ground = {i for i, p in enumerate(plans) if choices[p.view_id].number == 1}
+    rungs = [k for k, level in enumerate(chain) if ground & set(level.plans)]
+    if not rungs or any(rungs):
+        return None
+    return [(level.level_m, level.confidence, "section" in level.sources) for level in chain]
+
+
+def _values_by_view(
+    plans: Sequence[PlanView], choices: dict[str, StoreyChoice], sides: Sequence[Sequence[float]] = ()
+) -> dict[str, _Values]:
     """Cốt và chiều cao đề xuất cho từng mặt bằng: giải trên đại diện, các hình còn lại qua `_own_values`.
 
     Số tầng có hình cùng số mà cốt riêng lệch cốt đại diện là tầng tranh chấp: tìm trước khi chốt giá trị
     để độ tin tầng 0,65 vào luật min của cốt đại diện và của hai chiều cao nối tầng đó (soát rv2-3).
+    `sides`: cốt đọc trên từng mặt cắt của dự án (thang cốt, nguồn thứ hai của cốt và chiều cao).
     """
     reps = _representatives(plans, choices)
-    floors, heights = solve_heights([StoreyPlan(choices[p.view_id].number, p.levels) for p in reps])
+    storeys = [StoreyPlan(choices[p.view_id].number, p.levels) for p in reps]
+    floors, heights = solve_heights(storeys, sides, _anchored_chain(plans, choices, sides))
     elevations, height_db = to_db_ranges(floors, heights)
     numbered = {n: p for p in reps if (n := choices[p.view_id].number) is not None}
     rep_mm = {choices[p.view_id].number: _ok(db) for p, db in zip(reps, elevations, strict=True)}
@@ -351,9 +384,12 @@ def _slots(reads: Sequence[_Read], choices: dict[str, StoreyChoice]) -> list[Slo
     return out
 
 
-def _propose(views: Sequence[HouseView], *, cues: bool, follow: bool) -> HouseProposal:
+def _propose(
+    views: Sequence[HouseView], *, cues: bool, follow: bool, sections: Sequence[SectionView] = ()
+) -> HouseProposal:
     """Thân của `solve_house`. `cues`: dùng dấu hiệu thứ tự của `solve_storeys` (bộ bản vẽ nghiên cứu, nhiều hình
-    một tầng); `follow`: số tầng đi theo thứ tự dự án (`order.follow_order`, mỗi hình một sàn)."""
+    một tầng); `follow`: số tầng đi theo thứ tự dự án (`order.follow_order`, mỗi hình một sàn); `sections`: các
+    mặt cắt của dự án, mặt cắt không đọc được cốt đáng tin (`side_levels` rỗng) bị bỏ qua."""
     if len({v.floor_id for v in views}) != len(views):
         raise ValueError("floor_id trùng nhau")
     reads = [_read(v) for v in views]
@@ -363,11 +399,14 @@ def _propose(views: Sequence[HouseView], *, cues: bool, follow: bool) -> HousePr
     if follow:
         choices, order = follow_order(_slots(reads, choices))
     choices = _cap_title_conflicts(reads, choices)
-    values = _values_by_view(plans, choices)
+    sides = [found for s in sections if (found := side_levels(s.texts, s.size))]
+    values = _values_by_view(plans, choices, sides)
     return HouseProposal(tuple(_floor(r, choices, values, order) for r in reads))
 
 
-def solve_house(views: Sequence[HouseView], *, order_known: bool = False) -> HouseProposal:
+def solve_house(
+    views: Sequence[HouseView], *, order_known: bool = False, sections: Sequence[SectionView] = ()
+) -> HouseProposal:
     """Đề xuất tầng, cốt và chiều cao cho cả nhà từ chữ OCR của từng hình (gọi một lần cho cả dự án).
 
     `order_known=True`: `position` là thứ tự tầng của dự án (mỗi hình một sàn) và số tầng đi theo nó
@@ -376,7 +415,10 @@ def solve_house(views: Sequence[HouseView], *, order_known: bool = False) -> Hou
     phải độc lập với thứ tự thì mới xác nhận được nó. Kết quả theo thứ tự `views`.
     `floor_id` phải khác nhau.
 
+    `sections`: bản vẽ mặt cắt của dự án (không thuộc tầng nào). Cốt đọc trên chúng là nguồn thứ hai: cốt và
+    chiều cao có cả mặt bằng lẫn mặt cắt cùng ý mới đạt >= 0,9 (`heights.solve_heights`). Không có thì như cũ.
+
     Raises:
         ValueError: hai hình trùng `floor_id`.
     """
-    return _propose(views, cues=False, follow=order_known)
+    return _propose(views, cues=False, follow=order_known, sections=sections)

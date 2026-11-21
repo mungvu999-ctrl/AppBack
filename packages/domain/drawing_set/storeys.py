@@ -28,7 +28,7 @@ from typing import Literal
 from packages.domain.drawing_set.titles import TitleInfo, fold, parse_title
 
 Family = Literal["text", "level", "order"]
-StoreyLabel = Literal["ground", "basement", "mezzanine", "attic", "roof_terrace", "floor"]
+StoreyLabel = Literal["ground", "basement", "mezzanine", "tum", "attic", "roof_terrace", "floor"]
 
 # Họ của từng nguồn; "order" gom thứ tự hình và phép loại trừ (họ "weak" của kernel).
 _FAMILY: dict[str, Family] = {
@@ -737,7 +737,7 @@ def _word_choice(view: PlanView, top: int) -> StoreyChoice:
         return _basement(t.norm)
     if t.storey == "mezzanine":
         return StoreyChoice("mezzanine", None, 0.6, ("text",), None, ())
-    if t.storey == "attic" or t.storey == "roof_terrace":
+    if t.storey in ("tum", "attic", "roof_terrace"):
         return StoreyChoice(t.storey, top + 1, _ROOF_STOREY_CAP, ("text",), None, ())
     return _NONE
 

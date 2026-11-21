@@ -14,7 +14,7 @@ from packages.domain.drawing_set import FloorProposal, HouseProposal
 from packages.domain.drawing_set.proposal import ORDER_DIFFERS
 
 type FloorKind = Literal["plan", "section", "elevation", "roof", "site", "detail", "other"]
-type StoreyLabel = Literal["ground", "basement", "mezzanine", "attic", "roof_terrace", "floor"]
+type StoreyLabel = Literal["ground", "basement", "mezzanine", "tum", "attic", "roof_terrace", "floor"]
 type LevelSource = Literal["plan", "plan+section", "section", "dims", "convention", "default"]
 type QuestionCode = Literal[
     "STOREY_UNSURE", "STOREY_CONFLICT", "ORDER_DIFFERS", "LEVEL_MISSING", "HEIGHT_ASSUMED", "NOT_A_PLAN", "NO_TEXT"

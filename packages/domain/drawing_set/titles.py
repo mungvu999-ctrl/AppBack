@@ -28,7 +28,7 @@ from packages.domain.drawing_set.legacy_text import decode_legacy
 
 Kind = Literal["plan", "section", "elevation", "roof", "site", "detail", "other"]
 Variant = Literal["plain", "furniture", "ceiling", "electrical", "plumbing", "structure", "other"]
-StoreyWord = Literal["ground", "basement", "mezzanine", "attic", "roof_terrace"]
+StoreyWord = Literal["ground", "basement", "mezzanine", "tum", "attic", "roof_terrace"]
 Numbering = Literal["tang", "lau", "floor_ordinal"]
 TitleSource = Literal["under_drawing", "title_block", "none"]
 Box = tuple[float, float, float, float]
@@ -132,12 +132,14 @@ _DETAIL = re.compile(r"CHI TIET|\bDETAIL")
 _ROOF = re.compile(r"\bROOF|\bMAI\b")
 _SITE = re.compile(r"\bSITE\b|LOCATION|KHU DAT|THUA DAT|TONG THE|TONG MAT BANG")
 _BASEMENT = re.compile(r"\bHAM\b|BASEMENT|CELLAR|UNDERGROUND")
-_ATTIC = re.compile(r"\bAP MAI\b|ATTIC|\bTUM\b")
+_TUM = re.compile(r"\bTUM\b")
+_ATTIC = re.compile(r"\bAP MAI\b|ATTIC")
 _TERRACE = re.compile(r"SAN THUONG|TERRACE")
 _MEZZANINE = re.compile(r"\bLUNG\b|MEZZ")
 _GROUND = re.compile(r"\bTRET\b|\bGRO\w{1,6}\s+FLOOR|\bGROUND\b")
 _STOREY_WORDS: tuple[tuple[StoreyWord, re.Pattern[str]], ...] = (
     ("basement", _BASEMENT),
+    ("tum", _TUM),
     ("attic", _ATTIC),
     ("roof_terrace", _TERRACE),
     ("mezzanine", _MEZZANINE),
@@ -174,7 +176,7 @@ def _kind_of(n: str) -> Kind | None:
         return "detail" if _DETAIL.search(n) else None
     if _SITE.search(n):
         return "site"
-    if _ROOF.search(n) and not (_ATTIC.search(n) or _TERRACE.search(n)):
+    if _ROOF.search(n) and not (_TUM.search(n) or _ATTIC.search(n) or _TERRACE.search(n)):
         return "roof"
     return "plan"
 

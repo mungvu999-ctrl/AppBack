@@ -197,7 +197,9 @@ def test_level_order_conflict_landing_shift() -> None:
 def test_roof_terrace_and_attic_on_top() -> None:
     got = solve(plan("v00", "MAT BANG TRET"), plan("v01", "MAT BANG LAU 1"), plan("v02", "MAT BANG SAN THUONG"))
     assert (got[2].label, got[2].number, got[2].confidence, got[2].sources) == ("roof_terrace", 3, 0.7, ("text",))
-    assert solve(plan("v00", "MAT BANG TUM"))[0].number == 1
+    tum = solve(plan("v00", "MAT BANG TUM"))[0]
+    assert (tum.label, tum.number) == ("tum", 1)
+    assert solve(plan("v00", "MAT BANG TANG AP MAI"))[0].label == "attic"
 
 
 def test_second_basement_and_unknown() -> None:

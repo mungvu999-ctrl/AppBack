@@ -20,6 +20,7 @@ from apps.api.projects.tests.test_routes_common import headers_of
 from apps.api.spatial_read.tests._helpers import make_scene
 from packages.domain.drawing_set import FloorProposal, HouseProposal, heights, storeys, titles
 from packages.domain.drawing_set import proposal as domain
+from packages.domain.drawing_set.order import OrderConflict
 from packages.storage.local import LocalDiskStorage
 from packages.testing.factories.auth import make_user
 from packages.testing.factories.projects import make_project
@@ -71,11 +72,9 @@ def _path(project_id: str) -> str:
     return f"/api/projects/{project_id}/house-proposal"
 
 
-def _read(
-    *floors: FloorProposal, run_ids: tuple[str, ...] = (), differs: frozenset[str] = frozenset()
-) -> HouseProposalRead:
+def _read(*floors: FloorProposal, run_ids: tuple[str, ...] = ()) -> HouseProposalRead:
     """Kết quả service giả."""
-    return HouseProposalRead(proposal=HouseProposal(tuple(floors)), run_ids=run_ids, order_differs=differs)
+    return HouseProposalRead(proposal=HouseProposal(tuple(floors)), run_ids=run_ids)
 
 
 async def test_drawing_sets_read_house_proposal__disabled(
@@ -112,13 +111,26 @@ async def test_drawing_sets_read_house_proposal__C06(
 async def test_drawing_sets_read_house_proposal__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, drawing_set_on: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """200 đúng hình dạng dây: trường tuỳ chọn vắng (không `null`), `ORDER_DIFFERS` thêm cuối cho tầng lệch."""
+    """200 đúng hình dạng dây: trường tuỳ chọn vắng (không `null`), `ORDER_TEXT_CONFLICT` kèm lý do của miền."""
     scene = await make_scene(db_session)
     full = FloorProposal(
-        "L-A", "plan", 0.92, "ground", 1, 0.95, 0, 0.9, "plan", 3300, 0.8, "convention", ("HEIGHT_ASSUMED",)
+        "L-A",
+        "plan",
+        0.92,
+        "ground",
+        1,
+        0.65,
+        0,
+        0.65,
+        "plan",
+        3300,
+        0.65,
+        "convention",
+        ("ORDER_TEXT_CONFLICT", "HEIGHT_ASSUMED"),
+        OrderConflict("title", 3),
     )
     bare = FloorProposal("L-B", "other", 0.0, questions=("NO_TEXT",))
-    spy = _stub(monkeypatch, _read(full, bare, run_ids=("run_1",), differs=frozenset({"L-A", "L-B"})))
+    spy = _stub(monkeypatch, _read(full, bare, run_ids=("run_1",)))
 
     response = await api_client.get(_path(scene.project.id), headers=headers_of(scene.owner))
 
@@ -132,21 +144,24 @@ async def test_drawing_sets_read_house_proposal__C01(
                 "kindConfidence": 0.92,
                 "storeyLabel": "ground",
                 "storeyNo": 1,
-                "storeyConfidence": 0.95,
+                "storeyConfidence": 0.65,
                 "elevationMm": 0,
-                "elevationConfidence": 0.9,
+                "elevationConfidence": 0.65,
                 "elevationSource": "plan",
                 "heightMm": 3300,
-                "heightConfidence": 0.8,
+                "heightConfidence": 0.65,
                 "heightSource": "convention",
-                "questions": [{"code": "HEIGHT_ASSUMED"}, {"code": "ORDER_DIFFERS"}],
+                "questions": [
+                    {"code": "ORDER_TEXT_CONFLICT", "reason": "title", "textStoreyNo": 3},
+                    {"code": "HEIGHT_ASSUMED"},
+                ],
             },
             {
                 "floorId": "L-B",
                 "kind": "other",
                 "kindConfidence": 0.0,
                 "storeyConfidence": 0.0,
-                "questions": [{"code": "NO_TEXT"}, {"code": "ORDER_DIFFERS"}],
+                "questions": [{"code": "NO_TEXT"}],
             },
         ],
         "runIds": ["run_1"],
@@ -199,9 +214,9 @@ async def test_drawing_sets_read_house_proposal__real_service(
     assert all(f["questions"] == [{"code": "NO_TEXT"}] and f["kind"] == "other" for f in body["floors"])
 
 
-def _wire(floor: FloorProposal, differs: frozenset[str] = frozenset()) -> dict[str, Any]:
+def _wire(floor: FloorProposal) -> dict[str, Any]:
     """Tầng đầu tiên của bản ánh xạ, dạng dây."""
-    dumped = house_proposal_out(HouseProposal((floor,)), (), differs).model_dump(by_alias=True)
+    dumped = house_proposal_out(HouseProposal((floor,)), ()).model_dump(by_alias=True)
     first: dict[str, Any] = dumped["floors"][0]
     return first
 
@@ -230,10 +245,11 @@ def test_house_proposal_out__every_source(source: str) -> None:
 
 @pytest.mark.parametrize("code", ALL_CODES)
 def test_house_proposal_out__every_question_code(code: str) -> None:
-    """Mỗi mã câu hỏi dây đi qua ánh xạ; `ORDER_DIFFERS` của lớp API được thêm sau mã của miền."""
+    """Mỗi mã câu hỏi dây đi qua ánh xạ; lý do chỉ gắn vào `ORDER_TEXT_CONFLICT`, cốt thì không kèm số tầng."""
     assert _wire(FloorProposal("L", "plan", 0.9, questions=(code,)))["questions"] == [{"code": code}]
-    flagged = _wire(FloorProposal("L", "plan", 0.9, questions=(code,)), frozenset({"L"}))["questions"]
-    assert flagged == [{"code": code}, {"code": "ORDER_DIFFERS"}]
+    floor = FloorProposal("L", "plan", 0.9, questions=(code,), order_conflict=OrderConflict("level"))
+    expected = {"code": code, "reason": "level"} if code == "ORDER_TEXT_CONFLICT" else {"code": code}
+    assert _wire(floor)["questions"] == [expected]
 
 
 @pytest.mark.parametrize(

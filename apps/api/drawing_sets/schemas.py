@@ -11,22 +11,35 @@ from typing import Final, Literal, get_args
 
 from apps.api.core.wire import WireModel
 from packages.domain.drawing_set import FloorProposal, HouseProposal
-from packages.domain.drawing_set.proposal import ORDER_DIFFERS
+from packages.domain.drawing_set.proposal import ORDER_TEXT_CONFLICT
 
 type FloorKind = Literal["plan", "section", "elevation", "roof", "site", "detail", "other"]
 type StoreyLabel = Literal["ground", "basement", "mezzanine", "tum", "attic", "roof_terrace", "floor"]
 type LevelSource = Literal["plan", "plan+section", "section", "dims", "convention", "default"]
 type QuestionCode = Literal[
-    "STOREY_UNSURE", "STOREY_CONFLICT", "ORDER_DIFFERS", "LEVEL_MISSING", "HEIGHT_ASSUMED", "NOT_A_PLAN", "NO_TEXT"
+    "STOREY_UNSURE",
+    "STOREY_CONFLICT",
+    "ORDER_TEXT_CONFLICT",
+    "LEVEL_MISSING",
+    "HEIGHT_ASSUMED",
+    "NOT_A_PLAN",
+    "NO_TEXT",
 ]
+type OrderReason = Literal["title", "level"]
 
 _log: Final = logging.getLogger(__name__)
 
 
 class QuestionOut(WireModel):
-    """Một câu hỏi cho người dùng: chỉ mã, FE viết câu tiếng Việt."""
+    """Một câu hỏi cho người dùng: chỉ mã, FE viết câu tiếng Việt.
+
+    `ORDER_TEXT_CONFLICT` kèm lý do: `reason` = tên hình ("title") hay cốt ("level") mâu thuẫn thứ tự tầng của
+    dự án, và `textStoreyNo` = số tầng chữ ghi (khi đọc được). Các mã khác không có hai trường này (vắng, W2).
+    """
 
     code: QuestionCode
+    reason: OrderReason | None = None
+    text_storey_no: int | None = None
 
 
 class FloorProposalOut(WireModel):
@@ -62,6 +75,7 @@ _KINDS: Final = get_args(FloorKind.__value__)
 _LABELS: Final = get_args(StoreyLabel.__value__)
 _SOURCES: Final = get_args(LevelSource.__value__)
 _CODES: Final = get_args(QuestionCode.__value__)
+_REASONS: Final = get_args(OrderReason.__value__)
 
 
 def _wire(value: str | None, allowed: tuple[str, ...], fallback: str | None, field: str) -> str | None:
@@ -77,13 +91,21 @@ def _unit(value: float | None) -> float | None:
     return None if value is None else min(1.0, max(0.0, value))
 
 
-def _floor_out(floor: FloorProposal, order_differs: frozenset[str]) -> FloorProposalOut:
-    """Một tầng ra dây; `ORDER_DIFFERS` thêm cuối nếu tầng nằm trong `order_differs` (miền không bao giờ tự nâng nó).
+def _question(code: str, floor: FloorProposal) -> dict[str, str | int | None]:
+    """Một câu hỏi ra dây; `ORDER_TEXT_CONFLICT` mang lý do của miền (lý do lạ → vắng, không 500)."""
+    out: dict[str, str | int | None] = {"code": _wire(code, _CODES, "STOREY_UNSURE", "questions")}
+    conflict = floor.order_conflict
+    if code == ORDER_TEXT_CONFLICT and conflict is not None:
+        out["reason"] = _wire(conflict.reason, _REASONS, None, "order_reason")
+        out["text_storey_no"] = conflict.text_number
+    return out
+
+
+def _floor_out(floor: FloorProposal) -> FloorProposalOut:
+    """Một tầng ra dây.
 
     Giá trị ngoài enum dây: `kind` → `other`, nhãn tầng → vắng, nguồn → `default`, mã câu hỏi → `STOREY_UNSURE`.
     """
-    codes = [_wire(code, _CODES, "STOREY_UNSURE", "questions") for code in floor.questions]
-    codes += [ORDER_DIFFERS] if floor.floor_id in order_differs else []
     return FloorProposalOut.model_validate(
         {
             "floor_id": floor.floor_id,
@@ -98,17 +120,16 @@ def _floor_out(floor: FloorProposal, order_differs: frozenset[str]) -> FloorProp
             "height_mm": floor.height_mm,
             "height_confidence": _unit(floor.height_confidence),
             "height_source": _wire(floor.height_source, _SOURCES, "default", "height_source"),
-            "questions": [{"code": code} for code in codes],
+            "questions": [_question(code, floor) for code in floor.questions],
         }
     )
 
 
-def house_proposal_out(
-    proposal: HouseProposal, run_ids: Iterable[str], order_differs: frozenset[str]
-) -> HouseProposalOut:
-    """Đề xuất của miền ra dây (`enabled=True`): giữ thứ tự tầng, `ORDER_DIFFERS` cho tầng trong `order_differs`."""
-    floors = [_floor_out(floor, order_differs) for floor in proposal.floors]
-    return HouseProposalOut(enabled=True, floors=floors, run_ids=list(run_ids))
+def house_proposal_out(proposal: HouseProposal, run_ids: Iterable[str]) -> HouseProposalOut:
+    """Đề xuất của miền ra dây (`enabled=True`), giữ thứ tự tầng."""
+    return HouseProposalOut(
+        enabled=True, floors=[_floor_out(floor) for floor in proposal.floors], run_ids=list(run_ids)
+    )
 
 
 DISABLED: Final = HouseProposalOut(enabled=False, floors=[], run_ids=[])

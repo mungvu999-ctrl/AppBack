@@ -49,11 +49,10 @@ tới sau xếp hàng và bị bỏ khỏi hàng khi quá `DEADLINE_S`."""
 
 @dataclass(frozen=True)
 class HouseProposalRead:
-    """Kết quả đọc: đề xuất theo thứ tự tầng, id lượt dùng chữ, và các tầng lệch thứ tự dự án."""
+    """Kết quả đọc: đề xuất theo thứ tự tầng của dự án và id lượt dùng chữ."""
 
     proposal: HouseProposal
     run_ids: tuple[str, ...]
-    order_differs: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -173,38 +172,17 @@ def _view(source: _FloorSource, texts: tuple[TextPx, ...], position: int) -> Hou
     return HouseView(source.floor_id, ocr, size, position)
 
 
-def order_differs_of(storeys: Sequence[tuple[str, int | None]]) -> frozenset[str]:
-    """Tầng mà số tầng đề xuất mâu thuẫn thứ tự dự án.
-
-    `storeys` theo `floor_order`. Một tầng bị cờ khi có tầng đứng **trước** nó mang số tầng cao hơn, hoặc
-    tầng đứng **sau** nó mang số thấp hơn — nên cả hai đầu của một cặp ngược đều bị cờ. Số bằng nhau
-    không mâu thuẫn; tầng không có số (lửng, hình không rõ) bị bỏ qua. Duyệt một lượt theo
-    max tiền tố / min hậu tố.
-    """
-    numbered = [(floor_id, number) for floor_id, number in storeys if number is not None]
-    flagged: set[str] = set()
-    highest = None
-    for floor_id, number in numbered:
-        if highest is not None and highest > number:
-            flagged.add(floor_id)
-        highest = number if highest is None else max(highest, number)
-    lowest = None
-    for floor_id, number in reversed(numbered):
-        if lowest is not None and lowest < number:
-            flagged.add(floor_id)
-        lowest = number if lowest is None else min(lowest, number)
-    return frozenset(flagged)
-
-
 def _solve(sources: Sequence[_FloorSource], blobs: Sequence[bytes | None]) -> HouseProposalRead:
-    """Phần tốn CPU, đồng bộ (chạy trong `_SOLVERS`): phân tích JSON, dựng hình, `solve_house`."""
+    """Phần tốn CPU, đồng bộ (chạy trong `_SOLVERS`): phân tích JSON, dựng hình, `solve_house`.
+
+    `sources` theo `(floor_order, pk)` nên vị trí của hình là thứ tự tầng của dự án: số tầng đi theo nó
+    (`order_known=True`), chữ trên bản vẽ nói khác thì miền hỏi `ORDER_TEXT_CONFLICT` (HS-03).
+    """
     texts = [_texts_of(source, data) for source, data in zip(sources, blobs, strict=True)]
     views = [_view(source, found, index) for index, (source, found) in enumerate(zip(sources, texts, strict=True))]
-    proposal = solve_house(views, order_known=False)
     return HouseProposalRead(
-        proposal=proposal,
+        proposal=solve_house(views, order_known=True),
         run_ids=tuple(source.run[0] for source, found in zip(sources, texts, strict=True) if source.run and found),
-        order_differs=order_differs_of([(floor.floor_id, floor.storey_no) for floor in proposal.floors]),
     )
 
 

@@ -14,7 +14,7 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.drawing_sets import service
-from apps.api.drawing_sets.service import HouseProposalRead, order_differs_of, read_house_proposal
+from apps.api.drawing_sets.service import HouseProposalRead, read_house_proposal
 from apps.api.drawings.runs import start_run
 from apps.api.projects.tests.sql_count import count_sql
 from apps.api.spatial_read import detected
@@ -23,6 +23,7 @@ from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
 from packages.core.errors import AppError
 from packages.db.models.drawings import PipelineRunRow
 from packages.db.models.floors import FloorRow
+from packages.domain.drawing_set.order import OrderConflict
 from packages.ml_contracts.artifacts import BoxPx, TextPx, TextResult, text_to_json
 from packages.storage import keys
 from packages.storage.local import LocalDiskStorage
@@ -101,7 +102,6 @@ async def test_drawing_sets_read_house_proposal__three_floors(
     assert [f.elevation_mm for f in got.proposal.floors] == [0, 3300, 6600]
     assert [f.height_mm for f in got.proposal.floors][:2] == [3300, 3300]
     assert got.run_ids == tuple(run_ids)
-    assert got.order_differs == frozenset()
 
 
 async def test_drawing_sets_read_house_proposal__floor_without_run(
@@ -194,10 +194,10 @@ async def test_drawing_sets_read_house_proposal__newest_run_wins(
     assert got.proposal.floors[0].storey_no == 2
 
 
-async def test_drawing_sets_read_house_proposal__order_differs(
+async def test_drawing_sets_read_house_proposal__order_text_conflict(
     db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
 ) -> None:
-    """Tầng tạo sai thứ tự (1, 3, 2): hai tầng của cặp ngược bị cờ, tầng 1 thì không."""
+    """Tên hình ngược thứ tự dự án (1, 3, 2): số tầng tăng theo thứ tự; tầng cuối bị hỏi vì tên, tầng giữa vì cốt."""
     scene = await make_scene(db_session, floors=3)
     await _seed_titles(
         db_session,
@@ -208,8 +208,11 @@ async def test_drawing_sets_read_house_proposal__order_differs(
     )
     ids = [f.level_id for f in scene.floors]  # `rollback` của service làm hết hạn đối tượng ORM
     got = await read_house_proposal(db_session, local_storage, scene.project.id)
-    assert [f.storey_no for f in got.proposal.floors] == [1, 3, 2]
-    assert got.order_differs == {ids[1], ids[2]}
+    floors = {f.floor_id: f for f in got.proposal.floors}
+    assert [floors[i].storey_no for i in ids] == [1, 3, 4]  # "TẦNG 3" hợp thứ tự nên được giữ, sàn sau nó đếm tiếp
+    assert floors[ids[0]].order_conflict is None
+    assert [floors[i].order_conflict for i in ids[1:]] == [OrderConflict("level"), OrderConflict("title", 2)]
+    assert all("ORDER_TEXT_CONFLICT" in floors[i].questions for i in ids[1:])
 
 
 async def test_drawing_sets_read_house_proposal__empty_project(
@@ -219,7 +222,7 @@ async def test_drawing_sets_read_house_proposal__empty_project(
     scene = await make_scene(db_session, floors=0)
     got = await read_house_proposal(db_session, local_storage, scene.project.id)
     assert got.proposal.floors == ()
-    assert (got.run_ids, got.order_differs) == ((), frozenset())
+    assert got.run_ids == ()
 
 
 async def test_drawing_sets_read_house_proposal__deleted_floor_is_ignored(
@@ -371,20 +374,3 @@ async def test_drawing_sets_read_house_proposal__max_floors(
     ids = [f.level_id for f in scene.floors]  # `rollback` của service làm hết hạn đối tượng ORM
     got = await read_house_proposal(db_session, local_storage, scene.project.id)
     assert [f.floor_id for f in got.proposal.floors] == ids[:2]
-
-
-@pytest.mark.parametrize(
-    ("storeys", "expected"),
-    [
-        ([], set()),
-        ([("a", 1), ("b", 2), ("c", 3)], set()),
-        ([("a", 1), ("b", 1)], set()),
-        ([("a", 2), ("b", 1)], {"a", "b"}),
-        ([("a", 1), ("b", None), ("c", 3), ("d", 2)], {"c", "d"}),
-        ([("a", None), ("b", None)], set()),
-    ],
-    ids=["empty", "ascending", "equal", "reversed", "unnumbered-skipped", "none-only"],
-)
-def test_drawing_sets_order_differs_of__cases(storeys: list[tuple[str, int | None]], expected: set[str]) -> None:
-    """Cặp ngược cờ cả hai đầu; số bằng nhau và tầng không có số không mâu thuẫn."""
-    assert order_differs_of(storeys) == frozenset(expected)

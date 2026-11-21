@@ -9,13 +9,15 @@ import pytest
 
 from packages.domain.drawing_set import HouseProposal, HouseView, solve_house
 from packages.domain.drawing_set.heights import FloorLevel, StoreyHeight
+from packages.domain.drawing_set.order import OrderConflict
 from packages.domain.drawing_set.proposal import (
     CONFIDENT,
-    ORDER_DIFFERS,
+    ORDER_TEXT_CONFLICT,
     SINGLE_SOURCE,
     FloorProposal,
     _floor_values,
     _own_values,
+    _propose,
     _representatives,
     _storey_questions,
     _Values,
@@ -210,13 +212,12 @@ def test_mezzanine_has_a_level_but_no_height() -> None:
     assert (got["a"].height_mm, got["b"].storey_no) == (5200, 2)  # lửng chia khoảng cao nhưng không cắt cặp tầng
 
 
-def test_order_differs_is_never_raised_here() -> None:
-    assert ORDER_DIFFERS == "ORDER_DIFFERS"
-    views = [_view(f"v{i}", "MẶT BẰNG TẦNG", position=i) for i in range(3)] + _stack("±0.000", "+3.300")
-    for known in (False, True):
-        asked = {q for f in solve_house(views, order_known=known).floors for q in f.questions}
-        assert ORDER_DIFFERS not in asked
-        assert asked <= _CODES
+def test_order_conflict_needs_known_order() -> None:
+    """Thứ tự chưa biết: không bao giờ hỏi `ORDER_TEXT_CONFLICT`, dù tên hình đi ngược vị trí."""
+    views = [_view("a", "MẶT BẰNG TẦNG 2", position=0), _view("b", "MẶT BẰNG TẦNG 1", position=1)]
+    asked = {q for f in solve_house(views).floors for q in f.questions}
+    assert ORDER_TEXT_CONFLICT not in asked
+    assert asked <= _CODES
 
 
 def test_order_known_matters_for_titles_without_numbers() -> None:
@@ -541,7 +542,7 @@ def _check_heights(got: dict[str, FloorProposal], known: dict[str, Any]) -> None
 @pytest.mark.parametrize("name", _GOLDENS)
 def test_golden_parity(name: str) -> None:
     golden = json.loads((_DATA / f"{name}.json").read_text(encoding="utf-8"))
-    proposal = solve_house(_golden_views(golden), order_known=True)
+    proposal = _propose(_golden_views(golden), cues=True, follow=False)  # bộ nghiên cứu: nhiều hình một tầng
     got = _by_id(proposal)
     known = golden["expected_known"]
     assert [f.floor_id for f in proposal.floors] == [v["id"] for v in golden["input"]["views"]]
@@ -554,5 +555,58 @@ def test_goldens_cover_conflict_unsure_missing_assumed_and_not_a_plan() -> None:
     asked: set[str] = set()
     for name in _GOLDENS:
         golden = json.loads((_DATA / f"{name}.json").read_text(encoding="utf-8"))
-        asked |= {q for f in solve_house(_golden_views(golden), order_known=True).floors for q in f.questions}
+        floors = _propose(_golden_views(golden), cues=True, follow=False).floors
+        asked |= {q for f in floors for q in f.questions}
     assert asked == _CODES - {"NO_TEXT"}
+
+
+# ---------------------------------------------------------------- thứ tự tầng của dự án (HS-03)
+def test_order_known_text_agrees() -> None:
+    """Tên hình khớp thứ tự dự án: số giữ nguyên, hai nguồn cùng ý nên tầng đạt 0,95, không câu hỏi về thứ tự."""
+    got = solve_house(_stack("±0.000", "+3.300", "+6.600"), order_known=True).floors
+    assert [f.storey_no for f in got] == [1, 2, 3]
+    assert [f.storey_label for f in got] == ["ground", "floor", "floor"]
+    assert all(f.storey_confidence >= CONFIDENT and f.order_conflict is None for f in got)
+    assert not {ORDER_TEXT_CONFLICT, "STOREY_UNSURE", "STOREY_CONFLICT"} & {q for f in got for q in f.questions}
+
+
+def test_order_known_text_conflicts() -> None:
+    """Tên hình ngược thứ tự dự án: giữ thứ tự, hỏi kèm lý do và số chữ ghi; cốt ngược thứ tự: lý do "level"."""
+    views = [
+        _view("a", "MẶT BẰNG TẦNG 1", "±0.000", position=0),
+        _view("b", "MẶT BẰNG TẦNG 3", "+3.300", position=1),
+        _view("c", "MẶT BẰNG TẦNG 2", "+6.600", position=2),
+        _view("d", "MẶT BẰNG TẦNG 4", "+9.900", position=3),
+    ]
+    got = _by_id(solve_house(views, order_known=True))
+    assert [got[k].storey_no for k in "abcd"] == [1, 2, 3, 4]
+    assert (got["b"].order_conflict, got["c"].order_conflict) == (OrderConflict("title", 3), OrderConflict("title", 2))
+    assert all(got[k].questions[0] == ORDER_TEXT_CONFLICT and got[k].storey_confidence <= 0.65 for k in "bc")
+    assert got["a"].order_conflict is None
+    assert got["d"].order_conflict is None
+    by_level = [
+        _view("a", "MẶT BẰNG TẦNG 1", "±0.000", position=0),
+        _view("b", "MẶT BẰNG TẦNG 2", "+6.600", "+6.600", position=1),
+        _view("c", "MẶT BẰNG TẦNG 3", "+3.300", "+3.300", position=2),
+    ]
+    got = _by_id(solve_house(by_level, order_known=True))
+    assert [got[k].storey_no for k in "abc"] == [1, 2, 3]
+    assert {got[k].order_conflict for k in "bc"} == {OrderConflict("level")}
+    assert all(ORDER_TEXT_CONFLICT in got[k].questions and got[k].storey_confidence <= 0.65 for k in "bc")
+
+
+def test_order_known_project_with_mezzanine() -> None:
+    """Lửng là một sàn riêng không số; tầng sau nó đếm tiếp. Sàn không có chữ vẫn chiếm một chỗ trong thứ tự."""
+    views = [
+        _view("a", "MẶT BẰNG TẦNG 1", "±0.000", position=0),
+        _view("m", "MẶT BẰNG LỬNG", "+2.800", "+2.800", position=1),
+        _view("b", "MẶT BẰNG TẦNG", position=2),
+        HouseView("x", (), _SIZE, 3),
+        _view("t", "MẶT BẰNG TUM", "+12.200", position=4),
+    ]
+    got = _by_id(solve_house(views, order_known=True))
+    assert (got["m"].storey_label, got["m"].storey_no) == ("mezzanine", None)
+    assert [got[k].storey_no for k in "abt"] == [1, 2, 4]  # "x" không chữ giữ chỗ tầng 3
+    assert (got["t"].storey_label, got["x"].questions) == ("tum", ("NO_TEXT",))
+    assert not any(f.order_conflict for f in got.values())
+    assert 0.7 < got["b"].storey_confidence < CONFIDENT  # chỉ suy từ thứ tự: một nguồn

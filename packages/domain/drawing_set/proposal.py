@@ -29,8 +29,8 @@ Luật ghép:
 Mã câu hỏi: `STOREY_UNSURE` (độ tin tầng <= 0,7, không bất đồng), `STOREY_CONFLICT` (có dấu hiệu mạnh chỉ
 tầng khác, hoặc cốt riêng lệch cốt đại diện cùng tầng), `LEVEL_MISSING` (không cốt, hoặc cốt <= 0,7),
 `HEIGHT_ASSUMED` (chiều cao <= 0,7, mặc định, giả định, bắc qua tầng thiếu mặt bằng hay mỗi tầng ngoài 2,4-4,6 m),
-`NOT_A_PLAN`, `NO_TEXT`. `ORDER_DIFFERS` KHÔNG bao giờ được nâng ở đây: lớp API nâng nó khi so thứ tự
-tầng đề xuất với thứ tự tầng của dự án; gói này chỉ nhận `order_known` để tắt dấu hiệu thứ tự.
+`NOT_A_PLAN`, `NO_TEXT`, `ORDER_TEXT_CONFLICT` (chỉ khi `order_known=True`: số tầng đi theo thứ tự tầng của dự
+án, chữ trên bản vẽ nói khác thì giữ thứ tự và hỏi, lý do ở `FloorProposal.order_conflict`; xem `order.py`).
 """
 
 from collections.abc import Sequence
@@ -46,12 +46,13 @@ from packages.domain.drawing_set.heights import (
     to_db_ranges,
 )
 from packages.domain.drawing_set.levels import levels_from_texts, main_floor_level
+from packages.domain.drawing_set.order import OrderConflict, Slot, follow_order
 from packages.domain.drawing_set.storeys import PlanView, StoreyChoice, StoreyLabel, solve_storeys
 from packages.domain.drawing_set.titles import Kind, KindGuess, OcrText, kind_from_picked, parse_title, pick_title
 
 STOREY_UNSURE: Final = "STOREY_UNSURE"
 STOREY_CONFLICT: Final = "STOREY_CONFLICT"
-ORDER_DIFFERS: Final = "ORDER_DIFFERS"  # chỉ lớp API nâng (so với thứ tự tầng của dự án); gói này không bao giờ
+ORDER_TEXT_CONFLICT: Final = "ORDER_TEXT_CONFLICT"  # chữ trên bản vẽ mâu thuẫn thứ tự tầng của dự án
 LEVEL_MISSING: Final = "LEVEL_MISSING"
 HEIGHT_ASSUMED: Final = "HEIGHT_ASSUMED"
 NOT_A_PLAN: Final = "NOT_A_PLAN"
@@ -100,6 +101,7 @@ class FloorProposal:
     height_confidence: float | None = None
     height_source: str | None = None
     questions: tuple[str, ...] = ()
+    order_conflict: OrderConflict | None = None  # lý do của `ORDER_TEXT_CONFLICT`
 
 
 @dataclass(frozen=True)
@@ -284,16 +286,17 @@ def _values_by_view(plans: Sequence[PlanView], choices: dict[str, StoreyChoice])
     return out
 
 
-def _storey_questions(choice: StoreyChoice, conflict: bool = False) -> tuple[str, ...]:
-    """Câu hỏi về tầng: bất đồng (của `solve_storeys`, hai nguồn tên hay cốt lệch đại diện) có ưu tiên;
-    ngược lại độ tin chưa đạt dải "một nguồn" (đúng 0,70 trở xuống)."""
+def _storey_questions(choice: StoreyChoice, conflict: bool = False, order: bool = False) -> tuple[str, ...]:
+    """Câu hỏi về tầng: chữ mâu thuẫn thứ tự dự án (`order`) đứng đầu; rồi bất đồng (của `solve_storeys`, hai
+    nguồn tên hay cốt lệch đại diện); không có cả hai thì độ tin chưa đạt dải "một nguồn" (0,70 trở xuống)."""
+    asked = (ORDER_TEXT_CONFLICT,) if order else ()
     if choice.conflict or conflict:
-        return (STOREY_CONFLICT,)
-    return (STOREY_UNSURE,) if unsure(choice.confidence) else ()
+        return (*asked, STOREY_CONFLICT)
+    return asked or ((STOREY_UNSURE,) if unsure(choice.confidence) else ())
 
 
-def _plan_floor(read: _Read, choice: StoreyChoice, values: _Values) -> FloorProposal:
-    """Đề xuất của một mặt bằng: tầng từ `solve_storeys`, cốt/chiều cao từ `values`."""
+def _plan_floor(read: _Read, choice: StoreyChoice, values: _Values, order: OrderConflict | None) -> FloorProposal:
+    """Đề xuất của một mặt bằng: tầng từ `solve_storeys` (hoặc thứ tự dự án), cốt/chiều cao từ `values`."""
     guess = read.guess
     kind_conf = guess.confidence if guess is not None and guess.kind == "plan" else _KNOWN_PLAN_CONF
     storey_conf = min(choice.confidence, _CONFLICT_CAP) if values.level_conflict else choice.confidence
@@ -310,7 +313,11 @@ def _plan_floor(read: _Read, choice: StoreyChoice, values: _Values) -> FloorProp
         values.height_mm,
         values.height_confidence,
         values.height_source,
-        (*_storey_questions(choice, read.title_conflict or values.level_conflict), *values.questions),
+        (
+            *_storey_questions(choice, read.title_conflict or values.level_conflict, order is not None),
+            *values.questions,
+        ),
+        order,
     )
 
 
@@ -322,26 +329,54 @@ def _bare_floor(read: _Read) -> FloorProposal:
     return FloorProposal(read.view.floor_id, guess.kind, guess.confidence, questions=(NOT_A_PLAN,))
 
 
-def _floor(read: _Read, choices: dict[str, StoreyChoice], values: dict[str, _Values]) -> FloorProposal:
+def _floor(
+    read: _Read, choices: dict[str, StoreyChoice], values: dict[str, _Values], order: dict[str, OrderConflict]
+) -> FloorProposal:
     """Đề xuất của một hình đã đọc; hình không rõ tầng (không vào `solve_heights`) không có cốt."""
     if read.plan is None:
         return _bare_floor(read)
-    return _plan_floor(read, choices[read.plan.view_id], values.get(read.plan.view_id, _Values()))
+    vid = read.plan.view_id
+    return _plan_floor(read, choices[vid], values.get(vid, _Values()), order.get(vid))
+
+
+def _slots(reads: Sequence[_Read], choices: dict[str, StoreyChoice]) -> list[Slot]:
+    """Các sàn của dự án theo thứ tự: mặt bằng kèm tầng đọc từ chữ và cốt riêng; hình không chữ chỉ chiếm chỗ;
+    hình chắc chắn không phải mặt bằng không phải là sàn."""
+    out: list[Slot] = []
+    for read in sorted(reads, key=lambda r: (r.view.position, r.view.floor_id)):
+        if read.plan is not None:
+            out.append(Slot(read.plan.view_id, choices[read.plan.view_id], _own_mm(read.plan)))
+        elif read.guess is None:
+            out.append(Slot(read.view.floor_id, None))
+    return out
+
+
+def _propose(views: Sequence[HouseView], *, cues: bool, follow: bool) -> HouseProposal:
+    """Thân của `solve_house`. `cues`: dùng dấu hiệu thứ tự của `solve_storeys` (bộ bản vẽ nghiên cứu, nhiều hình
+    một tầng); `follow`: số tầng đi theo thứ tự dự án (`order.follow_order`, mỗi hình một sàn)."""
+    if len({v.floor_id for v in views}) != len(views):
+        raise ValueError("floor_id trùng nhau")
+    reads = [_read(v) for v in views]
+    plans = [r.plan for r in reads if r.plan is not None]
+    choices = solve_storeys(plans, cues)
+    order: dict[str, OrderConflict] = {}
+    if follow:
+        choices, order = follow_order(_slots(reads, choices))
+    choices = _cap_title_conflicts(reads, choices)
+    values = _values_by_view(plans, choices)
+    return HouseProposal(tuple(_floor(r, choices, values, order) for r in reads))
 
 
 def solve_house(views: Sequence[HouseView], *, order_known: bool = False) -> HouseProposal:
     """Đề xuất tầng, cốt và chiều cao cho cả nhà từ chữ OCR của từng hình (gọi một lần cho cả dự án).
 
-    `order_known=False` (mặc định, vì thứ tự tầng trong dự án do người dùng đặt nên chưa chắc đúng) tắt dấu
-    hiệu thứ tự của `solve_storeys`. Kết quả theo thứ tự `views`. `floor_id` phải khác nhau.
+    `order_known=True`: `position` là thứ tự tầng của dự án (mỗi hình một sàn) và số tầng đi theo nó
+    (`order.follow_order`); chữ nói khác thì giữ thứ tự và hỏi `ORDER_TEXT_CONFLICT`. `order_known=False`
+    (mặc định): vị trí không đáng tin. Cả hai chế độ đều tắt dấu hiệu thứ tự của `solve_storeys`: số đọc từ chữ
+    phải độc lập với thứ tự thì mới xác nhận được nó. Kết quả theo thứ tự `views`.
+    `floor_id` phải khác nhau.
 
     Raises:
         ValueError: hai hình trùng `floor_id`.
     """
-    if len({v.floor_id for v in views}) != len(views):
-        raise ValueError("floor_id trùng nhau")
-    reads = [_read(v) for v in views]
-    plans = [r.plan for r in reads if r.plan is not None]
-    choices = _cap_title_conflicts(reads, solve_storeys(plans, order_known))
-    values = _values_by_view(plans, choices)
-    return HouseProposal(tuple(_floor(r, choices, values) for r in reads))
+    return _propose(views, cues=False, follow=order_known)

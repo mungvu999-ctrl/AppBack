@@ -58,6 +58,8 @@ class FloorProposalOut(WireModel):
     height_confidence: float | None = None
     height_source: LevelSource | None = None
     questions: list[QuestionOut]
+    is_section: bool | None = None
+    """`true` khi người dùng đã đánh dấu bản vẽ của dòng này là mặt cắt (`floors.is_section`); vắng khi không."""
 
 
 class HouseProposalOut(WireModel):
@@ -101,8 +103,8 @@ def _question(code: str, floor: FloorProposal) -> dict[str, str | int | None]:
     return out
 
 
-def _floor_out(floor: FloorProposal) -> FloorProposalOut:
-    """Một tầng ra dây.
+def _floor_out(floor: FloorProposal, section: bool = False) -> FloorProposalOut:
+    """Một tầng ra dây; `section`: dòng được người dùng đánh dấu mặt cắt (`isSection: true`, vắng khi không).
 
     Giá trị ngoài enum dây: `kind` → `other`, nhãn tầng → vắng, nguồn → `default`, mã câu hỏi → `STOREY_UNSURE`.
     """
@@ -121,15 +123,17 @@ def _floor_out(floor: FloorProposal) -> FloorProposalOut:
             "height_confidence": _unit(floor.height_confidence),
             "height_source": _wire(floor.height_source, _SOURCES, "default", "height_source"),
             "questions": [_question(code, floor) for code in floor.questions],
+            "is_section": True if section else None,
         }
     )
 
 
-def house_proposal_out(proposal: HouseProposal, run_ids: Iterable[str]) -> HouseProposalOut:
-    """Đề xuất của miền ra dây (`enabled=True`), giữ thứ tự tầng."""
-    return HouseProposalOut(
-        enabled=True, floors=[_floor_out(floor) for floor in proposal.floors], run_ids=list(run_ids)
-    )
+def house_proposal_out(
+    proposal: HouseProposal, run_ids: Iterable[str], section_ids: frozenset[str] = frozenset()
+) -> HouseProposalOut:
+    """Đề xuất của miền ra dây (`enabled=True`), giữ thứ tự tầng; `section_ids` = dòng đã đánh dấu mặt cắt."""
+    floors = [_floor_out(floor, floor.floor_id in section_ids) for floor in proposal.floors]
+    return HouseProposalOut(enabled=True, floors=floors, run_ids=list(run_ids))
 
 
 DISABLED: Final = HouseProposalOut(enabled=False, floors=[], run_ids=[])

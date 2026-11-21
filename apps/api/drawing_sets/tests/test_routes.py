@@ -291,3 +291,11 @@ def test_wire_enums_cover_what_the_domain_can_produce() -> None:
     assert set(get_args(heights.LevelSource)) | set(get_args(heights.HeightSource)) <= sources
     codes = {value for name, value in vars(domain).items() if name.isupper() and value == name}
     assert codes == set(ALL_CODES)
+
+
+def test_house_proposal_out__marked_section() -> None:
+    """`isSection: true` chỉ có ở dòng người dùng đã đánh dấu mặt cắt; dòng khác vắng khoá (W2)."""
+    floors = (FloorProposal("L-S", "section", 1.0), FloorProposal("L-A", "plan", 0.9))
+    dumped = house_proposal_out(HouseProposal(floors), (), frozenset({"L-S"})).model_dump(by_alias=True)["floors"]
+    assert (dumped[0]["isSection"], dumped[0]["kind"]) == (True, "section")
+    assert "isSection" not in dumped[1]

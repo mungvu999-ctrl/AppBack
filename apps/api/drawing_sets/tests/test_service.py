@@ -374,3 +374,62 @@ async def test_drawing_sets_read_house_proposal__max_floors(
     ids = [f.level_id for f in scene.floors]  # `rollback` của service làm hết hạn đối tượng ORM
     got = await read_house_proposal(db_session, local_storage, scene.project.id)
     assert [f.floor_id for f in got.proposal.floors] == ids[:2]
+
+
+def _section_texts() -> TextResult:
+    """Chữ của một mặt cắt: tên hình và bốn cốt xếp dọc (cốt cao hơn nằm cao hơn trên trang)."""
+    marks = [("±0.000", 1000), ("+3.300", 670), ("+6.600", 340), ("+9.900", 10)]
+    items = [TextPx(text=text, box=_box(1500, y, 1620, y + 30), confidence=0.9) for text, y in marks]
+    items.append(TextPx(text="MẶT CẮT A-A", box=_box(700, 1100, 1300, 1180), confidence=0.9))
+    return TextResult(items=tuple(items))
+
+
+async def test_drawing_sets_read_house_proposal__marked_section(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """Dòng đánh dấu mặt cắt: không là một sàn, không `NOT_A_PLAN`; cốt trên nó thành nguồn thứ hai của các tầng."""
+    scene = await make_scene(db_session, floors=4)
+    specs = [("MẶT BẰNG TẦNG 1", "±0.000"), ("MẶT BẰNG TẦNG 2", "+3.300"), ("MẶT BẰNG TẦNG 3", "+6.600")]
+    plans = [text_to_json(_texts(title, mark)) for title, mark in specs]
+    for floor, body in zip(scene.floors, [*plans, text_to_json(_section_texts())], strict=True):
+        await _seed_run(db_session, local_storage, fake_clock, scene, floor, body=body)
+    project_id, ids = scene.project.id, [f.level_id for f in scene.floors]  # `rollback` làm hết hạn đối tượng ORM
+
+    plain = await read_house_proposal(db_session, local_storage, project_id)
+    assert plain.section_ids == frozenset()
+    assert (plain.proposal.floors[3].kind, plain.proposal.floors[3].questions) == ("section", ("NOT_A_PLAN",))
+    assert all(f.elevation_source == "plan" for f in plain.proposal.floors[:3])
+
+    await db_session.execute(update(FloorRow).where(FloorRow.level_id == ids[3]).values(is_section=True))
+    await db_session.commit()
+    got = await read_house_proposal(db_session, local_storage, project_id)
+    assert [f.floor_id for f in got.proposal.floors] == ids
+    assert got.section_ids == frozenset({ids[3]})
+    section = got.proposal.floors[3]
+    assert (section.kind, section.kind_confidence, section.questions) == ("section", 1.0, ())
+    assert [f.storey_no for f in got.proposal.floors[:3]] == [1, 2, 3]
+    assert [f.elevation_source for f in got.proposal.floors[:3]] == ["plan+section"] * 3
+    assert all(f.elevation_confidence is not None and f.elevation_confidence >= 0.9 for f in got.proposal.floors[:3])
+    assert len(got.run_ids) == 4
+
+
+async def test_drawing_sets_read_house_proposal__marked_section_without_text(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """Mặt cắt đã đánh dấu mà chưa có lượt chạy: dòng đó hỏi `NO_TEXT`, các tầng như khi không có mặt cắt."""
+    scene = await make_scene(db_session, floors=2)
+    await _seed_run(
+        db_session,
+        local_storage,
+        fake_clock,
+        scene,
+        scene.floors[0],
+        body=text_to_json(_texts("MẶT BẰNG TẦNG 1", "±0.000")),
+    )
+    project_id, ids = scene.project.id, [f.level_id for f in scene.floors]
+    await db_session.execute(update(FloorRow).where(FloorRow.level_id == ids[1]).values(is_section=True))
+    await db_session.commit()
+    got = await read_house_proposal(db_session, local_storage, project_id)
+    assert (got.proposal.floors[1].kind, got.proposal.floors[1].questions) == ("section", ("NO_TEXT",))
+    assert got.proposal.floors[0].storey_no == 1
+    assert got.section_ids == frozenset({ids[1]})

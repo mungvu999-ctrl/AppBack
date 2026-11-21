@@ -34,4 +34,4 @@ async def drawing_sets_read_house_proposal(
     if not settings.drawing_set_enabled:
         return DISABLED
     read = await read_house_proposal(db, storage, project_id)
-    return house_proposal_out(read.proposal, read.run_ids)
+    return house_proposal_out(read.proposal, read.run_ids, read.section_ids)

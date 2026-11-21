@@ -268,13 +268,19 @@ def _check_path_body_id(level_id: str, body_id: str | None) -> None:
 
 
 def _changed_fields(row: FloorRow, body: FloorPatchIn) -> dict[str, object]:
-    """Khoá có mặt trong thân #34 mà khác hiện trạng; `{}` hay giá trị trùng → rỗng."""
+    """Khoá có mặt trong thân #34 mà khác hiện trạng; `{}` hay giá trị trùng → rỗng.
+
+    Đánh dấu mặt cắt (`isSection: true`, HS-03) kéo theo ẩn khỏi 3D khi thân không tự nói `hiddenIn3d`: mặt cắt
+    không phải một sàn của ngôi nhà. Bỏ dấu thì không tự hiện lại.
+    """
+    hidden = True if body.is_section and body.hidden_in_3d is None else body.hidden_in_3d
     candidates = {
         "name": body.name,
         "order": body.order,
         "elevation_mm": body.elevation_mm,
         "height_mm": body.height_mm,
-        "hidden_in_3d": body.hidden_in_3d,
+        "hidden_in_3d": hidden,
+        "is_section": body.is_section,
     }
     current = {
         "name": row.name,
@@ -282,6 +288,7 @@ def _changed_fields(row: FloorRow, body: FloorPatchIn) -> dict[str, object]:
         "elevation_mm": row.elevation_mm,
         "height_mm": row.height_mm,
         "hidden_in_3d": row.hidden_in_3d,
+        "is_section": row.is_section,
     }
     return {field: value for field, value in candidates.items() if value is not None and value != current[field]}
 

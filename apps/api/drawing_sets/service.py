@@ -30,7 +30,8 @@ from apps.api.spatial_read.detected import read_artifact
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
 from packages.db.models.drawings import DrawingRow, PipelineRunRow
 from packages.db.models.floors import FloorRow
-from packages.domain.drawing_set import HouseProposal, HouseView, solve_house
+from packages.domain.drawing_set import FloorProposal, HouseProposal, HouseView, SectionView, solve_house
+from packages.domain.drawing_set.proposal import NO_TEXT
 from packages.ml_contracts.artifacts import TextPx, text_from_json
 from packages.storage.port import ObjectStorage
 
@@ -49,19 +50,22 @@ tới sau xếp hàng và bị bỏ khỏi hàng khi quá `DEADLINE_S`."""
 
 @dataclass(frozen=True)
 class HouseProposalRead:
-    """Kết quả đọc: đề xuất theo thứ tự tầng của dự án và id lượt dùng chữ."""
+    """Kết quả đọc: đề xuất theo thứ tự tầng của dự án, id lượt dùng chữ, và các dòng người dùng đánh dấu mặt cắt."""
 
     proposal: HouseProposal
     run_ids: tuple[str, ...]
+    section_ids: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
 class _FloorSource:
-    """Một tầng của dự án cùng lượt mới nhất của nó (`None` khi chưa có) và cỡ trang bản vẽ (`None` khi chưa có)."""
+    """Một tầng của dự án cùng lượt mới nhất của nó (`None` khi chưa có), cỡ trang bản vẽ (`None` khi chưa có) và
+    dấu "bản vẽ này là mặt cắt" (`floors.is_section`)."""
 
     floor_id: str
     run: tuple[str, str] | None
     size: tuple[int, int] | None
+    section: bool = False
 
 
 @dataclass(frozen=True)
@@ -100,6 +104,7 @@ def _sources_stmt(project_id: str) -> Select[Any]:
             latest.c.upload_id,
             DrawingRow.width_px,
             DrawingRow.height_px,
+            FloorRow.is_section,
         )
         .select_from(FloorRow)
         .outerjoin(latest, true())
@@ -118,8 +123,9 @@ async def _load_sources(db: AsyncSession, project_id: str) -> list[_FloorSource]
             level_id,
             None if run_id is None else (run_id, upload_id),
             None if width is None else (width, height),
+            section,
         )
-        for level_id, run_id, upload_id, width, height in rows
+        for level_id, run_id, upload_id, width, height, section in rows
     ]
 
 
@@ -176,13 +182,27 @@ def _solve(sources: Sequence[_FloorSource], blobs: Sequence[bytes | None]) -> Ho
     """Phần tốn CPU, đồng bộ (chạy trong `_SOLVERS`): phân tích JSON, dựng hình, `solve_house`.
 
     `sources` theo `(floor_order, pk)` nên vị trí của hình là thứ tự tầng của dự án: số tầng đi theo nó
-    (`order_known=True`), chữ trên bản vẽ nói khác thì miền hỏi `ORDER_TEXT_CONFLICT` (HS-03).
+    (`order_known=True`), chữ trên bản vẽ nói khác thì miền hỏi `ORDER_TEXT_CONFLICT` (HS-03). Dòng người dùng
+    đánh dấu mặt cắt không phải một sàn: chữ của nó vào `sections` (nguồn cốt thứ hai), đề xuất của dòng đó chỉ
+    còn loại "section" (kèm `NO_TEXT` khi chưa đọc được chữ), không bao giờ `NOT_A_PLAN`.
     """
     texts = [_texts_of(source, data) for source, data in zip(sources, blobs, strict=True)]
     views = [_view(source, found, index) for index, (source, found) in enumerate(zip(sources, texts, strict=True))]
+    marked = {view.floor_id: view for source, view in zip(sources, views, strict=True) if source.section}
+    solved = solve_house(
+        [view for view in views if view.floor_id not in marked],
+        order_known=True,
+        sections=[SectionView(view.texts, view.size) for view in marked.values()],
+    )
+    by_id = {floor.floor_id: floor for floor in solved.floors}
+    by_id |= {
+        floor_id: FloorProposal(floor_id, "section", 1.0, questions=() if view.texts else (NO_TEXT,))
+        for floor_id, view in marked.items()
+    }
     return HouseProposalRead(
-        proposal=solve_house(views, order_known=True),
+        proposal=HouseProposal(tuple(by_id[source.floor_id] for source in sources)),
         run_ids=tuple(source.run[0] for source, found in zip(sources, texts, strict=True) if source.run and found),
+        section_ids=frozenset(marked),
     )
 
 

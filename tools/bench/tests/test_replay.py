@@ -13,6 +13,9 @@ import pytest
 
 from tools.bench.replay import check, dump, replay
 
+# Fixture `synth_root` dùng chung (luật cổng: chỉ một conftest.py ở gốc repo).
+pytest_plugins = ["tools.bench.tests.fixtures"]
+
 
 def wjson(p: Path, data: Any) -> None:
     """Ghi JSON, tạo thư mục cha."""

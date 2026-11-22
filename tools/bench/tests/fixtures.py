@@ -1,4 +1,4 @@
-"""Fixture dùng chung: bộ dữ liệu tổng hợp dựng một lần cho cả phiên test."""
+"""Fixture dùng chung (nạp qua `pytest_plugins`): bộ dữ liệu tổng hợp dựng một lần cho cả phiên test."""
 
 from __future__ import annotations
 

@@ -9,6 +9,9 @@ from typing import Any
 from tools.bench.score.io import Bench
 from tools.bench.score.report import render_markdown, score_run
 
+# Fixture `synth_root` dùng chung (luật cổng: chỉ một conftest.py ở gốc repo).
+pytest_plugins = ["tools.bench.tests.fixtures"]
+
 DATA = Path(__file__).parent / "data"
 
 

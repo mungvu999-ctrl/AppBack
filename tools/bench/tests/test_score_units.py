@@ -18,6 +18,9 @@ from tools.bench.score.openings import _host_length
 from tools.bench.score.reliability import _broken
 from tools.bench.score.verdict import finalize, verdict_of
 
+# Fixture `synth_root` dùng chung (luật cổng: chỉ một conftest.py ở gốc repo).
+pytest_plugins = ["tools.bench.tests.fixtures"]
+
 
 def test_band_thresholds() -> None:
     """Đ trong ngưỡng tốt, C trong ngưỡng cảnh báo, T ngoài; None = không đo được."""

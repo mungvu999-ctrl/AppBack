@@ -15,7 +15,7 @@
 > - S1/S2 chia chủ S-case.
 >
 > **Đường v1** là đường thật sau F-01a (tiền tố `/api`, E1) và F-03 (lồng tạo và liệt kê tầng, T3). Tham số đường viết snake_case (W21).
-> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 52 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
+> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 53 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
 > **Khoá:** `—` = mọi vai đã đăng nhập (miễn C07), `thành viên` = mọi vai là thành viên dự án, `admin` = `require_admin` (route trong dự án: `require_project("admin")` — thành viên **và** vai admin, 404 trước 403).
 
 ## 1. Hợp đồng CŨ — 49 thao tác HTTP + 2 kênh SSE
@@ -55,7 +55,7 @@
 | 31 | quality | `POST /api/projects/{project_id}/floors/{floor_id}/quality/corners` | `quality_set_corners` | `ImageQualityAssessment` | G +ngoài | `floor.upload` | — | B2-05b | sau `complete` → xếp hàng lại |
 | 32 | quality | `POST /api/projects/{project_id}/floors/{floor_id}/quality/straighten` | `quality_straighten` | `ImageQualityAssessment` | G +ngoài | `floor.upload` | — | B2-05b | nắn xong → xếp hàng lại pipeline |
 | 33 | spatial | `GET /api/projects/{project_id}/floors/{floor_id}/spatial` | `spatial_read_floor` | `Floor` | Đ | thành viên | — | B3-02 | |
-| 34 | spatial | `PATCH /api/projects/{project_id}/floors/{floor_id}/spatial` | `floors_patch_spatial_floor` | `Floor` | G | `layer.edit` | có | **B2-03** | bảng `floors`; bỏ qua `drawings`/`areaM2` |
+| 34 | spatial | `PATCH /api/projects/{project_id}/floors/{floor_id}/spatial` | `floors_patch_spatial_floor` | `Floor` | G | `layer.edit` | có | **B2-03** | bảng `floors`; bỏ qua `drawings`/`areaM2`; thân nhận `isSection` (HS-03: đánh dấu mặt cắt, kéo `hiddenIn3d: true` khi thân không nói); response `Floor` mang `isSection: true` khi dòng là mặt cắt, vắng khi không (K-31) |
 | 35 | spatial | `PUT /api/projects/{project_id}/floors/{floor_id}/spatial/layer` | `spatial_write_layer` | F-00a `FloorLayerWriteResultSchema` | GV | `layer.edit` | — | B3-03 | **đổi PATCH → PUT** (F-04b); `remoteChanges` ≥ 1 |
 | 36 | spatial | `GET /api/projects/{project_id}/versions/{version_id}` | `versions_read_version` | `Version` | Đ | thành viên | — | B3-04 | |
 | 37 | telemetry | `POST /api/telemetry` | `telemetry_ingest_batch` | rỗng (204) | B | — | — | B7-01 | `text/plain` hoặc JSON; không đòi token |
@@ -134,6 +134,7 @@
 | N48 | `POST /api/projects/{project_id}/design-concept` | `design_director_select_concept` | `designConcept.ts` (`DesignConcept`) | G | `project.settings.edit` | — | AID-01 | ô chọn phong cách; luôn 202 (dùng lại concept cùng đầu vào); 503 `DESIGN_DIRECTOR_DISABLED`, 429 `DESIGN_DIRECTOR_QUOTA` |
 | N50 | `GET /api/projects/{project_id}/lighting-bakes/availability` | `lighting_bake_read_availability` | `lightingBake.ts` (`LightingBakeAvailability`) | Đ | thành viên | — | K-09 | công tắc `LIGHTING_BAKE_ENABLED`: FE ẩn nút "Nướng ánh sáng" khi `false`; N42 tắt → 503 `LIGHTING_BAKE_DISABLED` |
 | N51 | `POST /api/projects/{project_id}/drawings/uploads/{upload_id}/rerun` | `drawings_rerun_upload` | `index.ts` (`Progress`) | G +ngoài | `floor.upload` | — | K-06 | màn hỏng: nút "Chạy lại từ bản gốc"; thân rỗng; 409 `UPLOAD_NOT_COMPLETE` / `UPLOAD_SUPERSEDED` / `PIPELINE_RUNNING` / `PIPELINE_NOT_FAILED` / `UPLOAD_SOURCE_GONE`; xếp hàng pipeline sau commit |
+| N52 | `GET /api/projects/{project_id}/house-proposal` | `drawing_sets_read_house_proposal` | `houseProposal.ts` (`HouseProposal`; cổng: `strict/houseProposal.ts`) | Đ | thành viên | — | HS-02 | màn Quản lý tầng: bảng "Đề xuất cho cả nhà" (tầng, cốt, chiều cao, câu hỏi); chỉ đọc; công tắc `DRAWING_SET_ENABLED` tắt → 200 `{enabled: false, floors: [], runIds: []}` |
 
 N24 có version: áp thêm C09, C09b, C14 theo CASE §2.2 A.
 

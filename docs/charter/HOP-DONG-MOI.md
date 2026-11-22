@@ -719,3 +719,25 @@ ruleConfig.ts       RULE_OVERRIDE_SEVERITIES · RuleOverrideSchema · ProjectRul
   revision mọi tầng, phiên bản thư viện, vật liệu, prompt) thì dùng lại, không gọi AI. Lỗi 503 `DESIGN_DIRECTOR_DISABLED`,
   429 `DESIGN_DIRECTOR_QUOTA` (cả hai `Retry-After: 10`). Mã hỏng: `DESIGN_DIRECTOR_FAILED`, `DESIGN_DIRECTOR_OUTPUT_INVALID`,
   `DESIGN_DIRECTOR_STALLED`. FE coi mọi lỗi là "dùng cách bày mặc định", không báo lỗi chặn.
+
+## 13. Đề xuất cho cả nhà → `houseProposal.ts` (HS-02, HS-03; NO-442)
+
+- N52 `GET /api/projects/{project_id}/house-proposal`, luôn 200, chỉ đọc (máy chỉ đề xuất; "Nhận" của FE đi #34).
+  Công tắc `DRAWING_SET_ENABLED` tắt → `{enabled: false, floors: [], runIds: []}` (mẫu N47, không 503).
+- `HouseProposal {enabled, floors: FloorProposal[], runIds: string[]}` — `floors` theo thứ tự tầng của dự án; `runIds`
+  là id lượt chạy (`run_` + ULID) đã cho chữ.
+- `FloorProposal`: `floorId`, `kind` (`plan section elevation roof site detail other`), `kindConfidence` 0–1;
+  `storeyLabel?` (`ground basement mezzanine attic tum roof_terrace floor`), `storeyNo?`, `storeyConfidence` 0–1;
+  `elevationMm?` (−30000…300000), `elevationConfidence?`, `elevationSource?`; `heightMm?` (2000…10000),
+  `heightConfidence?`, `heightSource?` (nguồn: `plan plan+section section dims convention default`); `questions[]`;
+  `isSection?: true` khi người dùng đã đánh dấu mặt cắt (#34). Vắng, không `null` (W2). Độ tin kẹp 0–1 ở BE.
+- `Question {code, reason?, textStoreyNo?}` — `code`: `STOREY_UNSURE STOREY_CONFLICT ORDER_TEXT_CONFLICT LEVEL_MISSING
+  HEIGHT_ASSUMED NOT_A_PLAN NO_TEXT`; FE viết câu tiếng Việt. `reason` (`title` | `level`) và `textStoreyNo` chỉ đi kèm
+  `ORDER_TEXT_CONFLICT`.
+- Giá trị miền ngoài tập không làm 500: BE đổi về giá trị dè dặt nhất (`kind` → `other`, nhãn → vắng, nguồn →
+  `default`, mã → `STOREY_UNSURE`) và ghi log. Cốt/chiều cao ngoài khoảng: **BE bỏ số đó (vắng)** — FE vẫn `.catch`
+  phòng thủ (quyết định NO-442 mục 3).
+- Schema FE cố ý không `.strict()` (bảng phụ không được làm hỏng màn, W16); cổng H1 giải golden bằng bản strict riêng
+  `tools/contract/strict/houseProposal.ts` (L4-N07): khoá lạ, mã lạ, số ngoài khoảng, `reason` sai chỗ → bước 7 đỏ.
+- `Floor` (#10–#13, #24, #33, #34): thêm `isSection?: true` (K-31), vắng khi không phải mặt cắt; FE `FloorSchema`
+  (strict) khai khoá tuỳ chọn này **trước** khi BE lên `main`.

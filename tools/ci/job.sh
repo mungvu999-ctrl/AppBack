@@ -475,10 +475,16 @@ job_build_trivy() {
     db_args=(-v "${RUNNER_TEMP}/trivy-cache-${img}:/root/.cache/trivy")
     skip_args=(--skip-db-update)
   fi
-  run_step "trivy image ${img}" timeout "${NET_TIMEOUT_S}s" docker run --rm "${db_args[@]}" \
+  # Ảnh web: miễn tạm bốn CVE nginx chờ ảnh 1.30.7 (WEB-NGINX-CVE); ảnh khác không miễn gì.
+  local ignore_mount=() ignore_args=()
+  if [ "$img" = "web" ]; then
+    ignore_mount=(-v "$(_host_pwd)/tools/ci/web.trivyignore:/ignore/web.trivyignore:ro")
+    ignore_args=(--ignorefile /ignore/web.trivyignore)
+  fi
+  run_step "trivy image ${img}" timeout "${NET_TIMEOUT_S}s" docker run --rm "${db_args[@]}" "${ignore_mount[@]}" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "${trivy_dir}:/out" \
-    "$TRIVY_IMAGE" image "${skip_args[@]}" --severity CRITICAL --ignore-unfixed --exit-code 1 \
+    "$TRIVY_IMAGE" image "${skip_args[@]}" --severity CRITICAL --ignore-unfixed --exit-code 1 "${ignore_args[@]}" \
     --format sarif --output "/out/trivy-${img}.sarif" "appback-${img}:ci"
 }
 
@@ -494,12 +500,14 @@ job_build_trivy_db() {
 nginx_floor_for_line() {
   # Sàn bản vá theo dòng phát hành: bản vá của mỗi dòng ra độc lập (1.31.6 vá cùng lỗi với 1.30.5),
   # nên một sàn chung so bằng `sort -V` cho xanh giả (1.31.5 ≥ 1.30.5 nhưng còn lỗ hổng). Nguồn:
-  # nginx.org/en/security_advisories.html, tra 2026-10-03 — advisory mới nhất "buffer overflow when
-  # using ngx_http_v3_module" (CVE-2026-90439) "not vulnerable" 1.31.6+, 1.30.5+. Dòng chưa có trong
+  # nginx.org/en/security_advisories.html, tra 2026-11-22 — CVE-2026-97205 "not vulnerable" 1.30.6+,
+  # 1.31.7+. Bốn CVE sau (113425, 121810, 123007, 123633) và CVE-2026-123634 cần 1.30.7+/1.31.9+, nhưng
+  # ảnh nginx-unprivileged chưa có 1.30.7 → sàn là bản phát hành được; phần còn thiếu do tools/ci/web.trivyignore
+  # (hết hạn 2026-12-06) che tạm. Dòng chưa có trong
   # bảng → trả 1 (hỏng kín): đổi dòng ảnh `web` (web.Dockerfile) thì tra advisory rồi thêm dòng ở đây.
   case "$1" in
-    1.30) echo "1.30.5" ;;
-    1.31) echo "1.31.6" ;;
+    1.30) echo "1.30.6" ;;
+    1.31) echo "1.31.7" ;;
     *) return 1 ;;
   esac
 }

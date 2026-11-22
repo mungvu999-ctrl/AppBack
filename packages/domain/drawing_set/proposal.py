@@ -269,13 +269,18 @@ def _anchored_chain(
 ) -> list[tuple[float, float, bool]] | None:
     """Chuỗi cốt của cả nhà cho `solve_heights`, chỉ khi được NEO: mọi mặt bằng tầng 1 mà chuỗi gắn được đều
     nằm ở bậc thấp nhất (ít nhất một), như `chain_index` + `anchored` của nhân. Không mặt cắt, không neo hay
-    đầu vào vượt trần của `solve_chain` -> `None` (chiều cao khi đó không vượt 0,85)."""
+    đầu vào vượt trần của `solve_chain` -> `None` (chiều cao khi đó không vượt 0,85).
+
+    Bậc chỉ gắn mặt bằng lửng bị bỏ: chuỗi được đọc theo số tầng (`chain[n - 1]`), lửng không có số, giữ bậc của
+    nó thì mọi tầng phía trên bị so với bậc của tầng ngay dưới (lỗi thừa hưởng từ `fill_from_chain` của nhân)."""
     if not sides:
         return None
     try:
-        chain = solve_chain([p.levels for p in plans], sides)
+        solved = solve_chain([p.levels for p in plans], sides)
     except ValueError:
         return None
+    mezz = {i for i, p in enumerate(plans) if choices[p.view_id].label == "mezzanine"}
+    chain = [level for level in solved if not level.plans or not set(level.plans) <= mezz]
     ground = {i for i, p in enumerate(plans) if choices[p.view_id].number == 1}
     rungs = [k for k, level in enumerate(chain) if ground & set(level.plans)]
     if not rungs or any(rungs):

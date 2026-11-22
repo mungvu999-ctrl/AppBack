@@ -60,3 +60,18 @@ def test_level_against_order() -> None:
     out, conflicts = follow_order(slots)
     assert conflicts == {"b": OrderConflict("level"), "c": OrderConflict("level")}
     assert [out[k].confidence for k in "abc"] == [0.95, 0.65, 0.65]
+
+
+def test_one_wrong_level_flags_only_itself() -> None:
+    """Một cốt đọc sai ở sàn trên cùng không kéo các sàn đứng giữa vào câu hỏi."""
+    slots = [
+        Slot("a", _c("ground", 1), 0),
+        Slot("b", _c("floor", 2), 3300),
+        Slot("c", _c("floor", 3), 6600),
+        Slot("d", _c("floor", 4), 600),
+    ]
+    out, conflicts = follow_order(slots)
+    assert conflicts == {"d": OrderConflict("level")}
+    assert [out[k].confidence for k in "abc"] == [0.95, 0.95, 0.95]
+    slots[0] = Slot("a", _c("ground", 1), 9000)  # sàn đầu sai: chỉ sàn đầu bị hỏi
+    assert follow_order(slots[:3])[1] == {"a": OrderConflict("level")}

@@ -106,6 +106,27 @@ async def test_floors_patch_spatial_floor__C01_is_section(
     assert (row.is_section, row.hidden_in_3d) == (True, False)
 
 
+async def test_floors_patch_spatial_floor__C01_is_section_resent(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
+) -> None:
+    """HS-03: gửi lại `isSection: true` cho dòng đã là mặt cắt không ẩn lại tầng người dùng đã cho hiện, không ghi nhật ký."""
+    owner = await make_user(db_session, role="engineer")
+    project = await seed_project(db_session, owner=owner)
+    floor = await make_floor(db_session, project=project, order=0)
+    await db_session.commit()
+    path = spatial_path(project.id, floor.level_id)
+
+    await api_client.patch(path, json={"isSection": True}, headers=headers_of(owner))
+    shown = await api_client.patch(path, json={"hiddenIn3d": False}, headers=headers_of(owner))
+    assert shown.json()["hiddenIn3d"] is False
+    resent = await api_client.patch(path, json={"isSection": True}, headers=headers_of(owner))
+    assert (resent.status_code, resent.json()["hiddenIn3d"]) == (200, False)
+    assert len(await activity_rows(db_sessionmaker, actor_id=owner.id, kind=ActivityKind.FLOOR_EDIT)) == 2
+    row = await live_floor_row(db_sessionmaker, project_id=project.id, level_id=floor.level_id)
+    assert row is not None
+    assert (row.is_section, row.hidden_in_3d) == (True, False)
+
+
 @pytest.mark.parametrize(
     "bad_overrides",
     [

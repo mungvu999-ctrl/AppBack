@@ -658,3 +658,23 @@ def test_section_rung_stands_in_for_a_storey_without_a_drawing() -> None:
     assert got["a"].height_confidence is not None
     assert got["a"].height_confidence <= 0.6
     assert "HEIGHT_ASSUMED" in got["a"].questions
+
+
+def test_mezzanine_plan_does_not_shift_the_chain() -> None:
+    """Mặt bằng lửng có bậc riêng trong chuỗi cốt: chuỗi vẫn đọc đúng theo số tầng, chiều cao đạt như khi không có lửng."""
+    section = _section(("±0.000", 1000.0), ("+1.800", 820.0), ("+3.600", 640.0), ("+6.900", 310.0), ("+10.200", 10.0))
+    views = [
+        _view("a", "MẶT BẰNG TẦNG 1", "±0.000", "±0.000", position=0),
+        _view("m", "MẶT BẰNG LỬNG", "+1.800", "+1.800", position=1),
+        _view("b", "MẶT BẰNG TẦNG 2", "+3.600", "+3.600", position=2),
+        _view("c", "MẶT BẰNG TẦNG 3", "+6.900", "+6.900", position=3),
+    ]
+    with_mezz = {f.floor_id: f for f in solve_house(views, order_known=True, sections=[section, section]).floors}
+    plain = [v for v in views if v.floor_id != "m"]
+    without = {f.floor_id: f for f in solve_house(plain, order_known=True, sections=[section, section]).floors}
+    for key in "ab":
+        assert (with_mezz[key].height_mm, with_mezz[key].height_confidence) == (
+            without[key].height_mm,
+            without[key].height_confidence,
+        )
+    assert with_mezz["a"].height_confidence >= 0.9

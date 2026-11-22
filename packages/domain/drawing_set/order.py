@@ -98,21 +98,32 @@ def _label(choice: StoreyChoice, number: int) -> StoreyLabel:
     return "basement" if number <= 0 else "ground" if number == 1 else "floor"
 
 
-def _level_clashes(slots: Sequence[Slot]) -> set[str]:
-    """Sàn có cốt riêng thấp hơn một sàn đứng trước hoặc cao hơn một sàn đứng sau quá 0,25 m."""
-    marked = [(s.view_id, s.level_mm) for s in slots if s.level_mm is not None]
-    out: set[str] = set()
-    highest: int | None = None
-    for view_id, level in marked:
-        if highest is not None and highest > level + _LEVEL_TOL_MM:
-            out.add(view_id)
-        highest = level if highest is None else max(highest, level)
-    lowest: int | None = None
-    for view_id, level in reversed(marked):
-        if lowest is not None and lowest < level - _LEVEL_TOL_MM:
-            out.add(view_id)
-        lowest = level if lowest is None else min(lowest, level)
+def _chain_lengths(levels: Sequence[int]) -> list[int]:
+    """Độ dài dãy con dài nhất kết thúc tại mỗi cốt, hai cốt kề hợp nhau khi cốt sau không thấp hơn quá 0,25 m."""
+    out: list[int] = []
+    for j, level in enumerate(levels):
+        out.append(1 + max((out[i] for i in range(j) if level >= levels[i] - _LEVEL_TOL_MM), default=0))
     return out
+
+
+def _level_clashes(slots: Sequence[Slot]) -> set[str]:
+    """Sàn có cốt riêng không chắc nằm đúng thứ tự: không thuộc MỌI dãy con dài nhất các cốt hợp thứ tự.
+
+    Một cốt đọc sai chỉ gắn cờ chính nó (`±0, +3.3, +6.6, +0.6` -> chỉ `+0.6`), không kéo theo các sàn đứng giữa.
+    Hai cốt ngược nhau mà không có gì phân xử (`+3.3, ±0`) thì gắn cờ cả hai. Phần tử thứ `k` của một dãy dài nhất
+    có độ dài-kết-thúc đúng bằng `k`, nên sàn nằm trong mọi dãy dài nhất khi nó là sàn duy nhất ở mức `k` đó.
+    """
+    marked = [(s.view_id, s.level_mm) for s in slots if s.level_mm is not None]
+    levels = [level for _, level in marked]
+    ends = _chain_lengths(levels)
+    starts = list(reversed(_chain_lengths([-level for level in reversed(levels)])))  # dài nhất bắt đầu tại mỗi cốt
+    longest = max(ends, default=0)
+    on_longest = [ends[i] + starts[i] - 1 == longest for i in range(len(marked))]
+    per_rank: dict[int, int] = {}
+    for i, ok in enumerate(on_longest):
+        if ok:
+            per_rank[ends[i]] = per_rank.get(ends[i], 0) + 1
+    return {vid for i, (vid, _) in enumerate(marked) if not on_longest[i] or per_rank[ends[i]] > 1}
 
 
 def _filled(s: int, below: _Anchor | None, above: _Anchor | None) -> tuple[int, float]:

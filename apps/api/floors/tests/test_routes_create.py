@@ -280,8 +280,8 @@ async def test_floors_create_floor__restore_within_window_keeps_pk_and_counts(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
 ) -> None:
-    """Xoá rồi POST cùng `id` sau 9 phút → 201, cùng `pk`, `walls_total` giữ, hết ẩn, `floor.drawings` quay lại.
-    Catalog: B11-flr-013.
+    """Xoá rồi POST cùng `id` sau 9 phút → 201, cùng `pk`, `walls_total` giữ, hết ẩn, hết dấu mặt cắt (HS-03),
+    `floor.drawings` quay lại. Catalog: B11-flr-013.
     """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
@@ -293,7 +293,7 @@ async def test_floors_create_floor__restore_within_window_keeps_pk_and_counts(
         .values(walls_total=5, hidden=True)
     )
     await db_session.execute(
-        update(FloorRow).where(FloorRow.pk == floor.pk).values(deleted_at=fake_clock.now(), hidden_in_3d=True)
+        update(FloorRow).where(FloorRow.pk == floor.pk).values(deleted_at=fake_clock.now(), hidden_in_3d=True, is_section=True)
     )
     await db_session.commit()
     fake_clock.advance(timedelta(minutes=9))
@@ -326,7 +326,7 @@ async def test_floors_create_floor__restore_within_window_keeps_pk_and_counts(
 
     row = await live_floor_row(db_sessionmaker, project_id=project.id, level_id=level_id)
     assert row is not None
-    assert (row.pk, row.hidden_in_3d) == (floor.pk, False)
+    assert (row.pk, row.hidden_in_3d, row.is_section) == (floor.pk, False, False)
 
     summary = await summary_row(db_sessionmaker, project_id=project.id, floor_level_id=level_id)
     assert summary is not None

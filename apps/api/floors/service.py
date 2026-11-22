@@ -65,9 +65,11 @@ def _restorable(rows: Sequence[FloorRow], clock: Clock) -> FloorRow | None:
 
 
 def _apply_restore(row: FloorRow, body: FloorCreateIn) -> None:
-    """Khôi phục một dòng xoá mềm: bỏ ẩn (cả ẩn 3D, như tầng mới), ghi lại nội dung theo thân, giữ `pk`."""
+    """Khôi phục một dòng xoá mềm: bỏ ẩn (cả ẩn 3D, như tầng mới), bỏ dấu mặt cắt (HS-03: tầng tạo lại là một
+    mặt bằng mới, dấu cũ thuộc về bản vẽ đã xoá), ghi lại nội dung theo thân, giữ `pk`."""
     row.deleted_at = None
     row.hidden_in_3d = False
+    row.is_section = False
     row.name = body.name
     row.floor_order = body.order
     row.elevation_mm = body.elevation_mm
@@ -270,10 +272,12 @@ def _check_path_body_id(level_id: str, body_id: str | None) -> None:
 def _changed_fields(row: FloorRow, body: FloorPatchIn) -> dict[str, object]:
     """Khoá có mặt trong thân #34 mà khác hiện trạng; `{}` hay giá trị trùng → rỗng.
 
-    Đánh dấu mặt cắt (`isSection: true`, HS-03) kéo theo ẩn khỏi 3D khi thân không tự nói `hiddenIn3d`: mặt cắt
-    không phải một sàn của ngôi nhà. Bỏ dấu thì không tự hiện lại.
+    Đánh dấu mặt cắt (`isSection: true`, HS-03) kéo theo ẩn khỏi 3D khi thân không tự nói `hiddenIn3d` và dòng chưa
+    là mặt cắt: mặt cắt không phải một sàn của ngôi nhà. Gửi lại dấu đã có không lật lựa chọn "hiện trong 3D" của
+    người dùng. Bỏ dấu thì không tự hiện lại.
     """
-    hidden = True if body.is_section and body.hidden_in_3d is None else body.hidden_in_3d
+    newly_marked = body.is_section is True and not row.is_section
+    hidden = True if newly_marked and body.hidden_in_3d is None else body.hidden_in_3d
     candidates = {
         "name": body.name,
         "order": body.order,

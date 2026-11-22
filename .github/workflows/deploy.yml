@@ -123,14 +123,15 @@ jobs:
           printf '%s\n' "$STAGING_SSH_KEY" > "$key_file"
           chmod 600 "$key_file"
           printf '%s\n' "$STAGING_KNOWN_HOSTS" > "$known_hosts_file"
+          # Bó phát hành bất biến theo tag (K-35): compose + minio + scripts + backup giải nén vào
+          # releases/<tag>/, deploy.sh của chính bó đó chạy với compose của nó.
+          tag="sha-${SHA12}"
+          bundle="deploy-bundle-${tag}.tar.gz"
+          bash deploy/scripts/bundle.sh "$RUNNER_TEMP/$bundle"
           scp -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" \
-            deploy/compose/prod.yml "deploy@${STAGING_HOST}:/opt/appback/prod.yml"
-          scp -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" -r \
-            deploy/scripts "deploy@${STAGING_HOST}:/opt/appback/scripts"
-          scp -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" -r \
-            deploy/backup "deploy@${STAGING_HOST}:/opt/appback/backup"
+            "$RUNNER_TEMP/$bundle" "deploy@${STAGING_HOST}:/opt/appback/$bundle"
           ssh -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" \
-            "deploy@${STAGING_HOST}" "/opt/appback/scripts/deploy.sh sha-${SHA12}"
+            "deploy@${STAGING_HOST}" "set -e; d=/opt/appback/releases/$tag; mkdir -p \$d; tar -xzf /opt/appback/$bundle -C \$d; rm -f /opt/appback/$bundle; bash \$d/deploy/scripts/deploy.sh $tag"
 
   # ---------------------------------------------------------------------------
   # Production — gắn tag len ảnh sha đã có (không build lại), rồi ssh deploy.sh
@@ -205,14 +206,13 @@ jobs:
           printf '%s\n' "$PRODUCTION_SSH_KEY" > "$key_file"
           chmod 600 "$key_file"
           printf '%s\n' "$PRODUCTION_KNOWN_HOSTS" > "$known_hosts_file"
+          # Bó phát hành bất biến theo tag (K-35) — cùng cách với job staging.
+          bundle="deploy-bundle-${TAG_NAME}.tar.gz"
+          bash deploy/scripts/bundle.sh "$RUNNER_TEMP/$bundle"
           scp -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" \
-            deploy/compose/prod.yml "deploy@${PRODUCTION_HOST}:/opt/appback/prod.yml"
-          scp -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" -r \
-            deploy/scripts "deploy@${PRODUCTION_HOST}:/opt/appback/scripts"
-          scp -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" -r \
-            deploy/backup "deploy@${PRODUCTION_HOST}:/opt/appback/backup"
+            "$RUNNER_TEMP/$bundle" "deploy@${PRODUCTION_HOST}:/opt/appback/$bundle"
           ssh -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" \
-            "deploy@${PRODUCTION_HOST}" "/opt/appback/scripts/deploy.sh ${TAG_NAME}"
+            "deploy@${PRODUCTION_HOST}" "set -e; d=/opt/appback/releases/${TAG_NAME}; mkdir -p \$d; tar -xzf /opt/appback/$bundle -C \$d; rm -f /opt/appback/$bundle; bash \$d/deploy/scripts/deploy.sh ${TAG_NAME}"
 
   # ---------------------------------------------------------------------------
   # Rollback thủ công — target chọn Environment (production vẫn cần người duyệt)
@@ -260,4 +260,4 @@ jobs:
           chmod 600 "$key_file"
           printf '%s\n' "$ssh_known_hosts" > "$known_hosts_file"
           ssh -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" \
-            "deploy@${ssh_host}" "/opt/appback/scripts/rollback.sh $TAG"
+            "deploy@${ssh_host}" "bash /opt/appback/releases/$TAG/deploy/scripts/rollback.sh $TAG"

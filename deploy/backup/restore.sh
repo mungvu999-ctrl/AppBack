@@ -6,9 +6,9 @@
 # Thứ tự bắt buộc: (1) kiểm SHA-256 mọi tệp trong manifest TRƯỚC khi dừng gì; (2) giải mã
 # .age nếu có; (3) dừng api/worker/beat; (4) DROP DATABASE … WITH (FORCE) rồi CREATE DATABASE;
 # (5) pg_restore; (6) khôi phục object (bucket/volume bị xoá sạch trước khi đổ lại); (7) migrate;
-# (8) bật lại api/worker/beat, chờ healthy; (9) smoke.sh.
+# (8) bật lại api + dịch vụ ứng dụng (load_app_services), chờ api healthy; (9) smoke.sh.
 #
-# APPBACK_DIR/COMPOSE_FILE/COMPOSE_PROJECT_NAME/APPBACK_BASE_URL/APPBACK_HEALTH_TIMEOUT_S
+# APPBACK_DIR/COMPOSE_FILE/COMPOSE_ENV_FILES/COMPOSE_PROJECT_NAME/APPBACK_BASE_URL/APPBACK_HEALTH_TIMEOUT_S
 # và wait_healthy đến từ `../scripts/lib.sh` (source ở dưới, R-07 — dùng chung với
 # deploy.sh/rollback.sh). Biến riêng của script này:
 #   BACKUP_AGE_IDENTITY       (rỗng) — bắt buộc khi bản sao lưu có .age.
@@ -46,6 +46,10 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # restore.sh tự chép các mặc định và vòng lặp chờ healthy riêng).
 # shellcheck source=deploy/scripts/lib.sh
 source "$APPBACK_SCRIPTS_DIR/lib.sh"
+# Compose của bản đang chạy cần appback.env + release.env (IMAGE_TAG đúng current_tag — L5-N07);
+# kiểm trước mọi lệnh dừng/DROP để môi trường thiếu không để lại hệ thống đã dừng nửa chừng.
+assert_env_ready || exit $?
+assert_release_env || exit $?
 
 # 1) SHA-256 mọi tệp trong manifest.files TRƯỚC khi dừng bất cứ gì (B0-10 [2]).
 # Đọc manifest bằng grep, không python3 (NO-189): mỗi cặp `"<đường>": "<64 hex>"` (bất kể
@@ -177,8 +181,10 @@ esac
 # 7) migrate — alembic upgrade head bằng ảnh hiện hành, KHÔNG downgrade (B0-10 [9]).
 docker compose run --rm migrate
 
-# 8) bật lại dịch vụ, chờ api healthy trước khi smoke.
-docker compose up -d api worker beat
+# 8) bật lại api và mọi dịch vụ ứng dụng của compose hiện hành (cùng tập deploy.sh đổi —
+# load_app_services), tag lấy từ release.env qua COMPOSE_ENV_FILES (L5-N07), chờ api healthy.
+load_app_services
+docker compose up -d api "${APP_SERVICES[@]}"
 wait_healthy api
 
 # 9) smoke test.

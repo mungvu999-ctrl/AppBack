@@ -6,6 +6,7 @@ tag trích trực tiếp từ YAML (không chép regex vào test, tránh trôi g
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -13,7 +14,7 @@ from typing import Any
 
 import yaml
 
-from deploy.scripts.tests.support import REPO_ROOT, run_script
+from deploy.scripts.tests.support import REPO_ROOT, fake_bin, run_script
 
 CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 DEPLOY_YML = REPO_ROOT / ".github" / "workflows" / "deploy.yml"
@@ -280,3 +281,59 @@ def test_rollback_tag_check_rejects_command_injection_attempt(tmp_path: Path) ->
     thực thi phần đuôi độc hại."""
     result = _run_rollback_tag_check(tmp_path, "v1.2.3; rm -rf /")
     assert result.returncode != 0
+
+
+def _job_run(doc: dict[Any, Any], job: str, needle: str) -> str:
+    """Thân `run:` đầu tiên của `job` chứa `needle`."""
+    return next(s["run"] for s in doc["jobs"][job]["steps"] if needle in s.get("run", ""))
+
+
+def test_deploy_yml_ships_release_bundle_not_loose_files() -> None:
+    """K-35 D1: staging/production dựng bó bằng bundle.sh, scp MỘT tệp bó, giải nén vào
+    releases/<tag>/ rồi chạy deploy.sh của chính bó — không còn scp prod.yml/scripts/backup rời
+    (thiếu base.yml + minio/). Rollback chạy rollback.sh trong releases/<tag>."""
+    doc = _load_yaml(DEPLOY_YML)
+    for job in ("staging", "production"):
+        body = _job_run(doc, job, "scp ")
+        assert "deploy/compose/prod.yml" not in body, job
+        assert " -r" not in body, job
+        order = [body.find(s) for s in ("bash deploy/scripts/bundle.sh", "scp ", "ssh ")]
+        assert -1 not in order, (job, body)
+        assert order == sorted(order), (job, body)
+        assert r"tar -xzf /opt/appback/$bundle -C \$d" in body, job
+        assert r"bash \$d/deploy/scripts/deploy.sh" in body, job
+    rollback = _job_run(doc, "rollback", "ssh ")
+    assert '"bash /opt/appback/releases/$TAG/deploy/scripts/rollback.sh $TAG"' in rollback
+
+
+def test_deploy_yml_staging_step_builds_bundle_and_sends_install_command(tmp_path: Path) -> None:
+    """Chạy thật bước staging với scp/ssh giả: tệp bó được dựng ở RUNNER_TEMP và chép lên
+    /opt/appback/, lệnh ssh giải nén vào releases/sha-<12>/ rồi gọi deploy.sh của bó với đúng tag."""
+    bin_dir = fake_bin(tmp_path / "bin", {"scp": "", "ssh": ""})
+    log = tmp_path / "log"
+    script = tmp_path / "staging.sh"
+    script.write_text("set -euo pipefail\n" + _job_run(_load_yaml(DEPLOY_YML), "staging", "scp "), encoding="utf-8")
+    env = {
+        "STAGING_SSH_KEY": "khoa-gia",
+        "STAGING_HOST": "stg.example",
+        "STAGING_KNOWN_HOSTS": "stg.example ssh-ed25519 AAAA",
+        "SHA12": "0123456789ab",
+        "RUNNER_TEMP": str(tmp_path),
+        "FAKE_LOG": str(log),
+    }
+    result = subprocess.run(  # noqa: S603 — bash + script của test
+        ["bash", str(script)],  # noqa: S607 — bash
+        cwd=REPO_ROOT, env={**os.environ, **env, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"},
+        capture_output=True, text=True, check=False, timeout=60,
+    )  # fmt: skip
+    assert result.returncode == 0, result.stderr
+    bundle = "deploy-bundle-sha-0123456789ab.tar.gz"
+    assert (tmp_path / bundle).is_file()
+    scp_line, ssh_line = log.read_text(encoding="utf-8").splitlines()
+    assert scp_line.endswith(f"{tmp_path / bundle} deploy@stg.example:/opt/appback/{bundle}")
+    remote = ssh_line.split("deploy@stg.example ", 1)[1]
+    assert remote == (
+        "set -e; d=/opt/appback/releases/sha-0123456789ab; mkdir -p $d; "
+        f"tar -xzf /opt/appback/{bundle} -C $d; rm -f /opt/appback/{bundle}; "
+        "bash $d/deploy/scripts/deploy.sh sha-0123456789ab"
+    )

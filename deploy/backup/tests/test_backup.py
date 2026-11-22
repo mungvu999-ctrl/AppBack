@@ -17,9 +17,10 @@ from pathlib import Path
 
 import pytest
 
-from deploy.scripts.tests.support import fake_bin, read_log, run_script
+from deploy.scripts.tests.support import appback_dir, fake_bin, read_log, run_script
 
 BACKUP_SH = Path(__file__).resolve().parents[1] / "backup.sh"
+RUNNING = "sha-aaaaaaaaaaaa"
 
 # Thân lệnh `docker` giả: nhận biết pg_dump/psql/mc mirror/tar qua nội dung "$*" rồi
 # ghi tệp thật vào thư mục gắn qua "-v host:container" để manifest.json băm được.
@@ -104,7 +105,12 @@ def _run_backup(tmp_path: Path, env: dict[str, str]) -> tuple[int, str, Path]:
     log = tmp_path / "log"
     env = dict(env)
     fail_pg_dump = env.pop("_FAIL", "") == "1"
-    full_env = {"FAKE_LOG": str(log), "BACKUP_TARGET": str(target), **env}
+    full_env = {
+        "FAKE_LOG": str(log),
+        "BACKUP_TARGET": str(target),
+        **appback_dir(tmp_path / "opt-appback", running=RUNNING),
+        **env,
+    }
     result = run_script(BACKUP_SH, env=full_env, bin_dir=_bin_dir(tmp_path, fail_pg_dump=fail_pg_dump))
     return result.returncode, "\n".join(read_log(log)), target
 
@@ -299,6 +305,7 @@ def test_backup__stage_dir_and_dump_are_owner_only(tmp_path: Path) -> None:
     target = tmp_path / "target"
     log = tmp_path / "log"
     env = {"FAKE_LOG": str(log), "BACKUP_TARGET": str(target), "APPBACK_STORAGE": "s3", "BACKUP_ALLOW_PLAINTEXT": "1"}
+    env |= appback_dir(tmp_path / "opt-appback", running=RUNNING)
     wrapper = tmp_path / "umask022.sh"
     wrapper.write_text(f'umask 022\nexec bash "{BACKUP_SH}"\n', encoding="utf-8")
     result = run_script(wrapper, env=env, bin_dir=_bin_dir(tmp_path))
@@ -330,3 +337,32 @@ def test_backup__local_tar_streams_to_a_host_owned_file(tmp_path: Path) -> None:
     assert "backup-dest" not in tar_line, tar_line
     (stage,) = [p for p in target.iterdir() if p.is_dir()]
     assert (stage / "objects.tar").stat().st_mode & 0o777 == 0o600
+
+
+def test_backup__without_image_tag_uses_release_env_for_compose(tmp_path: Path) -> None:
+    """L5-N07: môi trường KHÔNG có IMAGE_TAG, máy đích có release.env → compose nhận
+    COMPOSE_ENV_FILES = appback.env,release.env (prod.yml `${IMAGE_TAG:?}` nội suy được) và
+    `exec postgres pg_dump` chạy, không cần đặt IMAGE_TAG trong appback.env."""
+    seen = tmp_path / "env-seen"
+    root = tmp_path / "opt-appback"
+    env = appback_dir(root, running=RUNNING)
+    body = f'case "$*" in *pg_dump*) printf "%s" "${{IMAGE_TAG-unset}}|$COMPOSE_ENV_FILES" > "{seen}" ;; esac\n'
+    bin_dir = fake_bin(tmp_path / "bin", {"docker": body + _FAKE_DOCKER_BODY, "age": _FAKE_AGE_BODY})
+    env |= {"FAKE_LOG": str(tmp_path / "log"), "BACKUP_TARGET": str(tmp_path / "target"), "BACKUP_ALLOW_PLAINTEXT": "1"}
+    result = run_script(BACKUP_SH, env=env, bin_dir=bin_dir)
+    assert result.returncode == 0, result.stderr
+    assert seen.read_text(encoding="utf-8") == f"unset|{root / 'appback.env'},{root / 'release.env'}"
+
+
+def test_backup__no_release_yet_exits_2_before_any_docker(tmp_path: Path) -> None:
+    """Chưa deploy lần nào (không có release.env) → thoát 2 "chưa có bản phát hành nào", không
+    gọi docker, không tạo thư mục bản sao lưu (L5-N07)."""
+    target = tmp_path / "target"
+    log = tmp_path / "log"
+    env = appback_dir(tmp_path / "opt-appback")
+    env |= {"FAKE_LOG": str(log), "BACKUP_TARGET": str(target), "BACKUP_ALLOW_PLAINTEXT": "1"}
+    result = run_script(BACKUP_SH, env=env, bin_dir=_bin_dir(tmp_path))
+    assert result.returncode == 2
+    assert "chưa có bản phát hành nào" in result.stderr
+    assert list(read_log(log)) == []
+    assert not target.exists() or not any(target.iterdir())

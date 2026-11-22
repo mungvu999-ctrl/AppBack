@@ -11,4 +11,6 @@ User=deploy
 UMask=0077
 EnvironmentFile=/etc/appback/appback.env
 WorkingDirectory=/opt/appback
-ExecStart=/opt/appback/backup/backup.sh
+# Script của bản đang chạy (symlink current → releases/<tag>, K-35); gọi qua bash vì bó
+# phát hành giữ mode 644 của repo — exec trực tiếp sẽ hỏng "Permission denied".
+ExecStart=/bin/bash /opt/appback/current/deploy/backup/backup.sh

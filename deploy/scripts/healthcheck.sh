@@ -82,7 +82,7 @@ check_services() {
     [[ -n "$name" ]] && seen["$name"]="$state ${health:-}"
   done <<< "$status"
   for svc in $services; do
-    case " migrate minio-init " in *" $svc "*) continue ;; esac
+    [[ "$svc" == "migrate" || "$svc" == "minio-init" ]] && continue
     read -r state health <<< "${seen[$svc]:-vắng}"
     if [[ "$state" != "running" || "${health:-}" == "unhealthy" ]]; then
       problems=1

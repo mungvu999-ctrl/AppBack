@@ -169,6 +169,34 @@ async def test_drawing_sets_read_house_proposal__C01(
     assert spy.calls == [scene.project.id]
 
 
+async def test_drawing_sets_read_house_proposal__C08(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, drawing_set_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Dự án không tồn tại khi công tắc bật → 404 `resource:"project"`, service không chạy."""
+    scene = await make_scene(db_session)
+    spy = _stub(monkeypatch, _read())
+
+    response = await api_client.get(_path(MISSING_PROJECT), headers=headers_of(scene.owner))
+
+    assert (response.status_code, response.json()["resource"]) == (404, "project")
+    assert spy.calls == []
+
+
+async def test_drawing_sets_read_house_proposal__C17(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, drawing_set_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Trường tuỳ chọn không có giá trị → vắng khoá, không bao giờ `null` (CASE C17)."""
+    scene = await make_scene(db_session)
+    _stub(monkeypatch, _read(FloorProposal("L-B", "other", 0.0, questions=("NO_TEXT",))))
+
+    response = await api_client.get(_path(scene.project.id), headers=headers_of(scene.owner))
+
+    assert response.status_code == 200, response.text
+    (floor,) = response.json()["floors"]
+    assert set(floor) == {"floorId", "kind", "kindConfidence", "storeyConfidence", "questions"}
+    assert None not in floor.values()
+
+
 async def test_drawing_sets_read_house_proposal__viewer_reads(
     api_client: httpx.AsyncClient, db_session: AsyncSession, drawing_set_on: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:

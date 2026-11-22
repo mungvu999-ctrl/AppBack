@@ -63,9 +63,9 @@ def test_no_silent_error_in_high_band(name: str) -> None:
             assert abs(f.elevation_mm - mm) <= _TOL_MM, (vid, f.elevation_mm, mm)
     by_no = {f.storey_no: f for f in got.floors if f.kind == "plan" and f.storey_no is not None}
     for low, mm in truth["heights_mm"].items():
-        f = by_no.get(int(low))
-        if f is not None and f.height_mm is not None and (f.height_confidence or 0) >= _HIGH:
-            assert abs(f.height_mm - mm) <= _TOL_MM, (low, f.height_mm, mm)
+        plan = by_no.get(int(low))
+        if plan is not None and plan.height_mm is not None and (plan.height_confidence or 0) >= _HIGH:
+            assert abs(plan.height_mm - mm) <= _TOL_MM, (low, plan.height_mm, mm)
 
 
 def test_storey_numbers_mostly_right() -> None:

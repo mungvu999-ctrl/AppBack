@@ -75,7 +75,7 @@ def test_dependabot_docker__does_not_ignore_every_major() -> None:
 
 
 def test_dependabot__group_pr_titles_fit_commit_header_limit() -> None:
-    """L8-N02: tiêu đề PR nhóm của Dependabot (công thức của nó, 99 bản cập nhật) ≤ 72 ký tự — job `commits` kiểm tiêu đề PR."""
+    """L8-N02: tiêu đề PR nhóm Dependabot (công thức của nó, 99 bản cập nhật) ≤ 72 ký tự; job `commits` kiểm."""
     doc = _load_yaml(DEPENDABOT_YML)
     for update in doc["updates"]:
         prefix = update["commit-message"]["prefix"]

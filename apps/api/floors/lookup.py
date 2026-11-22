@@ -47,6 +47,7 @@ def _floor_out(row: FloorRow, area_m2: Decimal | None, drawings: Mapping[str, Se
         area_m2=float(round(area_m2, 2)) if area_m2 is not None else None,
         drawings=list(drawings.get(str(row.pk), ())),
         hidden_in_3d=row.hidden_in_3d,
+        is_section=True if row.is_section else None,
     )
 
 

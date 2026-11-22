@@ -7,8 +7,10 @@ của đường mã này do các test không-`perf` khác (`test_e2e_wire.py`, �
 
 import logging
 import math
+import os
 import time
 from collections import Counter
+from collections.abc import Callable
 from unittest.mock import patch
 
 import pytest
@@ -32,6 +34,15 @@ from packages.ml_contracts.synthetic import render_plan
 from packages.testing.fixtures.clock import FakeClock
 
 logger = logging.getLogger(__name__)
+
+# Trần `build_layer` (K-56): 60 s, ghi đè bằng env `PERF_BUILD_LAYER_MAX_S` (máy dev chậm, runner khác).
+# Số đo (thời lượng cả test = khởi động + dựng đầu vào + `build_layer`, junit-perf.xml của job `perf` CI, `main`,
+# 13-15/11/2026, 5 lượt): 15,4 / 18,8 / 19,6 / 24,0 / 24,0 s — điển hình ~20 s, nên `elapsed` của riêng `build_layer`
+# còn thấp hơn. Lịch sử review: CI tới 38,8 s ở PR nặng, máy dev đang tải 58-62 s.
+# Trần 60 s >= 2x giá trị đo lớn nhất (24 s) và 3x điển hình: vẫn bắt hồi quy bậc hai, không đỏ vì
+# runner chậm (trước đây 30 s, chỉ cách đo lớn nhất 6 s). Log `build_layer elapsed=` không vào log CI (mức INFO không
+# hiện), nên số đo `elapsed` được ghi thêm vào junit qua `record_property`.
+_BUDGET_S = float(os.environ.get("PERF_BUILD_LAYER_MAX_S", "60.0"))
 
 
 def _shift_wall(wall: WallPx, dx: float, dy: float) -> WallPx:
@@ -88,8 +99,8 @@ def _oversized_inputs() -> tuple[tuple[WallPx, ...], tuple[DetectionPx, ...], tu
 
 
 @pytest.mark.perf
-def test_build_layer__perf_under_30_seconds(fake_clock: FakeClock) -> None:
-    """20k tường/5k hộp/5k chữ (trần B5-01): `build_layer` < 30s sau một lượt khởi động seed 100."""
+def test_build_layer__perf_under_budget(fake_clock: FakeClock, record_property: Callable[[str, object], None]) -> None:
+    """20k tường/5k hộp/5k chữ (trần B5-01): `build_layer` < `_BUDGET_S` giây sau một lượt khởi động seed 100."""
     warm_plan = render_plan(100)
     build_from_plan(warm_plan, fake_clock)
 
@@ -121,7 +132,8 @@ def test_build_layer__perf_under_30_seconds(fake_clock: FakeClock) -> None:
         sum(post_rules_seconds),
         len(post_rules_seconds),
     )
-    assert elapsed < 30.0, f"build_layer mất {elapsed:.2f}s, trần 30s"
+    record_property("build_layer_elapsed_s", f"{elapsed:.3f}")
+    assert elapsed < _BUDGET_S, f"build_layer mất {elapsed:.2f}s, trần {_BUDGET_S:.1f}s (PERF_BUILD_LAYER_MAX_S)"
 
 
 @pytest.mark.perf

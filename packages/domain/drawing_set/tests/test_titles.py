@@ -50,7 +50,7 @@ SMALL = [line(f"P{i}", 100 + 90 * i, 100, 160 + 90 * i, 130) for i in range(6)] 
         ("DAI 5 MET", "DAI 5 MET"),  # "MET" đứng một mình là mét: giữ
         ("MAET BAENG LAAU2", "MAT BANG LAU2"),  # số dính liền sau từ dư VNI (DM-481, K-30a)
         ("mAEt b>ng tCng1", "MAT BANG TANG1"),  # số dính liền sau từ dư TCVN3 (DM-528)
-        ("MAET B>NG m,i", "MAT BANG MAI"),  # "m¸i" ra "m,i" (DM-445)
+        ("MAET B>NG m,i", "MAT BANG MAI"),  # "m<U+00B8>i" ra "m,i" (DM-445)
         ("TCNGA LAAUX2", "TCNGA LAAUX2"),  # chữ dính sau từ thì không phải từ đó: giữ
         ("日本 plan", "PLAN"),
         ("", ""),

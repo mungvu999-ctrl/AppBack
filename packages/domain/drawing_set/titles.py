@@ -150,7 +150,7 @@ _OCR_TCVN3_RESIDUE: Final = (
     (re.compile(r"\bC3/4T\b"), "CAT"),
     (re.compile(r"\bM(?:A?E|EE)T (?=BANG\b|CAT\b)"), "MAT "),
     (re.compile(r"\bTANG P (?=M[.,]?I\b)"), "TANG AP "),
-    (re.compile(r"\b(BANG|TANG|AP) M[.,]?I\b"), r"\1 MAI"),  # "m¸i" ra "m.i" hay "m,i" (DM-445)
+    (re.compile(r"\b(BANG|TANG|AP) M[.,]?I\b"), r"\1 MAI"),  # "m<U+00B8>i" ra "m.i" hay "m,i" (DM-445)
 )
 
 

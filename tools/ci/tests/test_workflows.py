@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import tomllib
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -536,20 +537,20 @@ def _run_check_nginx_version(tmp_path: Path, version_line: str) -> subprocess.Co
     )
 
 
-@pytest.mark.parametrize("version", ["1.30.5", "1.30.9", "1.31.6", "1.31.7"])
+@pytest.mark.parametrize("version", ["1.30.6", "1.30.9", "1.31.7", "1.31.8"])
 def test_job_build_check_nginx_version__passes_at_or_above_line_floor(tmp_path: Path, version: str) -> None:
-    """NO-113/183: sàn theo dòng phát hành (stable 1.30 → 1.30.5, mainline 1.31 → 1.31.6)."""
+    """NO-113/183: sàn theo dòng phát hành (stable 1.30 → 1.30.6, mainline 1.31 → 1.31.7)."""
     result = _run_check_nginx_version(tmp_path, f"nginx version: nginx/{version}")
     assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.parametrize(
     ("version", "floor"),
-    [("1.30.4", "1.30.5"), ("1.31.5", "1.31.6"), ("1.31.0", "1.31.6")],
+    [("1.30.5", "1.30.6"), ("1.31.6", "1.31.7"), ("1.31.0", "1.31.7")],
 )
 def test_job_build_check_nginx_version__fails_below_own_line_floor(tmp_path: Path, version: str, floor: str) -> None:
     """NO-181/183: dưới sàn CỦA DÒNG mình → thoát đúng 1 kèm lý do trên stderr (không phải 127 vì
-    thiếu hàm). 1.31.5 ≥ sàn 1.30.5 theo `sort -V` nhưng vẫn phải hỏng — xanh giả của sàn đơn."""
+    thiếu hàm). 1.31.6 ≥ sàn 1.30.6 theo `sort -V` nhưng vẫn phải hỏng — xanh giả của sàn đơn."""
     result = _run_check_nginx_version(tmp_path, f"nginx version: nginx/{version}")
     assert result.returncode == 1, result.stderr
     assert f"nginx {version} < sàn {floor}" in result.stderr
@@ -807,3 +808,63 @@ def test_job_changes_git_failure_fails_job(tmp_path: Path) -> None:
     )
     assert result.returncode != 0
     assert not out.exists()
+
+
+WEB_TRIVYIGNORE = REPO_ROOT / "tools" / "ci" / "web.trivyignore"
+WEB_TRIVYIGNORE_CVES = {"CVE-2026-113425", "CVE-2026-121810", "CVE-2026-123007", "CVE-2026-123633"}
+WEB_TRIVYIGNORE_CAP = date(2026, 12, 6)  # WEB-NGINX-CVE: tạo 2026-11-22 + 14 ngày
+
+
+def _web_trivyignore_entries() -> list[tuple[str, date]]:
+    entries: list[tuple[str, date]] = []
+    for raw in WEB_TRIVYIGNORE.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        m = re.fullmatch(r"(CVE-\d{4}-\d+) exp:(\d{4}-\d{2}-\d{2})", line)
+        assert m, f"dòng .trivyignore sai khuôn (cần '<CVE> exp:<YYYY-MM-DD>'): {raw!r}"
+        entries.append((m.group(1), date.fromisoformat(m.group(2))))
+    return entries
+
+
+def test_web_trivyignore__only_the_four_nginx_cves_and_expiry_within_14_days() -> None:
+    """WEB-NGINX-CVE: miễn tạm đúng bốn CVE chờ nginx 1.30.7, mọi dòng có hạn ≤ 2026-12-06 (14 ngày)."""
+    entries = _web_trivyignore_entries()
+    assert {cve for cve, _ in entries} == WEB_TRIVYIGNORE_CVES
+    assert len(entries) == len(WEB_TRIVYIGNORE_CVES), "mã bị lặp"
+    assert all(exp <= WEB_TRIVYIGNORE_CAP for _, exp in entries)
+    assert "1.30.7" in WEB_TRIVYIGNORE.read_text(encoding="utf-8")
+
+
+def test_job_build_trivy__web_mounts_ignorefile_and_keeps_strict_flags(tmp_path: Path) -> None:
+    """WEB-NGINX-CVE: ảnh web mount tệp miễn + `--ignorefile`; ảnh khác không; không hạ mức/bỏ mã thoát."""
+    bin_dir = tmp_path / "bin"
+    calls = tmp_path / "docker-args"
+    _fake_command(bin_dir, "docker", f'printf "%s\n" "$@" > "{calls}"')
+    runner_temp = tmp_path / "runner-temp"
+    runner_temp.mkdir()
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+    env["RUNNER_TEMP"] = str(runner_temp)
+    seen: dict[str, list[str]] = {}
+    for img in ("web", "api"):
+        script = tmp_path / f"run-{img}.sh"
+        script.write_text(f'source "{JOB_SH}"\njob_build_trivy {img}\n', encoding="utf-8")
+        result = subprocess.run(  # noqa: S603 — script cục bộ dựng trong tmp_path
+            ["bash", str(script)],  # noqa: S607 — `bash` có sẵn trên PATH của runner
+            cwd=REPO_ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode == 0, result.stderr
+        seen[img] = calls.read_text(encoding="utf-8").splitlines()
+    web = seen["web"]
+    assert any(a.endswith("tools/ci/web.trivyignore:/ignore/web.trivyignore:ro") for a in web), web
+    assert web[web.index("--ignorefile") + 1] == "/ignore/web.trivyignore"
+    for args in seen.values():
+        assert args[args.index("--severity") + 1] == "CRITICAL"
+        assert args[args.index("--exit-code") + 1] == "1"
+    assert "--ignorefile" not in seen["api"]
+    assert not any("trivyignore" in a for a in seen["api"])

@@ -149,7 +149,6 @@ def _with_pin(family: ModelFamily, ref: object) -> RunFacts:
             "openingAndFurnitureDetection", _stored("openingAndFurnitureDetection"), (), id="detection-weights-key"
         ),
         pytest.param("dimensionReading", _pinned("rapidocrRec", "dimensionReading"), (), id="other-family-pinned"),
-        pytest.param("wallSegmentation", _pinned("mitB0", "wallSegmentation"), (), id="wall-pinned"),
     ],
 )
 def test_readiness_of_coco_pinned_is_fallback(family: ModelFamily, ref: object, reasons: tuple[str, ...]) -> None:

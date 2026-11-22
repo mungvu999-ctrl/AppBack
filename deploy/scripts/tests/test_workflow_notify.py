@@ -207,9 +207,7 @@ def _send_script() -> str:
     raise AssertionError("không tìm thấy bước gửi (curl ALERT_WEBHOOK_URL)")
 
 
-def _run_send(
-    tmp_path: Path, *, webhook_url: str, event_name: str = "workflow_run", dispatch_message: str = ""
-) -> Any:
+def _run_send(tmp_path: Path, *, webhook_url: str, event_name: str = "workflow_run", dispatch_message: str = "") -> Any:
     """Chạy thật bước gửi của notify.yml với biến `env:` của một lượt Deploy hỏng (hoặc tin thử) và webhook cho trước.
 
     `$GITHUB_ENV` và `$RUNNER_TEMP` trỏ vào `tmp_path` để đọc lại cờ dự phòng và tệp tin.

@@ -34,7 +34,7 @@ agent nào tự làm việc này).
    ```bash
    sudo install -d -o deploy -g deploy /opt/appback
    ```
-   Mỗi lần deploy để lại một `releases/<tag>/` (~vài trăm KB); xoá tay bản cũ khi cần, **không**
+   Mỗi lần deploy để lại một `releases/<tag>/` (~40 KB nén); xoá tay bản cũ khi cần, **không**
    xoá bản mà `current` hay `previous_tag` đang trỏ (rollback cần compose của chính bản đó).
 5. Tạo `/etc/appback/appback.env` (chủ `deploy`, quyền **600** — chứa
    `SECRET_KEY`, mật khẩu Postgres, khoá MinIO...):

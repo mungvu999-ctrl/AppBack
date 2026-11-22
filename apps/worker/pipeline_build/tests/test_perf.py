@@ -10,6 +10,7 @@ import math
 import os
 import time
 from collections import Counter
+from collections.abc import Callable
 from unittest.mock import patch
 
 import pytest
@@ -98,7 +99,7 @@ def _oversized_inputs() -> tuple[tuple[WallPx, ...], tuple[DetectionPx, ...], tu
 
 
 @pytest.mark.perf
-def test_build_layer__perf_under_budget(fake_clock: FakeClock, record_property: pytest.RecordProperty) -> None:
+def test_build_layer__perf_under_budget(fake_clock: FakeClock, record_property: Callable[[str, object], None]) -> None:
     """20k tường/5k hộp/5k chữ (trần B5-01): `build_layer` < `_BUDGET_S` giây sau một lượt khởi động seed 100."""
     warm_plan = render_plan(100)
     build_from_plan(warm_plan, fake_clock)

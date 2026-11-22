@@ -433,3 +433,52 @@ async def test_drawing_sets_read_house_proposal__marked_section_without_text(
     assert (got.proposal.floors[1].kind, got.proposal.floors[1].questions) == ("section", ("NO_TEXT",))
     assert got.proposal.floors[0].storey_no == 1
     assert got.section_ids == frozenset({ids[1]})
+
+
+async def test_drawing_sets_read_house_proposal__failed_run_text(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """L4-N01': mặt cắt mà lượt hỏng ở bước tường (`NOT_A_FLOOR_PLAN`) vẫn có `text.json` → chữ vào đề xuất."""
+    scene = await make_scene(db_session, floors=2)
+    plan = text_to_json(_texts("MẶT BẰNG TẦNG 1", "±0.000"))
+    await _seed_run(db_session, local_storage, fake_clock, scene, scene.floors[0], body=plan)
+    cut = text_to_json(_section_texts())
+    failed = await _seed_run(db_session, local_storage, fake_clock, scene, scene.floors[1], body=cut, status="failed")
+    project_id, ids = scene.project.id, [f.level_id for f in scene.floors]
+    await db_session.execute(update(FloorRow).where(FloorRow.level_id == ids[1]).values(is_section=True))
+    await db_session.commit()
+    got = await read_house_proposal(db_session, local_storage, project_id)
+    assert (got.proposal.floors[1].kind, got.proposal.floors[1].questions) == ("section", ())
+    assert failed in got.run_ids
+
+
+async def test_drawing_sets_read_house_proposal__failed_run_without_text_falls_back(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """Lượt `failed` mới hơn không có `text.json` → đọc lượt `completed` cũ; không lượt nào có tệp → `NO_TEXT`."""
+    scene = await make_scene(db_session, floors=2)
+    first, second = scene.floors
+    old = await _seed_run(
+        db_session, local_storage, fake_clock, scene, first, body=text_to_json(_texts("MẶT BẰNG TẦNG 1", "±0.000"))
+    )
+    fake_clock.advance(timedelta(minutes=5))
+    await _seed_run(db_session, local_storage, fake_clock, scene, first, body=None, drawing=False, status="failed")
+    await _seed_run(db_session, local_storage, fake_clock, scene, second, body=None, status="failed")
+    got = await read_house_proposal(db_session, local_storage, scene.project.id)
+    assert got.run_ids == (old,)
+    assert got.proposal.floors[0].storey_no == 1
+    assert got.proposal.floors[1].questions == ("NO_TEXT",)
+
+
+async def test_drawing_sets_read_house_proposal__superseded_failed_run_is_ignored(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """Lượt `failed` đã bị lượt mới thay (`superseded_by`) không góp chữ dù còn `text.json`."""
+    scene = await make_scene(db_session, floors=1)
+    body = text_to_json(_texts("MẶT BẰNG TẦNG 1", "±0.000"))
+    run_id = await _seed_run(db_session, local_storage, fake_clock, scene, scene.floors[0], body=body, status="failed")
+    await db_session.execute(update(PipelineRunRow).where(PipelineRunRow.id == run_id).values(superseded_by="run_x"))
+    await db_session.commit()
+    got = await read_house_proposal(db_session, local_storage, scene.project.id)
+    assert got.proposal.floors[0].questions == ("NO_TEXT",)
+    assert got.run_ids == ()

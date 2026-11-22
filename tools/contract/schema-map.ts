@@ -139,9 +139,11 @@ export const SCHEMA_MAP: Readonly<Record<string, SchemaMapEntry>> = {
   share_links_open: object('@/api/client', 'SharedModelSchema'), // N38 (FIX-2436)
   share_links_export: object('@/api/schemas/spatialGraph', 'SpatialGraphDocumentSchema'), // N39 (FIX-SHARE)
   drawings_page_thumbnails: object('@/api/schemas/uploads', 'PageThumbnailsSchema'), // N41 (UX41 U05)
+  drawings_rerun_upload: object(INDEX, 'ProgressSchema'), // N51 (K-06) — `Progress` `pending` như #8
   lighting_bake_start_bake: object('@/api/schemas/lightingBake', 'LightingBakeSchema'), // N42 (LB-01)
   lighting_bake_read_latest: object('@/api/schemas/lightingBake', 'LightingBakeSchema'), // N43 (LB-01)
   lighting_bake_download_file: EMPTY, // N44 (LB-01) — thân nhị phân, miễn H1 (BE-00 §12 bước 7)
+  lighting_bake_read_availability: object('@/api/schemas/lightingBake', 'LightingBakeAvailabilitySchema'), // N50 (K-09)
   spatial_read_dimension_strings: object('@/api/schemas/quality', 'DimensionStringsSchema'), // N45 (QT-SCALE-API)
   spatial_read_detected_geometry: object('@/api/schemas/quality', 'DetectedGeometrySchema'), // N46 (QT-SCALE-API)
   design_director_read_state: object('@/api/schemas/designConcept', 'DesignConceptStateSchema'), // N47 (AID-01)

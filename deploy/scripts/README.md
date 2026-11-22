@@ -20,20 +20,35 @@ agent nào tự làm việc này).
    ```
 3. Mở tường lửa **chỉ** ba cổng: `22` (SSH), `80`, `443` (HTTP/HTTPS — nginx
    redirect 80→443 và phục vụ 443 thật).
-4. Tạo cấu trúc thư mục dưới `/opt/appback/` (chủ `deploy`):
+4. Tạo `/opt/appback/` (chủ `deploy`). Mọi thứ bên trong do `deploy.yml` và các script
+   tự tạo (K-35 — "bó phát hành" bất biến theo tag):
    ```
    /opt/appback/
-     prod.yml           # chép từ deploy/compose/prod.yml (deploy.sh scp lên)
-     scripts/           # chép từ deploy/scripts/ (deploy.sh scp lên)
-     backup/            # backup.sh ghi bản sao lưu cục bộ tạm trước khi đẩy xa
-     current_tag        # tag ảnh đang chạy (deploy.sh ghi)
-     previous_tag        # tag trước đó (rollback.sh đọc mặc định)
+     releases/<tag>/deploy/   # bó của từng tag (bundle.sh dựng, deploy.yml giải nén):
+       compose/{base.yml,prod.yml}  minio/  scripts/  backup/
+     current -> releases/<tag> # symlink tới bản đang chạy (deploy.sh/rollback.sh đổi sau smoke)
+     release.env              # IMAGE_TAG=<tag đang chạy> — nguồn sự thật duy nhất của tag
+     current_tag              # tag đang chạy (deploy.sh ghi; previous_tag đọc từ đây)
+     previous_tag             # tag trước đó (rollback.sh đọc mặc định)
    ```
+   ```bash
+   sudo install -d -o deploy -g deploy /opt/appback
+   ```
+   Mỗi lần deploy để lại một `releases/<tag>/` (~vài trăm KB); xoá tay bản cũ khi cần, **không**
+   xoá bản mà `current` hay `previous_tag` đang trỏ (rollback cần compose của chính bản đó).
 5. Tạo `/etc/appback/appback.env` (chủ `deploy`, quyền **600** — chứa
    `SECRET_KEY`, mật khẩu Postgres, khoá MinIO...):
    ```bash
    sudo install -o deploy -g deploy -m 600 /dev/null /etc/appback/appback.env
    ```
+   - **Không** đặt `IMAGE_TAG` trong tệp này: tag do `deploy.sh` ghi vào
+     `/opt/appback/release.env`; mọi script (`deploy.sh`, `rollback.sh`, `backup.sh`,
+     `restore.sh`) tự nạp cả hai tệp cho compose (`COMPOSE_ENV_FILES`) và **thoát 2** nếu
+     appback.env có dòng `IMAGE_TAG=` (L5-N07).
+   - Đặt `COMPOSE_PROFILES` theo dịch vụ muốn chạy, vd `COMPOSE_PROFILES=minio,ml` (MinIO tự
+     chạy trên VPS + ML CPU). `deploy.sh` tự dựng hạ tầng theo profile (postgres, hai redis;
+     minio + minio-init khi có `minio`) và đổi mọi dịch vụ ứng dụng compose liệt kê (worker,
+     beat, web; ml, ml-train khi có `ml`). Dùng S3 ngoài thì bỏ `minio`.
 6. Tạo `/etc/appback/ml.env` (chủ `deploy`, quyền **600**) — `env_file` riêng
    của `ml`/`ml-gpu` (NO-085), chép từ `deploy/compose/ml.env.example`:
    ```bash
@@ -225,6 +240,11 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now appback-backup.timer appback-health.timer
 ```
 
+Cả hai unit chạy script của **bản đang chạy** (`/opt/appback/current/deploy/…`, gọi qua
+`/bin/bash` vì bó giữ mode 644); `backup.sh` lấy tag từ `/opt/appback/release.env` — không
+cần (và không được) đặt `IMAGE_TAG` trong appback.env. Chưa deploy lần nào thì `backup.sh`
+thoát 2 "chưa có bản phát hành nào".
+
 - `appback-backup.timer`: chạy `backup.sh` 02:30 hằng ngày (giờ hệ thống VPS).
 - `appback-health.timer`: chạy `healthcheck.sh` mỗi 5 phút — `/api/ready`
   hỏng hai lần liên tiếp hoặc đĩa > 85% → POST `ALERT_WEBHOOK_URL`. `healthcheck.sh --test-alert` gửi
@@ -245,12 +265,31 @@ journalctl -u appback-health.service -n 20   # có dòng chạy gần nhất
 CI không chạy được).
 
 ```bash
-# Trên VPS, thư mục /opt/appback, người dùng deploy:
-bash scripts/deploy.sh sha-abc123def456          # deploy ảnh cụ thể
-bash scripts/deploy.sh sha-abc123def456 --dry-run  # chỉ in kế hoạch, không đổi gì
-bash scripts/rollback.sh                          # về previous_tag
-bash scripts/rollback.sh v1.2.2                    # về tag chỉ định
+# Máy có checkout đúng commit của tag: dựng bó rồi chép lên VPS.
+bash deploy/scripts/bundle.sh /tmp/deploy-bundle-sha-abc123def456.tar.gz
+scp /tmp/deploy-bundle-sha-abc123def456.tar.gz deploy@<host>:/opt/appback/
+
+# Trên VPS, người dùng deploy:
+t=sha-abc123def456; d=/opt/appback/releases/$t
+mkdir -p "$d" && tar -xzf /opt/appback/deploy-bundle-$t.tar.gz -C "$d"
+bash "$d/deploy/scripts/deploy.sh" "$t"             # deploy (máy trống cũng chỉ cần lệnh này)
+bash "$d/deploy/scripts/deploy.sh" "$t" --dry-run   # chỉ in kế hoạch, không đổi gì
+bash /opt/appback/current/deploy/scripts/rollback.sh          # về previous_tag
+bash /opt/appback/releases/v1.2.2/deploy/scripts/rollback.sh v1.2.2   # về tag chỉ định
 ```
+
+**Lần đầu trên máy trống** (L5-N01): sau khi có appback.env, ml.env và chứng chỉ, `deploy.sh
+<tag>` là lệnh **duy nhất** — nó tự `up -d --wait` postgres + hai redis (+ minio, minio-init
+khi `COMPOSE_PROFILES` có `minio`) trước migrate, rồi tạo mới api, worker, beat, web (+ ml).
+Lần sau bước này không tạo lại gì nếu cấu hình hạ tầng không đổi.
+
+Thứ tự `deploy.sh`: kiểm tag → có `releases/<tag>/` chưa (không thì thoát 2) → kiểm appback.env
+→ pull → dựng hạ tầng → migrate → publish thư viện → đổi api không gián đoạn → đổi dịch vụ ứng
+dụng → smoke → ghi `release.env`, symlink `current`, `current_tag`. Hỏng sau migrate thì gọi
+`rollback.sh` **của bản trước** (`releases/<previous_tag>/…`) — lùi cả compose lẫn ảnh.
+`rollback.sh <tag>` dùng compose của `releases/<tag>` và đổi api + **mọi** dịch vụ ứng dụng
+(cả web, ml). `web` giữ cổng 80/443 nên không đổi kiểu hai bản như api: mỗi lần deploy/rollback
+có vài giây gián đoạn HTTP lúc container web được tạo lại (chấp nhận ở F1).
 
 `deploy.sh` tự chạy `python -m apps.api.library.cli publish` sau migrate (thư viện `.glb`
 không rỗng tới lượt lịch đầu); hỏng bước này chỉ cảnh báo, beat publish lại theo lịch.
@@ -259,8 +298,11 @@ Khi triển khai tay không qua `deploy.sh`, chạy lệnh đó sau migrate + se
 bản sao lưu nên thư viện `.glb` đã có đủ; chạy lại `publish` chỉ cần khi khôi phục sang kho
 object trống.
 
-**Kiểm:** `cat current_tag`; `curl -fsS http://127.0.0.1/api/health`;
-`docker compose ps` chỉ có một `api` đang chạy sau khi lệnh kết thúc.
+**Kiểm:** `cat /opt/appback/release.env`; `readlink /opt/appback/current`;
+`curl -fsS http://127.0.0.1/api/health`; `docker compose ps --format '{{.Service}} {{.Image}}'`
+(chạy với `COMPOSE_FILE=/opt/appback/current/deploy/compose/prod.yml` và
+`COMPOSE_ENV_FILES=/etc/appback/appback.env,/opt/appback/release.env`) chỉ có một `api` và mọi
+dịch vụ ứng dụng cùng một tag.
 
 ## 11. Chạy `drill.sh` ở mỗi mốc M1–M4
 
@@ -279,8 +321,9 @@ lưu/khôi phục vẫn đúng sau mỗi đợt đổi lớn.
 
 ## 12. Việc người phải làm trước M1
 
-- [ ] VPS (§1): Docker, người dùng `deploy`, tường lửa 22/80/443, cấu trúc
-      `/opt/appback/`, `appback.env` và `ml.env` quyền 600.
+- [ ] VPS (§1): Docker, người dùng `deploy`, tường lửa 22/80/443, thư mục
+      `/opt/appback/`, `appback.env` (có `COMPOSE_PROFILES`, không có `IMAGE_TAG`) và `ml.env`
+      quyền 600.
 - [ ] `appback.env` có `SMTP_HOST` và `MAIL_FROM` (bắt buộc — thiếu thì `docker compose` trên prod
       hỏng ngay) cùng các biến `SMTP_*`/`MAIL_*` còn lại (bảng "Biến môi trường").
 - [ ] Khoá SSH riêng cho CI + `known_hosts` (§2).
@@ -306,6 +349,9 @@ hành cần đặt tay trong `appback.env` hoặc secret GitHub:
 | Biến | Mặc định | Đặt ở đâu |
 |---|---|---|
 | `APPBACK_DIR` | `/opt/appback` | môi trường shell trên VPS (thường không cần đổi) |
+| `APPBACK_ENV_FILE` | `/etc/appback/appback.env` | môi trường shell (thường không cần đổi) — tệp script tự nạp cho compose |
+| `COMPOSE_PROFILES` | rỗng (chỉ postgres, redis, api, worker, beat, web) | `appback.env`, vd `minio,ml` (§1) |
+| `IMAGE_TAG` | — | **không** đặt tay: `deploy.sh`/`rollback.sh` ghi vào `/opt/appback/release.env` |
 | `IMAGE_REGISTRY` | `ghcr.io/mungvu999-ctrl` | `appback.env` (để trống nếu chạy ảnh cục bộ) |
 | `APPBACK_BASE_URL` | `http://127.0.0.1` | `appback.env` → domain thật sau khi có TLS (§7) |
 | `APPBACK_HEALTH_TIMEOUT_S` | `180` | `appback.env`, chỉnh nếu máy chậm khởi động |

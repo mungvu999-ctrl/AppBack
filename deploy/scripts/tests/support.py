@@ -11,6 +11,7 @@ Hai công cụ, dùng lại ở mọi file test của B0-10 (R-07):
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -165,3 +166,132 @@ def read_log(log: Path) -> Iterator[str]:
     """Các dòng của `$FAKE_LOG` theo thứ tự gọi; chưa có lệnh nào → rỗng."""
     if log.exists():
         yield from log.read_text(encoding="utf-8").splitlines()
+
+
+# Đầu thân `docker` giả (đặt TRƯỚC các nhánh khác): `docker compose config --services` in tập
+# dịch vụ của prod.yml theo `COMPOSE_PROFILES` như compose thật (dịch vụ không profile + profile
+# đang bật) — để kiểm `load_app_services` lọc đúng mà không cần CLI compose trong container verify
+# (không có). `DOCKER_CONFIG_FAIL=1` làm lệnh hỏng. Tập dịch vụ thật được chốt riêng bằng test
+# đọc prod.yml (`test_compose.py`), để bản giả không trôi khỏi compose.
+FAKE_COMPOSE_SERVICES = """
+if [[ "$1 $2 $3" == "compose config --services" ]]; then
+  [[ "${DOCKER_CONFIG_FAIL:-0}" == "1" ]] && exit 1
+  printf '%s\\n' postgres redis-broker redis-cache migrate api worker beat web
+  [[ ",${COMPOSE_PROFILES:-}," == *",minio,"* ]] && printf '%s\\n' minio minio-init
+  [[ ",${COMPOSE_PROFILES:-}," == *",ml,"* ]] && printf '%s\\n' ml ml-train
+  exit 0
+fi
+"""
+
+
+# `docker` giả của deploy.sh/rollback.sh: theo dõi tập container `api` bằng tệp trạng thái
+# $DOCKER_STATE — chỉ để kiểm thứ tự lệnh (B0-10 [8]), không thay Docker thật. Mỗi `compose
+# pull` ghi COMPOSE_FILE và COMPOSE_ENV_FILES vào $DOCKER_STATE/pull_env (kiểm bó/biến K-35).
+# Núm: DOCKER_MIGRATE_EXIT, DOCKER_INFRA_EXIT (`up --wait` hạ tầng), DOCKER_UNHEALTHY,
+# DOCKER_SCALE2_NO_NEW, DOCKER_CONFIG_FAIL (FAKE_COMPOSE_SERVICES).
+FAKE_DOCKER = (
+    FAKE_COMPOSE_SERVICES
+    + """
+state="$DOCKER_STATE"
+mkdir -p "$state"
+ids_file="$state/ids"
+touch "$ids_file"
+
+if [[ "$1 $2" == "compose pull" ]]; then
+  printf '%s\\n%s\\n' "$COMPOSE_FILE" "$COMPOSE_ENV_FILES" >> "$state/pull_env"
+  exit 0
+fi
+if [[ "$1 $2 $3 $4" == "compose run --rm migrate" ]]; then
+  exit "${DOCKER_MIGRATE_EXIT:-0}"
+fi
+if [[ "$1 $2 $3 $4" == "compose ps -q api" ]]; then
+  cat "$ids_file"
+  exit 0
+fi
+if [[ "$1 $2 $3 $4" == "compose up -d --wait" ]]; then
+  exit "${DOCKER_INFRA_EXIT:-0}"
+fi
+if [[ "$1 $2" == "compose up" ]]; then
+  scale2=0
+  next_is_scale=0
+  for a in "$@"; do
+    if [[ "$next_is_scale" == "1" ]]; then
+      [[ "$a" == "api=2" ]] && scale2=1
+      next_is_scale=0
+    fi
+    [[ "$a" == "--scale" ]] && next_is_scale=1
+  done
+  if [[ "$scale2" == "1" && "${DOCKER_SCALE2_NO_NEW:-0}" == "1" ]]; then
+    exit 0
+  fi
+  if [[ "$scale2" == "1" ]]; then
+    n=0
+    [[ -f "$state/counter" ]] && n="$(cat "$state/counter")"
+    n=$((n + 1))
+    echo "$n" > "$state/counter"
+    id="c$n"
+    echo "$id" >> "$ids_file"
+    if [[ "${DOCKER_UNHEALTHY:-0}" == "1" ]]; then
+      echo "starting" > "$state/health_$id"
+    else
+      echo "healthy" > "$state/health_$id"
+    fi
+  fi
+  exit 0
+fi
+if [[ "$1" == "inspect" ]]; then
+  id="${*: -1}"
+  cat "$state/health_$id" 2>/dev/null || echo "starting"
+  exit 0
+fi
+if [[ "$1" == "rm" ]]; then
+  id="${*: -1}"
+  grep -vxF "$id" "$ids_file" > "$ids_file.tmp" 2>/dev/null || true
+  mv "$ids_file.tmp" "$ids_file" 2>/dev/null || true
+  rm -f "$state/health_$id"
+  exit 0
+fi
+exit 0
+"""
+)
+
+
+def fake_docker(tmp_path: Path, old_ids: Sequence[str] = ("old1",)) -> tuple[Path, Path]:
+    """Đặt `FAKE_DOCKER` đầu PATH với container api cũ `old_ids`; trả (bin_dir, thư mục trạng thái)."""
+    bin_dir = fake_bin(tmp_path / "bin", {"docker": FAKE_DOCKER})
+    state = tmp_path / "docker-state"
+    state.mkdir()
+    (state / "ids").write_text("".join(f"{i}\n" for i in old_ids), encoding="utf-8")
+    return bin_dir, state
+
+
+def appback_dir(
+    root: Path,
+    *,
+    running: str | None = None,
+    releases: Sequence[str] = (),
+    env_lines: str = "APP_ENV=test\n",
+    with_scripts: bool = False,
+) -> dict[str, str]:
+    """Dựng cấu trúc máy đích K-35 dưới `root`, trả biến môi trường trỏ vào đó.
+
+    `root/appback.env` (nội dung `env_lines`); `running` → `release.env` `IMAGE_TAG=<running>`
+    + `current_tag`; mỗi tag trong `releases` → `releases/<tag>/deploy/compose/prod.yml` (tệp
+    rỗng — docker giả không đọc) và, nếu `with_scripts`, bản chép `deploy/scripts` thật (để
+    deploy.sh gọi đúng rollback.sh của bản trước). Trả `APPBACK_DIR`, `APPBACK_ENV_FILE`.
+    """
+    root.mkdir(parents=True, exist_ok=True)
+    env_file = root / "appback.env"
+    env_file.write_text(env_lines, encoding="utf-8")
+    if running is not None:
+        (root / "release.env").write_text(f"IMAGE_TAG={running}\n", encoding="utf-8")
+        (root / "current_tag").write_text(running, encoding="utf-8")
+    for tag in releases:
+        deploy_dir = root / "releases" / tag / "deploy"
+        (deploy_dir / "compose").mkdir(parents=True, exist_ok=True)
+        (deploy_dir / "compose" / "prod.yml").write_text("", encoding="utf-8")
+        if with_scripts:
+            shutil.copytree(
+                REPO_ROOT / "deploy" / "scripts", deploy_dir / "scripts", ignore=shutil.ignore_patterns("tests")
+            )
+    return {"APPBACK_DIR": str(root), "APPBACK_ENV_FILE": str(env_file)}

@@ -5,24 +5,20 @@
 #      backup.sh --rotate-only — chỉ chạy xoay vòng trên BACKUP_TARGET hiện có (để kiểm độc lập).
 #
 # Biến môi trường (đều có mặc định, hợp đồng B0-10 §1, §3):
-#   APPBACK_DIR             /opt/appback           — chứa prod.yml khi COMPOSE_FILE chưa đặt.
-#   COMPOSE_FILE             $APPBACK_DIR/prod.yml  — tôn trọng biến gốc compose, không tự thêm -f.
-#   COMPOSE_PROJECT_NAME     appback
-#   BACKUP_TARGET            /var/backups/appback   — thư mục gốc chứa các bản sao lưu theo ngày giờ.
+#   APPBACK_DIR, COMPOSE_FILE, COMPOSE_ENV_FILES, COMPOSE_PROJECT_NAME — mặc định của lib.sh:
+#                            compose của bản đang chạy ($APPBACK_DIR/current/…/prod.yml), nạp
+#                            appback.env + release.env (IMAGE_TAG — L5-N07). Người gọi tự đặt
+#                            (drill.sh) thì giữ nguyên.
+#   BACKUP_TARGET           /var/backups/appback   — thư mục gốc chứa các bản sao lưu theo ngày giờ.
 #   APPBACK_STORAGE          s3                     — "s3" mirror bucket MinIO; "local" tar volume.
 #   BACKUP_AGE_RECIPIENT     (rỗng)                 — mã hoá db.dump/objects.tar bằng age -r; rỗng → thoát 1
 #                                                   (bắt buộc mã hoá ở mọi môi trường) trừ khi:
 #   BACKUP_ALLOW_PLAINTEXT   (rỗng)                 — đặt đúng "1" mới cho ghi bản rõ (chỉ dev, diễn tập).
 #
-# Mã thoát: 0 đạt; 1 hỏng (thư mục dở bị xoá trước khi thoát).
+# Mã thoát: 0 đạt; 1 hỏng (thư mục dở bị xoá trước khi thoát); 2 thiếu appback.env/release.env.
 set -euo pipefail
 # Bản sao lưu chứa hash mật khẩu và mọi bản vẽ: thư mục/tệp do script tạo chỉ chủ đọc được (SEC-040).
 umask 077
-
-: "${APPBACK_DIR:=/opt/appback}"
-: "${COMPOSE_FILE:=$APPBACK_DIR/prod.yml}"
-: "${COMPOSE_PROJECT_NAME:=appback}"
-export COMPOSE_FILE COMPOSE_PROJECT_NAME
 
 : "${BACKUP_TARGET:=/var/backups/appback}"
 : "${BACKUP_AGE_RECIPIENT:=}"
@@ -91,6 +87,11 @@ if [[ -z "$BACKUP_AGE_RECIPIENT" && ( "${BACKUP_ALLOW_PLAINTEXT:-}" != "1" || "$
   echo "loi: thieu BACKUP_AGE_RECIPIENT (sao luu phai ma hoa age); chi dev/dien tap moi dat BACKUP_ALLOW_PLAINTEXT=1" >&2
   exit 1
 fi
+
+# Compose của bản đang chạy cần appback.env (biến) và release.env (IMAGE_TAG) — thiếu thì mọi
+# `docker compose exec` dưới đây hỏng ở nội suy `${…:?}`; báo rõ trước khi tạo thư mục (L5-N07).
+assert_env_ready || exit $?
+assert_release_env || exit $?
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 stage_dir="$BACKUP_TARGET/$timestamp"

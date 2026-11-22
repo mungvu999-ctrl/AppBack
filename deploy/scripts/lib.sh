@@ -1,11 +1,53 @@
 #!/usr/bin/env bash
-# Thư viện dùng chung cho deploy.sh và rollback.sh (R-07) — CHỈ được `source`,
-# không tự chạy. Mặc định biến môi trường, kiểm tag, đổi api/worker/beat,
-# gọi smoke, đọc/ghi current_tag & previous_tag, và hai hàm run()/plan() cho
-# chế độ --dry-run của deploy.sh (in lệnh thay vì chạy — hợp đồng B0-10 §1,§2).
+# Thư viện dùng chung cho deploy.sh, rollback.sh, backup.sh, restore.sh (R-07) — CHỈ
+# được `source`, không tự chạy. Mặc định biến môi trường, nạp biến cho compose
+# (appback.env + release.env — K-35, L5-N07), chọn bó phát hành releases/<tag>, dựng
+# hạ tầng (L5-N01), đổi api và các dịch vụ ứng dụng, gọi smoke, đọc/ghi trạng thái
+# phát hành, và hai hàm run()/plan() cho --dry-run (in lệnh thay vì chạy — B0-10 §1,§2).
+#
+# Cấu trúc máy đích (README §1): /opt/appback/releases/<tag>/deploy/{compose,minio,
+# scripts,backup} (bó bất biến do bundle.sh dựng), symlink current → releases/<tag>
+# đang chạy, release.env (IMAGE_TAG=<tag> đang chạy — nguồn sự thật duy nhất của tag).
 set -euo pipefail
 
 : "${APPBACK_DIR:=/opt/appback}"
+: "${APPBACK_ENV_FILE:=/etc/appback/appback.env}"
+APPBACK_RELEASE_ENV="$APPBACK_DIR/release.env"
+# Giá trị người gọi tự đặt (drill.sh, kiểm tay trên máy dev) được tôn trọng nguyên vẹn; chỉ
+# khi trống lib mới tự chọn compose của bó phát hành và tự nạp biến (K-35 D2). Giữ lại để
+# deploy.sh trả đúng môi trường gốc cho rollback.sh của bản trước (không rò compose bản mới).
+LIB_CALLER_COMPOSE_FILE="${COMPOSE_FILE:-}"
+LIB_CALLER_ENV_FILES="${COMPOSE_ENV_FILES:-}"
+LIB_MANAGES_ENV=0
+[[ -z "$LIB_CALLER_ENV_FILES" ]] && LIB_MANAGES_ENV=1
+
+# env_file_value <KHOÁ>: giá trị cuối cùng của KHOÁ trong $APPBACK_ENV_FILE (bỏ một cặp nháy
+# bao ngoài); rỗng nếu tệp/khoá không có. Đọc từng khoá chứ không `source` tệp: appback.env là
+# tệp env của compose (giá trị không trích dẫn, có thể chứa `$`, dấu cách) — bash không đọc đúng.
+env_file_value() {
+  local v
+  [[ -r "$APPBACK_ENV_FILE" ]] || return 0
+  v="$(sed -n "s/^$1=//p" "$APPBACK_ENV_FILE" | tail -n 1)"
+  v="${v%$'\r'}"
+  if [[ "$v" =~ ^\"(.*)\"$ || "$v" =~ ^\'(.*)\'$ ]]; then
+    v="${BASH_REMATCH[1]}"
+  fi
+  printf '%s' "$v"
+}
+
+# Script được gọi qua `ssh … deploy.sh` (deploy.yml) không có EnvironmentFile của systemd:
+# biến script tự đọc (URL smoke, hạn chờ, registry, profile compose) phải lấy từ appback.env
+# trước khi mặc định bên dưới chiếm chỗ — không thì shell xuất mặc định và ĐÈ giá trị trong
+# tệp (compose ưu tiên biến shell hơn --env-file). Biến đã có trong môi trường giữ nguyên.
+if [[ "$LIB_MANAGES_ENV" == "1" ]]; then
+  for _key in IMAGE_REGISTRY APPBACK_BASE_URL APPBACK_HEALTH_TIMEOUT_S APPBACK_API_SWAP_SETTLE_S COMPOSE_PROFILES; do
+    if [[ -z "${!_key+x}" ]] && grep -q "^$_key=" "$APPBACK_ENV_FILE" 2>/dev/null; then
+      printf -v "$_key" '%s' "$(env_file_value "$_key")"
+      export "${_key?}"
+    fi
+  done
+  unset _key
+fi
 # Không dùng ":=" — drill.sh cố ý đặt IMAGE_REGISTRY="" (ảnh cục bộ, không registry);
 # ":=" coi rỗng như chưa đặt và sẽ ghi đè lại registry mặc định.
 : "${IMAGE_REGISTRY=ghcr.io/mungvu999-ctrl}"
@@ -24,9 +66,26 @@ set -euo pipefail
 # `sleep ""` hỏng giữa swap_api (NO-200).
 : "${APPBACK_API_SWAP_SETTLE_S:=11}"
 export APPBACK_DIR IMAGE_REGISTRY APPBACK_BASE_URL APPBACK_HEALTH_TIMEOUT_S APPBACK_API_SWAP_SETTLE_S
-export COMPOSE_FILE="${COMPOSE_FILE:-$APPBACK_DIR/prod.yml}"
+export COMPOSE_FILE="${COMPOSE_FILE:-$APPBACK_DIR/current/deploy/compose/prod.yml}"
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-appback}"
-export COMPOSE_ENV_FILES="${COMPOSE_ENV_FILES:-}"
+# Nạp CÙNG appback.env cho nội suy `${VAR}` của compose (prod.yml:5-12 "lệnh chuẩn") và
+# release.env cho IMAGE_TAG — thiếu thì `${VAR:?}` của base.yml/prod.yml làm mọi lệnh compose
+# hỏng (K-35 D2, L5-N07). Chỉ ghép tệp đang có: compose từ chối tệp env không tồn tại;
+# assert_env_ready/assert_release_env báo lỗi rõ trước khi tới compose.
+if [[ "$LIB_MANAGES_ENV" == "1" ]]; then
+  COMPOSE_ENV_FILES=""
+  for _f in "$APPBACK_ENV_FILE" "$APPBACK_RELEASE_ENV"; do
+    [[ -f "$_f" ]] && COMPOSE_ENV_FILES="${COMPOSE_ENV_FILES:+$COMPOSE_ENV_FILES,}$_f"
+  done
+  unset _f
+fi
+export COMPOSE_ENV_FILES
+
+# Hạ tầng (bootstrap_infra dựng), việc một lần và api (swap_api đổi riêng) — mọi dịch vụ còn
+# lại mà `docker compose config --services` liệt kê theo COMPOSE_PROFILES là dịch vụ ứng dụng
+# đổi theo tag (worker, beat, web, ml, ml-train, ml-gpu, bake…). Suy từ compose thay vì viết
+# cứng danh sách: thêm dịch vụ vào prod.yml thì deploy/rollback tự đổi theo (K-35 D3).
+APPBACK_NON_APP_SERVICES="postgres redis-broker redis-cache minio minio-init mailpit migrate api"
 
 LIB_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 APPBACK_TAG_RE='^(v[0-9]+\.[0-9]+\.[0-9]+|sha-[0-9a-f]{12}|[a-z0-9][a-z0-9._-]{0,63})$'
@@ -154,11 +213,103 @@ swap_api() {
   docker compose up -d --no-deps --no-recreate --scale api=1 api
 }
 
-# Đổi worker/beat thường (acks_late giao lại task đang chạy — không cần đổi kiểu blue/green).
-swap_workers() {
+# Nạp mảng toàn cục APP_SERVICES = dịch vụ ứng dụng của compose hiện hành (xem
+# APPBACK_NON_APP_SERVICES). `docker compose config --services` chỉ ĐỌC (cả ở --dry-run) và
+# đã lọc theo COMPOSE_PROFILES: ml/ml-train chỉ có khi profile "ml" bật. Hỏng → thoát 1.
+load_app_services() {
+  local all svc
+  if ! all="$(docker compose config --services)"; then
+    echo "lỗi: docker compose config --services hỏng — không biết dịch vụ nào cần đổi" >&2
+    return 1
+  fi
+  APP_SERVICES=()
+  for svc in $all; do
+    case " $APPBACK_NON_APP_SERVICES " in
+      *" $svc "*) ;;
+      *) APP_SERVICES+=("$svc") ;;
+    esac
+  done
+}
+
+# Đổi mọi dịch vụ ứng dụng trừ api sang tag "$1" (worker/beat: acks_late giao lại task đang
+# chạy; web: giữ cổng 80/443 nên không scale 2 được — gián đoạn vài giây khi đổi, chấp nhận ở
+# F1, README §10). Lần đầu `up` tạo mới web (L5-N01). `--no-deps`: hạ tầng do bootstrap_infra lo.
+swap_services() {
+  export IMAGE_TAG="$1"
+  load_app_services || return 1
+  (( ${#APP_SERVICES[@]} > 0 )) || return 0
+  run docker compose up -d --no-deps "${APP_SERVICES[@]}"
+}
+
+# profile_enabled <tên>: profile compose có trong COMPOSE_PROFILES (danh sách phẩy) không.
+profile_enabled() {
+  [[ ",${COMPOSE_PROFILES:-}," == *",$1,"* ]]
+}
+
+# Dựng hạ tầng (postgres, hai redis; minio + minio-init khi profile "minio" bật) và chờ
+# healthy — gọi MỌI lần deploy (L5-N01): máy trống thì tạo, đang chạy đúng cấu hình thì compose
+# không tạo lại; prod.yml đổi cấu hình hạ tầng thì container đó được tạo lại (gián đoạn ngắn,
+# hiện ở kế hoạch --dry-run). `--wait-timeout` chặn treo vô hạn nếu một healthcheck không bao
+# giờ đạt. Hỏng → thoát 1, chưa đổi container ứng dụng nào.
+bootstrap_infra() {
+  local wait_opts=(--wait --wait-timeout "$APPBACK_HEALTH_TIMEOUT_S")
+  run docker compose up -d "${wait_opts[@]}" postgres redis-broker redis-cache || return 1
+  if profile_enabled minio; then
+    run docker compose up -d "${wait_opts[@]}" minio || return 1
+    run docker compose run --rm minio-init || return 1
+  fi
+}
+
+# Chọn bó phát hành của tag "$1": COMPOSE_FILE = releases/<tag>/deploy/compose/prod.yml để
+# deploy/rollback chạy ĐÚNG compose của bản đó (lùi cả cấu hình, không chỉ ảnh — K-35). Người
+# gọi đã tự đặt COMPOSE_FILE (kiểm tay) thì giữ nguyên. Thiếu bó → thoát 2 (đối số/môi trường sai).
+select_release() {
+  local compose="$APPBACK_DIR/releases/$1/deploy/compose/prod.yml"
+  [[ -n "$LIB_CALLER_COMPOSE_FILE" ]] && return 0
+  if [[ ! -f "$compose" ]]; then
+    echo "lỗi: chưa có bó phát hành $APPBACK_DIR/releases/$1 (giải nén deploy-bundle-$1.tar.gz vào đó trước — README §10)" >&2
+    return 2
+  fi
+  export COMPOSE_FILE="$compose"
+}
+
+# Kiểm appback.env trước khi gọi compose (chỉ khi lib tự nạp biến): thiếu tệp → mọi `${VAR:?}`
+# hỏng giữa chừng; có dòng IMAGE_TAG= → tag tĩnh lệch release.env (L5-N07: tag chỉ nằm ở
+# release.env do deploy.sh ghi). Thoát 2 kèm thông báo, chưa chạm docker.
+assert_env_ready() {
+  [[ "$LIB_MANAGES_ENV" == "1" ]] || return 0
+  if [[ ! -f "$APPBACK_ENV_FILE" ]]; then
+    echo "lỗi: thiếu $APPBACK_ENV_FILE (README §1) — compose không nội suy được biến" >&2
+    return 2
+  fi
+  if grep -Eq '^[[:space:]]*(export[[:space:]]+)?IMAGE_TAG[[:space:]]*=' "$APPBACK_ENV_FILE"; then
+    echo "lỗi: $APPBACK_ENV_FILE có IMAGE_TAG= — xoá dòng đó; tag do deploy.sh ghi vào $APPBACK_RELEASE_ENV" >&2
+    return 2
+  fi
+}
+
+# Script chạy trên bản đang chạy (backup.sh, restore.sh) cần release.env để compose có
+# IMAGE_TAG (prod.yml `${IMAGE_TAG:?}`) — chưa deploy lần nào thì không có gì để sao lưu/khôi phục.
+assert_release_env() {
+  [[ "$LIB_MANAGES_ENV" == "1" ]] || return 0
+  if [[ ! -f "$APPBACK_RELEASE_ENV" ]]; then
+    echo "lỗi: chưa có bản phát hành nào ($APPBACK_RELEASE_ENV không tồn tại) — chạy deploy.sh trước" >&2
+    return 2
+  fi
+}
+
+# Ghi trạng thái "tag $1 đang chạy" sau smoke đạt: release.env (IMAGE_TAG cho mọi lệnh compose
+# về sau), symlink current → releases/<tag> (systemd chạy script của bản đang chạy), current_tag.
+# Ghi tệp tạm rồi `mv -T` (rename nguyên tử): lệnh compose chạy song song (timer sao lưu) không
+# bao giờ thấy release.env dở hay symlink vắng. Bỏ qua ở --dry-run.
+record_release() {
   local tag="$1"
-  export IMAGE_TAG="$tag"
-  run docker compose up -d --no-deps worker beat
+  [[ "$DRY_RUN" == "1" ]] && return 0
+  printf 'IMAGE_TAG=%s\n' "$tag" > "$APPBACK_RELEASE_ENV.tmp"
+  mv -f "$APPBACK_RELEASE_ENV.tmp" "$APPBACK_RELEASE_ENV"
+  ln -sfn "releases/$tag" "$APPBACK_DIR/current.tmp"
+  mv -fT "$APPBACK_DIR/current.tmp" "$APPBACK_DIR/current"
+  write_state current_tag "$tag"
 }
 
 # Gọi smoke.sh cạnh script này với $APPBACK_BASE_URL; chỉ in kế hoạch ở dry-run.

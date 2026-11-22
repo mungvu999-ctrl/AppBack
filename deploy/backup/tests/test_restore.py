@@ -16,9 +16,10 @@ from pathlib import Path
 
 import pytest
 
-from deploy.scripts.tests.support import REPO_ROOT, fake_bin, read_log, run_script
+from deploy.scripts.tests.support import FAKE_COMPOSE_SERVICES, REPO_ROOT, appback_dir, fake_bin, read_log, run_script
 
 RESTORE_SH = Path(__file__).resolve().parents[1] / "restore.sh"
+RUNNING = "sha-aaaaaaaaaaaa"
 
 # `docker` giả: chỉ kiểm thứ tự lệnh, tiêu thụ stdin của các lệnh psql/pg_restore để không
 # treo script khi restore.sh không redirect stdin cho DROP/CREATE DATABASE.
@@ -72,7 +73,7 @@ def _support_dir(tmp_path: Path) -> tuple[Path, Path]:
     `restore.sh` giờ `source` `deploy/scripts/lib.sh` (wait_healthy dùng chung, R-07) —
     chép lib.sh THẬT vào thư mục scripts giả, để test chạy đúng mã sẽ lên máy đích.
     """
-    bin_dir = fake_bin(tmp_path / "bin", {"docker": _FAKE_DOCKER_BODY, "age": _FAKE_AGE_BODY})
+    bin_dir = fake_bin(tmp_path / "bin", {"docker": FAKE_COMPOSE_SERVICES + _FAKE_DOCKER_BODY, "age": _FAKE_AGE_BODY})
     scripts_dir = tmp_path / "scripts"
     scripts_dir.mkdir()
     (scripts_dir / "smoke.sh").write_text(_SMOKE_STUB, encoding="utf-8")
@@ -151,6 +152,7 @@ def _run_restore(
         "FAKE_LOG": str(log),
         "APPBACK_SCRIPTS_DIR": str(scripts_dir),
         "BACKUP_AGE_IDENTITY": "/dummy/identity",
+        **appback_dir(tmp_path / "opt-appback", running=RUNNING),
         **(extra_env or {}),
     }
     result = run_script(RESTORE_SH, args=[str(backup_dir)], env=env, bin_dir=bin_dir, stdin="")
@@ -267,6 +269,7 @@ def test_restore__relative_backup_dir_is_resolved_to_absolute(tmp_path: Path, mo
         "FAKE_LOG": str(log),
         "APPBACK_SCRIPTS_DIR": str(scripts_dir),
         "BACKUP_AGE_IDENTITY": "/dummy/identity",
+        **appback_dir(tmp_path / "opt-appback", running=RUNNING),
     }
     result = run_script(RESTORE_SH, args=[relative], env=env, bin_dir=bin_dir, stdin="")
 
@@ -302,3 +305,23 @@ def test_restore__local_objects_tar_goes_through_stdin(tmp_path: Path) -> None:
     (line,) = [entry for entry in log.splitlines() if "tar -xf" in entry]
     assert " -T " in line, line
     assert "/restore/objects.tar" not in line, line
+
+
+def test_restore__brings_back_every_app_service_with_release_tag(tmp_path: Path) -> None:
+    """L5-N07: bật lại api + đúng tập dịch vụ ứng dụng của compose (theo COMPOSE_PROFILES — có ml
+    khi bật "ml"), compose nhận release.env (IMAGE_TAG = bản đang chạy) qua COMPOSE_ENV_FILES."""
+    backup_dir = _make_plain_backup(tmp_path)
+    result, log = _run_restore(tmp_path, backup_dir, extra_env={"COMPOSE_PROFILES": "ml"})
+    assert result.returncode == 0, result.stderr
+    assert "docker compose up -d api worker beat web ml ml-train" in log.splitlines()
+
+
+def test_restore__no_release_yet_exits_2_before_any_stop(tmp_path: Path) -> None:
+    """Không có release.env (chưa deploy lần nào) → thoát 2 trước mọi lệnh docker — không để hệ
+    thống dừng nửa chừng vì compose không nội suy được IMAGE_TAG."""
+    backup_dir = _make_plain_backup(tmp_path)
+    root = tmp_path / "trong"
+    result, log = _run_restore(tmp_path, backup_dir, extra_env=appback_dir(root))
+    assert result.returncode == 2
+    assert "chưa có bản phát hành nào" in result.stderr
+    assert log == ""

@@ -74,6 +74,17 @@ def test_dependabot_docker__does_not_ignore_every_major() -> None:
         assert not (i.get("dependency-name") == "*" and "version-update:semver-major" in i.get("update-types", []))
 
 
+def test_dependabot__group_pr_titles_fit_commit_header_limit() -> None:
+    """L8-N02: tiêu đề PR nhóm của Dependabot (công thức của nó, 99 bản cập nhật) ≤ 72 ký tự — job `commits` kiểm tiêu đề PR."""
+    doc = _load_yaml(DEPENDABOT_YML)
+    for update in doc["updates"]:
+        prefix = update["commit-message"]["prefix"]
+        for group in update["groups"]:
+            for where in ("across 1 directory", f"in {update['directory']}"):
+                title = f"{prefix}(deps): Bump the {group} group {where} with 99 updates"
+                assert len(title) <= 72, f"{len(title)} ký tự: {title}"
+
+
 def test_ci_yml__no_job_gated_on_event_action() -> None:
     """NO-182: `ci.yml` không có job nào lọc theo `github.event.action` — job bị bỏ qua vì điều kiện báo `skipped`,
     mà GitHub tính `skipped` là thành công của required check; `edited` thuộc về `commits.yml`."""

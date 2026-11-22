@@ -810,6 +810,36 @@ def test_job_changes_git_failure_fails_job(tmp_path: Path) -> None:
     assert not out.exists()
 
 
+# ---------------------------------------------------------------------------
+# stale.yml (K-58)
+# ---------------------------------------------------------------------------
+
+STALE_YML = REPO_ROOT / ".github" / "workflows" / "stale.yml"
+
+
+def test_stale_yml_pinned_by_sha_and_minimal_permissions() -> None:
+    """`stale.yml` ghim SHA 40 ký tự; mức workflow không cấp quyền, chỉ job `stale` có `pull-requests: write`."""
+    doc = _load_yaml(STALE_YML)
+    uses_values = _walk_key(doc["jobs"], "uses")
+    assert uses_values
+    for uses in uses_values:
+        assert _SHA_USES_RE.match(uses), uses
+    assert doc.get("permissions") == {}
+    assert doc["jobs"]["stale"]["permissions"] == {"pull-requests": "write"}
+    assert "pull_request_target" not in _triggers(doc)
+
+
+def test_stale_yml_only_labels_never_closes() -> None:
+    """Chỉ gắn nhãn sau 14 ngày: `days-before-close: -1` (không tự đóng), không xử lý issue."""
+    doc = _load_yaml(STALE_YML)
+    (step,) = doc["jobs"]["stale"]["steps"]
+    cfg = step["with"]
+    assert cfg["days-before-close"] == -1
+    assert cfg["days-before-pr-stale"] == 14
+    assert cfg["days-before-issue-stale"] == -1
+    assert cfg["stale-pr-label"] == "stale"
+
+
 WEB_TRIVYIGNORE = REPO_ROOT / "tools" / "ci" / "web.trivyignore"
 WEB_TRIVYIGNORE_CVES = {"CVE-2026-113425", "CVE-2026-121810", "CVE-2026-123007", "CVE-2026-123633"}
 WEB_TRIVYIGNORE_CAP = date(2026, 12, 6)  # WEB-NGINX-CVE: tạo 2026-11-22 + 14 ngày

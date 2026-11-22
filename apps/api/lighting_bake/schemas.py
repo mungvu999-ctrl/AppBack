@@ -16,3 +16,9 @@ class LightingBake(WireModel):
     started_at: WireDatetime | None = None
     ended_at: WireDatetime | None = None
     failure_code: str | None = None
+
+
+class LightingBakeAvailability(WireModel):
+    """N49 — dự án này có nướng được không (mẫu `DesignConceptState.enabled`)."""
+
+    enabled: bool

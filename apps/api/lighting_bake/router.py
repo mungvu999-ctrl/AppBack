@@ -1,4 +1,4 @@
-"""Route N42-N44 của nướng ánh sáng; router mỏng, nghiệp vụ ở `service.py`.
+"""Route N42-N44, N49 của nướng ánh sáng; router mỏng, nghiệp vụ ở `service.py`.
 
 `discover_routers()` tự nạp `ROUTERS` của module này — không có file đăng ký riêng.
 N42 đòi `layer.edit` (viewer → 403), N43/N44 chỉ đòi là thành viên; người ngoài → 404 (K08).
@@ -13,7 +13,7 @@ from starlette.responses import StreamingResponse
 from apps.api.core.deps import ClockDep, CurrentPrincipal, DbSession, Storage
 from apps.api.core.routing import protected_router, route_options
 from apps.api.lighting_bake import service
-from apps.api.lighting_bake.schemas import LightingBake
+from apps.api.lighting_bake.schemas import LightingBake, LightingBakeAvailability
 from apps.api.lighting_bake.settings import UPLOAD_BODY_LIMIT, LightingBakeSettings, get_lighting_bake_settings
 from apps.api.projects.access import require_project
 
@@ -40,6 +40,12 @@ async def lighting_bake_start_bake(
     return await service.start_bake(
         request, db=db, storage=storage, project_id=project_id, principal=principal, clock=clock, settings=settings
     )
+
+
+@router.get("/projects/{project_id}/lighting-bakes/availability", dependencies=[_member_gate])
+async def lighting_bake_read_availability(project_id: str, settings: BakeSettings) -> LightingBakeAvailability:
+    """N49 — `enabled`: máy chủ có worker nướng hay không (cờ `LIGHTING_BAKE_ENABLED`)."""
+    return service.read_availability(settings)
 
 
 @router.get("/projects/{project_id}/lighting-bakes/latest", dependencies=[_member_gate])

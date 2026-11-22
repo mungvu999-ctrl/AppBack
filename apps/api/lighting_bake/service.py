@@ -18,8 +18,8 @@ from starlette.requests import Request
 from starlette.responses import StreamingResponse
 
 from apps.api.core.auth import Principal
-from apps.api.lighting_bake.errors import LIGHTING_BAKE_IN_PROGRESS, bake_not_found
-from apps.api.lighting_bake.schemas import LightingBake
+from apps.api.lighting_bake.errors import LIGHTING_BAKE_DISABLED, LIGHTING_BAKE_IN_PROGRESS, bake_not_found
+from apps.api.lighting_bake.schemas import LightingBake, LightingBakeAvailability
 from apps.api.lighting_bake.settings import LightingBakeSettings
 from packages.core.clock import Clock
 from packages.core.error_codes import FILE_TYPE_MISMATCH
@@ -66,6 +66,8 @@ async def start_bake(
     settings: LightingBakeSettings,
 ) -> LightingBake:
     """N42 — nhận GLB thô theo luồng, mở lượt `queued`, gửi task sau commit; tự `commit`."""
+    if not settings.lighting_bake_enabled:
+        raise LIGHTING_BAKE_DISABLED.error(retry_after=10)
     if (await db.execute(_ACTIVE, {"p": project_id})).first() is not None:
         raise LIGHTING_BAKE_IN_PROGRESS.error()
     await db.rollback()
@@ -90,6 +92,11 @@ async def start_bake(
         await storage.delete(key)
         raise
     return LightingBake(id=bake_id, status="queued", created_at=now)
+
+
+def read_availability(settings: LightingBakeSettings) -> LightingBakeAvailability:
+    """N49 — công tắc nướng ánh sáng của máy chủ."""
+    return LightingBakeAvailability(enabled=settings.lighting_bake_enabled)
 
 
 async def read_latest(db: AsyncSession, *, project_id: str) -> LightingBake:

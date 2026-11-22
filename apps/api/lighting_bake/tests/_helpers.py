@@ -29,6 +29,11 @@ def latest_path(project_id: str) -> str:
     return f"/api/projects/{project_id}/lighting-bakes/latest"
 
 
+def availability_path(project_id: str) -> str:
+    """Đường N49."""
+    return f"/api/projects/{project_id}/lighting-bakes/availability"
+
+
 def file_path(project_id: str, bake_id: str, name: str) -> str:
     """Đường N44."""
     return f"/api/projects/{project_id}/lighting-bakes/{bake_id}/files/{name}"

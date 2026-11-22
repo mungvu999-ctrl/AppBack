@@ -184,6 +184,7 @@ services:
       DB_POOL_SIZE: ${API_DB_POOL_SIZE:-5}
       DB_MAX_OVERFLOW: ${API_DB_MAX_OVERFLOW:-3}
       FEATURE_FLAGS: ${FEATURE_FLAGS:-{}}
+      LIGHTING_BAKE_ENABLED: ${LIGHTING_BAKE_ENABLED:-false}
     networks:
       - appback
     healthcheck:

@@ -1,0 +1,9 @@
+# Miễn tạm cho `trivy image web` (job build) — WEB-NGINX-CVE, tạo 2026-11-22, hết hạn 2026-12-06.
+# Nền nginxinc/nginx-unprivileged:1.30.6-alpine; bản vá của bốn CVE dưới đây là nginx 1.30.7+/1.31.9+
+# (nginx.org/en/security_advisories.html, tra 2026-11-22). Lý do chung: chờ ảnh nginx-unprivileged 1.30.7.
+# Khi ảnh 1.30.7 ra: nâng web.Dockerfile rồi XOÁ tệp này cùng phần mount trong tools/ci/job.sh.
+# Quá hạn mà chưa xoá thì trivy tự tính lại các CVE này → job build đỏ (chủ ý, buộc xử lý).
+CVE-2026-113425 exp:2026-12-06
+CVE-2026-121810 exp:2026-12-06
+CVE-2026-123007 exp:2026-12-06
+CVE-2026-123633 exp:2026-12-06

@@ -22,7 +22,7 @@ import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from functools import lru_cache
-from typing import Literal, Protocol
+from typing import Final, Literal, Protocol
 
 from packages.domain.drawing_set.legacy_text import decode_legacy
 
@@ -113,13 +113,47 @@ def _fold_unicode(text: str) -> str:
 _CACHE = 1 << 15  # mục tối đa của mỗi bộ nhớ đệm hàm thuần str -> giá trị bất biến (chữ lặp lại trong và giữa các hình)
 
 
+# Phần dư VNI sau OCR: tên hình viết bằng phông VNI, OCR trên ẢNH bỏ dấu nhưng giữ chữ của ký tự dấu ("MAËT BAÈNG
+# LAÀU 1" in ra thành "MAET BAENG LAAU 1"). `decode_legacy` chỉ gặp được dạng còn byte dấu (chữ lấy từ DXF). Chỉ gấp
+# bộ từ vựng tên hình/tầng, theo nguyên từ: gấp mọi cặp nguyên âm sẽ làm hỏng chữ thường ("TOAN", "KHOA").
+_OCR_VNI_RESIDUE: Final = {
+    "MAET": "MAT",  # MAËT
+    "BAENG": "BANG",  # BAÈNG
+    "TREAT": "TRET",  # TREÄT
+    "LAAU": "LAU",  # LAÀU
+    "TAANG": "TANG",  # TAÀNG
+    "HAAM": "HAM",  # HAÀM
+    "MAUI": "MAI",  # MAÙI
+    "CAET": "CAT",  # CAÉT
+    "LOUNG": "LUNG",  # LÖÛNG
+    "SAAN": "SAN",  # SAÂN
+    "THOOING": "THUONG",  # THÖÔÏNG
+    "THOOONG": "THUONG",  # THÖÔÏNG, dấu nặng đọc thành O
+    "NOUNG": "DUNG",  # ÑÖÙNG (Ñ = Đ)
+    "DOUNG": "DUNG",
+    "TIEAN": "TIEN",  # TIEÀN
+    "BEAN": "BEN",  # BEÂN
+    "NAAT": "DAT",  # ÑAÁT
+    "NOA": "DO",  # ÑOÀ (BÌNH ĐỒ)
+    "DOIC": "DOC",  # DOÏC
+    "TIEAT": "TIET",  # TIEÁT
+}
+_OCR_VNI_WORD: Final = re.compile(r"\b(" + "|".join(_OCR_VNI_RESIDUE) + r")\b")
+
+
+def _fold_ocr_vni(text: str) -> str:
+    """Thay các từ dư VNI sau OCR (đã hoa, không dấu) bằng từ đúng; chữ khác giữ nguyên."""
+    return _OCR_VNI_WORD.sub(lambda m: _OCR_VNI_RESIDUE[m.group(1)], text)
+
+
 @lru_cache(maxsize=_CACHE)
 def fold(text: str) -> str:
-    """Chữ bản vẽ -> ASCII hoa một khoảng trắng: giải mã VNI/TCVN3, bỏ dấu, Đ -> D, xuống dòng -> cách.
+    """Chữ bản vẽ -> ASCII hoa một khoảng trắng: giải mã VNI/TCVN3 (cả phần dư VNI sau OCR), bỏ dấu, Đ -> D,
+    xuống dòng -> cách.
 
     Dùng cho mọi so khớp từ khoá; chuỗi rỗng hoặc None-like cho chuỗi rỗng.
     """
-    return _SPACES.sub(" ", _fold_unicode(decode_legacy(text or ""))).strip()
+    return _fold_ocr_vni(_SPACES.sub(" ", _fold_unicode(decode_legacy(text or ""))).strip())
 
 
 # ---------------------------------------------------------------- loại hình, biến thể, tầng

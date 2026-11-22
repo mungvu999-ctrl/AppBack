@@ -39,6 +39,11 @@ SMALL = [line(f"P{i}", 100 + 90 * i, 100, 160 + 90 * i, 130) for i in range(6)] 
         ("đường Đồng", "DUONG DONG"),
         ("MAËT BAÈNG LAÀU 1", "MAT BANG LAU 1"),
         ("mÆt b»ng tÇng 1", "MAT BANG TANG 1"),
+        ("MAET BAENG LAAU 1 TL: 1/100", "MAT BANG LAU 1 TL: 1/100"),  # VNI sau OCR trên ảnh
+        ("MAET BAENG TREAT", "MAT BANG TRET"),
+        ("MAET CAET A-A", "MAT CAT A-A"),
+        ("MAET NOUNG TRUC 1-6", "MAT DUNG TRUC 1-6"),
+        ("TOAN KHOA LAAUX", "TOAN KHOA LAAUX"),  # chỉ thay nguyên từ trong bộ từ vựng
         ("日本 plan", "PLAN"),
         ("", ""),
     ],
@@ -46,6 +51,21 @@ SMALL = [line(f"P{i}", 100 + 90 * i, 100, 160 + 90 * i, 130) for i in range(6)] 
 def test_fold(text: str, expected: str) -> None:
     """Bỏ dấu, Đ -> D, giải mã VNI/TCVN3, hoa, một khoảng trắng; ký tự lạ không quy được bị bỏ."""
     assert fold(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "storey", "numbering"),
+    [
+        ("MAET BAENG TREAT TL: 1/100", "ground", None),
+        ("MAET BAENG LAAU 1 TL: 1/100", 1, "lau"),
+        ("MAET BAENG LAAU 3 TL: 1/100", 3, "lau"),
+    ],
+)
+def test_parse_title_reads_ocr_vni_residue(text: str, storey: object, numbering: str | None) -> None:
+    """Tên hình phông VNI đọc bằng OCR (bộ DN-244 trên f14, 22/11): đọc ra đúng tầng như chữ Unicode."""
+    info = parse_title(text)
+    assert info is not None
+    assert (info.kind, info.storey, info.numbering) == ("plan", storey, numbering)
 
 
 # (tên, loại hình, nhãn tầng như viết, cách đánh số, biến thể)

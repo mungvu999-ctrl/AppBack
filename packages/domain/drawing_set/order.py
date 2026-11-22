@@ -7,8 +7,9 @@ không neo nào thì sàn đầu là tầng 1). Chữ mâu thuẫn thứ tự (s
 dưới một tầng thường, cốt riêng lệch thứ tự quá 0,25 m): GIỮ thứ tự, độ tin tầng <= 0,65, trả `OrderConflict`.
 
 Độ tin (luật hai nguồn): số từ chữ được một neo kề xác nhận đúng khoảng cách trong thứ tự (cùng `n - s`) là
-hai nguồn độc lập cùng ý -> 0,95; số chỉ suy từ thứ tự là một nguồn -> 0,8 khi kẹp đúng giữa hai neo, 0,75 khi
-đếm từ một phía, 0,6 khi khoảng trống có nhiều cách điền hoặc không có neo.
+hai nguồn độc lập cùng ý -> 0,95 (chỉ khi số đọc từ tên hình; số chỉ suy từ cốt tối đa 0,8); số chỉ suy từ thứ
+tự là một nguồn -> 0,8 khi kẹp đúng giữa hai neo, 0,75 khi đếm từ một phía, 0,6 khi khoảng trống có nhiều cách điền
+hoặc không có neo.
 """
 
 from collections.abc import Sequence
@@ -29,6 +30,7 @@ _COUNTED: Final = 0.75  # chỉ thứ tự, đếm từ một phía
 _LOOSE: Final = 0.6  # chỉ thứ tự, khoảng trống nhiều cách điền hoặc không có neo
 _BELOW_GROUND: Final = 0.5  # đếm xuống dưới tầng 1 mà chữ không nói là hầm
 _CONFLICT: Final = 0.65
+_LEVEL_ONLY: Final = 0.8  # số chỉ suy từ cốt, không có tên hình: một nguồn
 _LEVEL_TOL_MM: Final = 250  # cốt lệch thứ tự không quá mức này thì bỏ qua (như `_COPY_TOL_MM` của `proposal`)
 _MIN_WEIGHT: Final = 0.1  # số đọc được với độ tin 0 vẫn hơn không có gì
 _SAME_STEP: Final = 0.05  # thưởng khi hai neo kề cách nhau đúng số sàn giữa chúng (phá hoà giữa các tập ngang nhau)
@@ -138,6 +140,15 @@ def _filled(s: int, below: _Anchor | None, above: _Anchor | None) -> tuple[int, 
     return s + 1, _LOOSE
 
 
+def _kept_confidence(choice: StoreyChoice, confirmed: bool) -> float:
+    """Độ tin của sàn giữ số đọc được. 0,95 chỉ khi số đến từ TÊN HÌNH và một neo kề xác nhận đúng khoảng cách:
+    số chỉ suy từ cốt (họ "level") tối đa 0,8, vì khi tên hình không đọc được, các neo cốt có thể cùng lệch một tầng
+    mà vẫn xác nhận lẫn nhau (bộ DN-244 trên f14, 22/11: "LẦU 3" ra tầng 3 ở 0,95)."""
+    if "text" not in choice.sources:
+        return min(choice.confidence, _LEVEL_ONLY)
+    return max(choice.confidence, _BOTH) if confirmed and not choice.conflict else choice.confidence
+
+
 def _by_order(
     choice: StoreyChoice, s: int, kept: _Anchor | None, anchors: Sequence[_Anchor], exact: set[_Anchor]
 ) -> tuple[StoreyChoice, OrderConflict | None]:
@@ -147,7 +158,7 @@ def _by_order(
     conflict: OrderConflict | None = None
     if kept is not None:
         number = kept[1]
-        confidence = max(choice.confidence, _BOTH) if kept in exact and not choice.conflict else choice.confidence
+        confidence = _kept_confidence(choice, kept in exact)
     else:
         below = max((a for a in anchors if a[0] < s), default=None)
         above = min((a for a in anchors if a[0] > s), default=None)

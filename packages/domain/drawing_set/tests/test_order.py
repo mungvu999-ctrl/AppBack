@@ -75,3 +75,13 @@ def test_one_wrong_level_flags_only_itself() -> None:
     assert [out[k].confidence for k in "abc"] == [0.95, 0.95, 0.95]
     slots[0] = Slot("a", _c("ground", 1), 9000)  # sàn đầu sai: chỉ sàn đầu bị hỏi
     assert follow_order(slots[:3])[1] == {"a": OrderConflict("level")}
+
+
+def test_level_only_numbers_never_reach_both_sources() -> None:
+    """Không đọc được tên hình: số suy từ cốt có thể cùng lệch một tầng mà vẫn xác nhận nhau, nên tối đa 0,8."""
+    slots = [
+        Slot(key, StoreyChoice("floor", n, 0.85, ("level",), None, ())) for key, n in zip("abc", (1, 2, 3), strict=True)
+    ]
+    out, conflicts = follow_order(slots)
+    assert conflicts == {}
+    assert [out[k].confidence for k in "abc"] == [0.8, 0.8, 0.8]

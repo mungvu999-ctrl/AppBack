@@ -678,4 +678,6 @@ def test_mezzanine_plan_does_not_shift_the_chain() -> None:
             without[key].height_mm,
             without[key].height_confidence,
         )
-    assert with_mezz["a"].height_confidence >= 0.9
+    confidence = with_mezz["a"].height_confidence
+    assert confidence is not None
+    assert confidence >= 0.9

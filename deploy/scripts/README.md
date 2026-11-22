@@ -246,9 +246,20 @@ cần (và không được) đặt `IMAGE_TAG` trong appback.env. Chưa deploy l
 thoát 2 "chưa có bản phát hành nào".
 
 - `appback-backup.timer`: chạy `backup.sh` 02:30 hằng ngày (giờ hệ thống VPS).
-- `appback-health.timer`: chạy `healthcheck.sh` mỗi 5 phút — `/api/ready`
-  hỏng hai lần liên tiếp hoặc đĩa > 85% → POST `ALERT_WEBHOOK_URL`. `healthcheck.sh --test-alert` gửi
+- `appback-health.timer`: chạy `healthcheck.sh` **mỗi phút** (K-39) — cảnh báo POST `ALERT_WEBHOOK_URL` khi:
+  `/api/ready` hỏng hai lần liên tiếp; đĩa > 85%; một dịch vụ compose của bản đang chạy vắng, không
+  `running` (chết, `paused`) hoặc `unhealthy` (`ml`/`ml-train`/`ml-gpu` có healthcheck ping Celery 60 s,
+  unhealthy sau 3 lần hỏng); một hàng Celery (`default`, `pipeline.cpu`, `ml.infer`, `ml.training`) còn việc,
+  không giảm qua `APPBACK_QUEUE_STUCK_RUNS` lượt (mặc định 3) trong khi dịch vụ nghe hàng không chạy việc
+  nào. Mỗi sự cố báo **một lần**, nhắc lại mỗi `ALERT_REPEAT_S` giây (mặc định 3600) nếu vẫn còn, và một
+  tin "đã hồi phục" khi hết (trạng thái ở `/var/lib/appback/alerts/`). `healthcheck.sh --test-alert` gửi
   một tin thử (xem §4).
+- **Ping ngoài máy (tuỳ chọn, cần chủ dự án đăng ký):** đặt `APPBACK_PING_URL=<URL ping>` trong appback.env
+  (vd một check của healthchecks.io, chu kỳ 1 phút, ân hạn 5 phút). Lượt nào không thấy vấn đề thì
+  `healthcheck.sh` gọi URL đó; VPS chết, timer dừng hay mọi lượt đều thấy lỗi thì dịch vụ ngoài tự báo.
+- **Thử cảnh báo worker/ML (biên bản ≤ 5 phút):** `docker pause <container ml>` (giả treo) và
+  `docker stop <container ml>` (giả chết), ghi giờ gây lỗi và giờ tin tới kênh; `docker unpause`/`start` rồi
+  ghi giờ tin "đã hồi phục". Đạt khi mọi khoảng ≤ 300 s.
 - Bản sao lưu tạo trước khi `backup.sh` chạy bằng `deploy` (umask 077, `mc --user`) có thể còn
   thư mục `objects/**` thuộc root, làm xoay vòng hỏng EPERM: một lần khi nâng cấp,
   `sudo chown -R deploy: "$BACKUP_TARGET"`.
@@ -365,3 +376,6 @@ hành cần đặt tay trong `appback.env` hoặc secret GitHub:
 | `MAIL_BACKEND`, `SMTP_PORT`, `SMTP_STARTTLS`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TIMEOUT_S` | `smtp`, `587`, `true`, rỗng, rỗng, `10` | `appback.env` (rỗng cả hai `SMTP_USERNAME`/`SMTP_PASSWORD` = SMTP không xác thực) |
 | `APPBACK_STORAGE` | `s3` | `appback.env` (`local` nếu dùng volume `local-storage` thay MinIO) |
 | `APPBACK_API_SWAP_SETTLE_S` | `11` | không cần đặt tay — chỉnh chỉ khi đổi `valid=…` của `resolver` trong `deploy/nginx/templates/{dev,prod}/app.conf.template` (>= TTL mới + 1s biên); `0` để tắt khi kiểm |
+| `ALERT_REPEAT_S` | `3600` | `appback.env` — giây giữa hai lần nhắc lại cùng một sự cố còn mở (K-39) |
+| `APPBACK_QUEUE_STUCK_RUNS` | `3` | `appback.env` — số lượt timer (phút) hàng không giảm trước khi coi là kẹt |
+| `APPBACK_PING_URL` | rỗng (tắt) | `appback.env` — URL ping ngoài máy, gọi mỗi lượt sạch (§9) |

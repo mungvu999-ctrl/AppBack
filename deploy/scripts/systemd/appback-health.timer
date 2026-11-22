@@ -1,10 +1,12 @@
-# Kích hoạt appback-health.service mỗi 5 phút, bắt đầu 5 phút sau khi boot.
+# Kích hoạt appback-health.service mỗi 1 phút (K-39: worker/ML chết hoặc treo có tin trong ≤ 5 phút —
+# healthcheck ml hỏng 3 lần × 60 s + một lượt timer), bắt đầu 5 phút sau khi boot. Mỗi lượt tốn vài
+# lệnh docker nhẹ; `celery inspect` (~1 nhân vài giây) chỉ chạy khi một hàng đã kẹt đủ số lượt.
 [Unit]
-Description=AppBack — lich kiem suc khoe moi 5 phut
+Description=AppBack — lich kiem suc khoe moi phut
 
 [Timer]
 OnBootSec=5min
-OnUnitActiveSec=5min
+OnUnitActiveSec=1min
 
 [Install]
 WantedBy=timers.target

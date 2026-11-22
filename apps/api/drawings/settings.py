@@ -11,7 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class DrawingsSettings(BaseSettings):
-    """Trần tệp, cửa sổ khử trùng, tham số quét bù và hạn mức gọi `#5`."""
+    """Trần tệp, cửa sổ khử trùng, tham số quét bù và hạn mức gọi `#5`, N51."""
 
     model_config = SettingsConfigDict(extra="ignore", env_file=None)
 
@@ -22,6 +22,8 @@ class DrawingsSettings(BaseSettings):
     pipeline_requeue_after_s: PositiveInt = 600
     drawings_init_rate_limit: PositiveInt = 60
     drawings_init_rate_window_s: PositiveInt = 600
+    drawings_rerun_rate_limit: PositiveInt = 10
+    drawings_rerun_rate_window_s: PositiveInt = 600
 
 
 @cache

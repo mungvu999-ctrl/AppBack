@@ -92,13 +92,14 @@ async def test_floors_patch_spatial_floor__C01_is_section(
 
     marked = await api_client.patch(path, json={"isSection": True}, headers=headers_of(owner))
     assert (marked.status_code, marked.json()["hiddenIn3d"]) == (200, True)
-    assert "isSection" not in marked.json()  # `FloorOut` không đổi: trạng thái đọc ở `GET …/house-proposal`
+    assert marked.json()["isSection"] is True  # K-31: `FloorOut` mang dấu khi `true`, vắng khi không
     row = await live_floor_row(db_sessionmaker, project_id=project.id, level_id=floor.level_id)
     assert row is not None
     assert (row.is_section, row.hidden_in_3d) == (True, True)
 
     cleared = await api_client.patch(path, json={"isSection": False}, headers=headers_of(owner))
     assert cleared.json()["hiddenIn3d"] is True
+    assert "isSection" not in cleared.json()  # W2: bỏ dấu → khoá vắng, không `false`
     shown = await api_client.patch(path, json={"isSection": True, "hiddenIn3d": False}, headers=headers_of(owner))
     assert shown.json()["hiddenIn3d"] is False
     row = await live_floor_row(db_sessionmaker, project_id=project.id, level_id=floor.level_id)

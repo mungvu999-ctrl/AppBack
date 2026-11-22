@@ -72,6 +72,8 @@ class FloorOut(WireModel):
     """`FloorSchema` — chỉ khai ở đây, B2-03 là nơi dựng (cổng `project.floors`).
 
     `hiddenIn3d` (FE3D-B3) luôn có trên dây; mặc định `false` chỉ cho chỗ dựng tay (test, fake).
+    `isSection` (K-31, HS-03) chỉ có khi `true` (dòng là mặt cắt), vắng khi không (W2): FE cũ strict vẫn đọc được
+    mọi tầng thường; FE phải khai khoá tuỳ chọn này trước khi BE lên `main`.
     """
 
     id: str
@@ -82,6 +84,7 @@ class FloorOut(WireModel):
     area_m2: float | None = None
     drawings: list[DrawingOut]
     hidden_in_3d: bool = Field(default=False, alias="hiddenIn3d")
+    is_section: bool | None = None
 
 
 class ProjectOut(WireModel):

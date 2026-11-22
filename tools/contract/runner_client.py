@@ -28,7 +28,14 @@ from pathlib import Path
 from typing import Any, Final
 
 PACKAGE_DIR: Final = Path(__file__).resolve().parent
-RUNNER_FILES: Final = ("runner.ts", "schema-map.ts", "context.ts", "strict/refresh.ts", "package.json")
+RUNNER_FILES: Final = (
+    "runner.ts",
+    "schema-map.ts",
+    "context.ts",
+    "strict/refresh.ts",
+    "strict/houseProposal.ts",
+    "package.json",
+)
 F00A_MARKER: Final = Path("src/api/schemas/common.ts")
 """File F-00a mà mọi schema mới nhập; thiếu nó thì AppFront @ SHA chưa có hợp đồng mới."""
 

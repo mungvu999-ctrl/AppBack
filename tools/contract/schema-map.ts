@@ -148,5 +148,7 @@ export const SCHEMA_MAP: Readonly<Record<string, SchemaMapEntry>> = {
   spatial_read_detected_geometry: object('@/api/schemas/quality', 'DetectedGeometrySchema'), // N46 (QT-SCALE-API)
   design_director_read_state: object('@/api/schemas/designConcept', 'DesignConceptStateSchema'), // N47 (AID-01)
   design_director_select_concept: object('@/api/schemas/designConcept', 'DesignConceptSchema'), // N48 (AID-01)
+  // N52 (HS-03). Schema FE cố ý không `.strict()` (bảng phụ): giải bằng bản strict riêng của harness (L4-N07, W16).
+  drawing_sets_read_house_proposal: object('./strict/houseProposal', 'HouseProposalStrictSchema'),
   projects_cancel_create_project: object(INDEX, 'ProjectSchema'), // N40
 };

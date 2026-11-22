@@ -67,14 +67,15 @@ def h1(build: Path, shapes: dict[str, str], data: check.Inputs) -> check.CheckRe
 
 
 def test_real_map_covers_every_contract_row(shapes: dict[str, str]) -> None:
-    """101 mục = 48 HTTP + 2 SSE của §1 + 51 của §2 (không v2).
+    """102 mục = 48 HTTP + 2 SSE của §1 + 52 của §2 (không v2).
 
     N41 ở UX41 U05, N42-N44 nướng ánh sáng ở LB-01, N45-N46 màn tỉ lệ ở QT-SCALE-API,
-    N47-N48 AI chọn phong cách ở AID-01, N50 công tắc nướng ánh sáng (K-09), N51 chạy lại lượt tải (K-06).
+    N47-N48 AI chọn phong cách ở AID-01, N50 công tắc nướng ánh sáng (K-09), N51 chạy lại lượt tải (K-06),
+    N52 đề xuất cho cả nhà ở HS-02 (bản strict của harness, L4-N07).
     """
     result = check.check_map(shapes, ROWS)
     assert result.status == STATUS_OK, result.problems
-    assert len(shapes) == len(ROWS) == 101
+    assert len(shapes) == len(ROWS) == 102
 
 
 def test_map_missing_a_bind_row_fails(tmp_path: Path, shapes: dict[str, str]) -> None:

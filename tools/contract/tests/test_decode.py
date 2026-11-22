@@ -42,6 +42,39 @@ SAMPLES: Final[dict[str, HttpSample]] = {
         "x", "auth_refresh", 200, {k: v for k, v in wire.refresh().items() if k != "roles"}
     ),
     "refresh_six_digits": HttpSample("x", "auth_refresh", 200, wire.refresh(expiresAt="2026-01-01T00:00:00.000000Z")),
+    "house": HttpSample("x", "drawing_sets_read_house_proposal", 200, wire.house_proposal()),
+    "house_off": HttpSample(
+        "x", "drawing_sets_read_house_proposal", 200, {"enabled": False, "floors": [], "runIds": []}
+    ),
+    "house_conflict": HttpSample(
+        "x",
+        "drawing_sets_read_house_proposal",
+        200,
+        wire.house_proposal(
+            wire.house_floor(
+                isSection=True, questions=[{"code": "ORDER_TEXT_CONFLICT", "reason": "title", "textStoreyNo": 8}]
+            )
+        ),
+    ),
+    "house_extra_key": HttpSample(
+        "x", "drawing_sets_read_house_proposal", 200, wire.house_proposal(wire.house_floor(ghostKey=1))
+    ),
+    "house_unknown_code": HttpSample(
+        "x", "drawing_sets_read_house_proposal", 200, wire.house_proposal(wire.house_floor(questions=[{"code": "NEW"}]))
+    ),
+    "house_reason_elsewhere": HttpSample(
+        "x",
+        "drawing_sets_read_house_proposal",
+        200,
+        wire.house_proposal(wire.house_floor(questions=[{"code": "STOREY_UNSURE", "reason": "level"}])),
+    ),
+    "house_elevation_out_of_range": HttpSample(
+        "x", "drawing_sets_read_house_proposal", 200, wire.house_proposal(wire.house_floor(elevationMm=400000))
+    ),
+    "house_section_false": HttpSample(
+        "x", "drawing_sets_read_house_proposal", 200, wire.house_proposal(wire.house_floor(isSection=False))
+    ),
+    "house_off_with_rows": HttpSample("x", "drawing_sets_read_house_proposal", 200, wire.house_proposal(enabled=False)),
     "progress_completed": HttpSample(
         "x", "drawings_read_progress", 200, wire.progress("completed", endedAt=wire.AT, progressPercent=100)
     ),
@@ -120,7 +153,17 @@ def _decode_fails(verdict: dict[str, Any], fragment: str) -> None:
 
 @pytest.mark.parametrize(
     "label",
-    ["project", "error_known_resource", "conflict", "no_content_empty", "array_shape", "refresh"],
+    [
+        "project",
+        "error_known_resource",
+        "conflict",
+        "no_content_empty",
+        "array_shape",
+        "refresh",
+        "house",
+        "house_off",
+        "house_conflict",
+    ],
 )
 def test_valid_samples_decode(verdicts: dict[str, dict[str, Any]], label: str) -> None:
     """Mẫu đúng schema FE (và đúng luật chọn schema theo status/`code`) giải đạt."""
@@ -180,6 +223,22 @@ def test_operation_missing_from_map_fails(verdicts: dict[str, dict[str, Any]]) -
 )
 def test_strict_refresh_rejects_loose_bodies(verdicts: dict[str, dict[str, Any]], label: str, fragment: str) -> None:
     """K04: thân refresh giải bằng `strict/refresh.ts`, không bằng schema `.passthrough()` của FE."""
+    _decode_fails(verdicts[label], fragment)
+
+
+@pytest.mark.parametrize(
+    ("label", "fragment"),
+    [
+        ("house_extra_key", "unrecognized_keys"),
+        ("house_unknown_code", '["floors",0,"questions",0,"code"]'),
+        ("house_reason_elsewhere", '["floors",0,"questions",0,"reason"]'),
+        ("house_elevation_out_of_range", '["floors",0,"elevationMm"]'),
+        ("house_section_false", '["floors",0,"isSection"]'),
+        ("house_off_with_rows", 'path=["floors"] code=custom'),
+    ],
+)
+def test_strict_house_proposal_rejects_drift(verdicts: dict[str, dict[str, Any]], label: str, fragment: str) -> None:
+    """L4-N07: N52 giải bằng `strict/houseProposal.ts` — khoá lạ, mã lạ, số ngoài khoảng FE đều đỏ ở bước 7."""
     _decode_fails(verdicts[label], fragment)
 
 

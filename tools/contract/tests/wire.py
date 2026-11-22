@@ -46,6 +46,18 @@ def refresh(**overrides: Any) -> dict[str, Any]:
     return {"accessToken": fake_jwt(), "expiresAt": AT, "roles": ["engineer"], "user": user, **overrides}
 
 
+def house_floor(**overrides: Any) -> dict[str, Any]:
+    """Một dòng `HouseProposalStrictSchema.floors[]` hợp lệ (`strict/houseProposal.ts`)."""
+    body = {"floorId": LEVEL_ID, "kind": "plan", "kindConfidence": 0.9, "storeyLabel": "ground", "storeyNo": 1}
+    return {**body, "storeyConfidence": 0.95, "elevationMm": 0, "elevationSource": "plan", "questions": [], **overrides}
+
+
+def house_proposal(*floors: dict[str, Any], **overrides: Any) -> dict[str, Any]:
+    """Thân N52 bật công tắc, mặc định một tầng (`house_floor()`)."""
+    rows = list(floors) if floors else [house_floor()]
+    return {"enabled": True, "floors": rows, "runIds": [f"run_{ULID}"], **overrides}
+
+
 def conflict(**overrides: Any) -> dict[str, Any]:
     """409 `VERSION_CONFLICT` hợp lệ với một `remoteChanges` (W20)."""
     change = {

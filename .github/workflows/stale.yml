@@ -1,0 +1,36 @@
+name: Stale
+
+# K-58 (bước 6): chỉ GẮN NHÃN `stale` cho PR không hoạt động 14 ngày — không bao giờ tự đóng
+# (`days-before-close: -1`), không đụng issue. Mục đích: PR trôi xa base hiện ra để người quyết định
+# (gộp / đóng / chuyển thành mục kế hoạch). Có hoạt động (commit, bình luận) thì action tự gỡ nhãn.
+on:
+  schedule:
+    # 02:30 UTC hằng ngày — lệch giờ cao điểm CI theo push/PR.
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+# Quyền tối thiểu: mức workflow không cấp gì; job `stale` xin đúng thứ cần để gắn nhãn PR.
+permissions: {}
+
+concurrency:
+  group: stale
+  cancel-in-progress: false
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          days-before-pr-stale: 14
+          days-before-issue-stale: -1
+          days-before-close: -1
+          stale-pr-label: stale
+          stale-pr-message: >-
+            PR này không có hoạt động trong 14 ngày nên được gắn nhãn `stale`. Cần quyết định: rebase và gộp,
+            đóng, hoặc chuyển thành mục kế hoạch. Bot không tự đóng PR.
+          exempt-pr-labels: "keep-open"
+          operations-per-run: 60

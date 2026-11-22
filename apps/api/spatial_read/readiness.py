@@ -24,6 +24,7 @@ from packages.db.models.drawings import PipelineRunRow
 from packages.db.models.pipeline_orchestrate import PipelineRunModelsRow
 from packages.domain.spatial import ScaleAcceptance, SpatialLayer
 from packages.ml_contracts.families import ModelFamily
+from packages.ml_contracts.labels import OPENING_BLIND_PINNED
 from packages.ml_contracts.payloads import ModelRef
 
 _FALLBACK_REASONS: Final[tuple[tuple[ModelFamily, ReadinessReason], ...]] = (
@@ -63,9 +64,11 @@ class RunFacts:
     quality_summary: Mapping[str, object] | None
 
 
-def _is_classic(value: object) -> bool:
-    """Ref ghim là cổ điển (`pinned_name`, `weights_key` đều trống) — đọc qua `ModelRef` như `load_pins`."""
-    return ModelRef.model_validate(value).is_classic
+def _is_fallback(family: ModelFamily, value: object) -> bool:
+    """Họ chạy bằng model dự phòng: ref cổ điển (`pinned_name`, `weights_key` đều trống), hoặc họ dò ô mở/đồ đạc
+    ghim detector COCO gốc (`OPENING_BLIND_PINNED`, không có lớp cửa/cửa sổ). Đọc qua `ModelRef` như `load_pins`."""
+    ref = ModelRef.model_validate(value)
+    return ref.is_classic or (family == "openingAndFurnitureDetection" and ref.pinned_name in OPENING_BLIND_PINNED)
 
 
 def _pipeline_basis(value: object) -> ScaleBasis | None:
@@ -215,7 +218,9 @@ def readiness_of(
             if checks or read is None:
                 reasons.append("geometrySuspect")
         reasons.extend(
-            reason for family, reason in _FALLBACK_REASONS if family in run.pinned and _is_classic(run.pinned[family])
+            reason
+            for family, reason in _FALLBACK_REASONS
+            if family in run.pinned and _is_fallback(family, run.pinned[family])
         )
     if run is None:
         return ReadinessOut(state="notEvaluated", reasons=tuple(reasons))

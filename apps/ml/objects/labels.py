@@ -13,7 +13,7 @@ v4 13 lớp (thêm `washing_machine`, `shower`).
 from collections.abc import Sequence
 from typing import Any, Final
 
-from packages.ml_contracts.labels import COCO_TO_LABEL, DETECTION_LABELS, DetectionLabel
+from packages.ml_contracts.labels import COCO_TO_LABEL, DETECTION_LABELS, OPENING_BLIND_PINNED, DetectionLabel
 from packages.ml_contracts.payloads import ModelRef
 
 ARTIFACT_LABELS: Final[tuple[DetectionLabel, ...]] = DETECTION_LABELS
@@ -32,7 +32,8 @@ COCO_LABELS: Final[tuple[DetectionLabel | None, ...]] = tuple(
     COCO_TO_LABEL.get(_COCO_CLASS_NAMES.get(i, "")) for i in range(80)
 )
 
-PINNED_COCO_MODELS: Final = frozenset({"yolov8n", "yolov8s"})
+PINNED_COCO_MODELS: Final = OPENING_BLIND_PINNED
+"""Bí danh giữ tương thích; nguồn là `packages.ml_contracts.labels.OPENING_BLIND_PINNED`."""
 
 DISABLED_LABELS: Final = frozenset({"stair"})
 """Nhãn bước pipeline bỏ hẳn: sản phẩm chỉ làm căn hộ một tầng, còn `stair` (F1 ≈ 0,70) bắn nhầm

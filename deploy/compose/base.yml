@@ -20,6 +20,19 @@ x-celery-task-env: &celery-task-env
   TASK_RETRY_BACKOFF_S: ${TASK_RETRY_BACKOFF_S:-10,60,300}
   STREAM_MAXLEN: ${STREAM_MAXLEN:-1000}
 
+# K-39: ml/ml-train/ml-gpu treo hay chết phải lộ ra (Docker không biết nếu không có healthcheck;
+# healthcheck.sh trên host đọc trạng thái này). Ping dựng một tiến trình Celery (~3,4 s, ~1 nhân —
+# đo `docker exec f14-ml-1 … inspect ping` 22/11/2026) nên 60 s một lần; unhealthy sau 3 lần hỏng
+# (~3 phút) + timer 1 phút của healthcheck.sh ≤ 5 phút (tiêu chí F1). start_period 120 s: khởi
+# động tới banner Celery đo được ~5 s trên f14, nạp mô hình lúc làm ấm có thể lâu hơn trên VPS.
+x-ml-healthcheck: &ml-healthcheck
+  test: ["CMD-SHELL", "celery -A apps.ml.celery_main inspect ping -d celery@$$HOSTNAME --timeout 5"]
+  interval: 60s
+  timeout: 10s
+  retries: 3
+  start_period: 120s
+  start_interval: 10s
+
 services:
   postgres:
     logging: *logging
@@ -260,6 +273,7 @@ services:
     volumes:
       # Không tmpfs: /tmp cần ≥ 20 GiB đĩa trống (xuất ONNX, tệp tạm huấn luyện).
       - ml-tmp:/tmp
+    healthcheck: *ml-healthcheck
     networks:
       - ml-internal
 
@@ -292,6 +306,7 @@ services:
       ML_DEVICE: cuda
     volumes:
       - ml-tmp:/tmp
+    healthcheck: *ml-healthcheck
     networks:
       - ml-internal
     deploy:

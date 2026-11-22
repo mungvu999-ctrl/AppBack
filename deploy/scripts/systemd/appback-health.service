@@ -2,7 +2,7 @@
 # trên VPS (deploy/scripts/README.md ghi lệnh). Chạy bằng người dùng deploy,
 # đọc bí mật từ /etc/appback/appback.env (ALERT_WEBHOOK_URL, APPBACK_BASE_URL…).
 [Unit]
-Description=AppBack — kiem suc khoe dinh ky (api/ready, dia)
+Description=AppBack — kiem suc khoe dinh ky (api/ready, dia, dich vu, hang doi)
 After=network-online.target
 
 [Service]

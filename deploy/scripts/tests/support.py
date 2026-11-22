@@ -40,7 +40,7 @@ class HttpStub:
     """Máy chủ HTTP thử trên `127.0.0.1:<cổng ngẫu nhiên>`, chạy luồng nền.
 
     `routes` ánh xạ đường dẫn (không query) → `Reply`; đường lạ trả 404 thân rỗng.
-    Mọi POST được ghi vào `posts` dạng `(đường dẫn, thân)` theo thứ tự nhận.
+    Mọi POST được ghi vào `posts` dạng `(đường dẫn, thân)`, mọi GET vào `gets` (đường dẫn), theo thứ tự nhận.
     Dùng làm context manager để máy chủ luôn tắt, kể cả khi test hỏng.
     """
 
@@ -49,6 +49,7 @@ class HttpStub:
         self.routes = dict(routes or {})
         self.post_reply = post_reply or Reply()
         self.posts: list[tuple[str, bytes]] = []
+        self.gets: list[str] = []
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
 
@@ -90,6 +91,7 @@ class HttpStub:
 
             def do_GET(self) -> None:
                 """GET: tra bảng đường dẫn."""
+                stub.gets.append(self.path)
                 self._send(stub.routes.get(self.path.split("?")[0], Reply(404)))
 
             def do_POST(self) -> None:

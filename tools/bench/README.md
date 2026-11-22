@@ -33,6 +33,13 @@ Mọi đường dẫn qua biến môi trường (`tools/bench/config.py`), khôn
 `verdict`, `engine`, `report`; `io` đọc đáp án/độ lệch trang). `api.py`/`stack.py`/`calibrate.py` phục vụ `run_bench`.
 `replay/inner.py` chạy trong container worker nên chỉ nhập `apps`/`packages` của worktree mount.
 
+## Lỗi im lặng (K-11)
+
+`silent` = ca **TRƯỢT** mà sản phẩm vẫn báo tầng **"Sẵn sàng"** (`readiness.state == "ready"`). Tầng `needsReview`/
+`notEvaluated` hay lượt thất bại không có readiness đều đã cảnh báo người dùng nên không tính. Ca hành vi (nhóm D/E có
+`behaviour`) giữ luật riêng: trượt mà không báo đúng lý do. Cột `silent_old` giữ luật cũ (suy từ finding/lý do, bỏ sót
+ca trượt vì ≥ 3 mốc C) để so số với các lượt trước K-11. Layer có số NaN/vô cực: R2 = T, chỉ chấm R1-R3 (`info.nonfinite`).
+
 ## Test
 
 `bash tools/verify/run.sh shell` rồi `pytest tools/bench/tests`. `test_score_golden.py` chấm bộ dữ liệu tổng hợp và đòi

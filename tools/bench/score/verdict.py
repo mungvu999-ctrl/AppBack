@@ -1,4 +1,4 @@
-"""Kết luận ĐẠT/TRƯỢT của một ca và cờ "lỗi im lặng" (ca trượt mà hệ thống không báo gì cho người dùng)."""
+"""Kết luận ĐẠT/TRƯỢT của một ca và cờ "lỗi im lặng" (ca trượt mà sản phẩm vẫn báo "Sẵn sàng")."""
 
 from __future__ import annotations
 
@@ -17,11 +17,21 @@ def verdict_of(marks: list[str]) -> str:
     return "ĐẠT" if marks.count("C") <= _MAX_WARNINGS else "TRƯỢT"
 
 
-def is_silent(case: Case, c: dict[str, str]) -> bool:
-    """Có tiêu chí T mà hệ thống không báo (không `signal`) và không phải lỗi tỉ lệ còn khai `scaleUnresolved`.
+def is_silent(verdict: str, case: Case) -> bool:
+    """Lỗi im lặng (K-11 A1): ca TRƯỢT mà sản phẩm vẫn báo tầng "Sẵn sàng" (`readiness.state == "ready"`).
+
+    Người dùng chỉ được cảnh báo khi tầng không "ready" (`needsReview`/`notEvaluated`, hoặc lượt thất bại không có
+    readiness), nên chỉ `state` quyết định — không suy từ finding hay mã lý do như luật cũ (`is_silent_old`).
+    """
+    return verdict == "TRƯỢT" and case.ready.get("state") == "ready"
+
+
+def is_silent_old(case: Case, c: dict[str, str]) -> bool:
+    """Luật im lặng cũ (trước K-11), giữ làm cột `silent_old` để so: có T mà không `signal`, trừ lỗi tỉ lệ đã khai.
 
     Đích "báo đúng chỗ, sửa 1 bước": tỉ lệ còn là ước (`scaleUnresolved`) và mọi T đều thuộc nhóm tỉ lệ/diện tích
-    → màn Đặt tỷ lệ sửa được, coi là đã báo đúng chỗ (không im lặng; kết luận vẫn theo tiêu chí).
+    → màn Đặt tỷ lệ sửa được, coi là đã báo đúng chỗ. Đếm thiếu: ca TRƯỢT vì ≥ 3 mốc C không bao giờ im lặng, và
+    mọi finding không chung (kể cả không liên quan lỗi) đều xoá cờ.
     """
     scale_flag = "scaleUnresolved" in (case.ready.get("reasons") or []) and all(
         k in _SCALE_FIXABLE for k, v in c.items() if v == "T"
@@ -53,5 +63,5 @@ def finalize(outcome_auto: Json, outcome_final: Json) -> Json:
     else:
         r["outcome"] = "?" if r["verdict"] == "?" else "trượt"
     if r["step1"]:
-        r["auto"] = {"c": outcome_auto["c"], "silent": outcome_auto["silent"]}
+        r["auto"] = {k: outcome_auto[k] for k in ("c", "silent", "silent_old")}
     return r

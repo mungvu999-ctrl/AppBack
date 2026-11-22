@@ -280,6 +280,28 @@ def v_room_pts_outside_grid(s: Spec) -> None:
     s["key"]["rooms"] = [{"name": "X", "usage": "bedroom", "area_m2": 9.0, "center_px": [-5000, -5000]}]
 
 
+def v_half_open_offgrid(s: Spec) -> None:
+    """Như `half-open` nhưng nhãn phòng đầu nằm ngoài lưới: điểm bị lũ phải là tâm phòng hở, không lệch (NO-466)."""
+    v_half_open(s)
+    s["key"]["rooms"].insert(0, {"name": "X", "usage": "bedroom", "area_m2": 9.0, "center_px": [-5000, -5000]})
+
+
+def v_nan_wall(s: Spec) -> None:
+    """Toạ độ tường NaN: R2 T, dừng trước khi chấm hình học (NO-467), không sập cả lượt."""
+    _layer(s)["walls"][0]["centreline"]["start"]["x"] = float("nan")
+
+
+def v_inf_opening(s: Spec) -> None:
+    """Bề rộng ô mở vô cực: R2 T, dừng sớm như `nan-wall`."""
+    _layer(s)["openings"][0]["widthMm"] = float("inf")
+
+
+def v_review_wrong_place(s: Spec) -> None:
+    """TRƯỢT vì tường (W3) mà readiness `needsReview` chỉ vì tỉ lệ: luật K-11 không im lặng, luật cũ im lặng."""
+    v_height_bad(s)
+    s["body"]["readiness"] = {"state": "needsReview", "reasons": ["scaleUnresolved"]}
+
+
 def v_group_c(s: Spec) -> None:
     """Nhóm C: ảnh xấu; cảnh báo `poor` tính là có báo."""
     s["group"] = "C"
@@ -741,6 +763,8 @@ VARIANTS: dict[str, Callable[[Spec], None]] = {
     "many-fixes": v_many_fixes, "cal-good": v_calibrated_good, "cal-fail": v_calibrated_fail, "cal-ok": v_calibrated_ok,
     "old-layout": v_old_layout, "group-b": v_group_b, "group-b-bad": v_group_b_bad, "group-b-mid": v_group_b_mid,
     "pdf": v_pdf, "pdf-raster": v_pdf_raster, "pdf-raster-nokey": v_pdf_raster_nokey,
+    "half-open-offgrid": v_half_open_offgrid, "nan-wall": v_nan_wall, "inf-opening": v_inf_opening,
+    "review-wrong-place": v_review_wrong_place,
 }  # fmt: skip
 
 

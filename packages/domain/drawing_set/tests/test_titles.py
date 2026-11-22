@@ -44,6 +44,10 @@ SMALL = [line(f"P{i}", 100 + 90 * i, 100, 160 + 90 * i, 130) for i in range(6)] 
         ("MAET CAET A-A", "MAT CAT A-A"),
         ("MAET NOUNG TRUC 1-6", "MAT DUNG TRUC 1-6"),
         ("TOAN KHOA LAAUX", "TOAN KHOA LAAUX"),  # chỉ thay nguyên từ trong bộ từ vựng
+        ("MET b>ng tCng 1", "MAT BANG TANG 1"),  # TCVN3 sau OCR trên ảnh (DN-602 trên f14)
+        (".mAEt c3/4t a-a", ".MAT CAT A-A"),
+        ("MET b>ng tCng p m.i", "MAT BANG TANG AP MAI"),
+        ("DAI 5 MET", "DAI 5 MET"),  # "MET" đứng một mình là mét: giữ
         ("日本 plan", "PLAN"),
         ("", ""),
     ],
@@ -59,6 +63,8 @@ def test_fold(text: str, expected: str) -> None:
         ("MAET BAENG TREAT TL: 1/100", "ground", None),
         ("MAET BAENG LAAU 1 TL: 1/100", 1, "lau"),
         ("MAET BAENG LAAU 3 TL: 1/100", 3, "lau"),
+        ("MET b>ng tCng 2", 2, "tang"),
+        ("MET b>ng tCng p m.i", "attic", None),
     ],
 )
 def test_parse_title_reads_ocr_vni_residue(text: str, storey: object, numbering: str | None) -> None:

@@ -141,9 +141,24 @@ _OCR_VNI_RESIDUE: Final = {
 _OCR_VNI_WORD: Final = re.compile(r"\b(" + "|".join(_OCR_VNI_RESIDUE) + r")\b")
 
 
+# Phần dư TCVN3 sau OCR ("mÆt b»ng tÇng 1" in không phông ra ảnh, OCR đọc thành "MET b>ng tCng 1", "mAEt c3/4t a-a",
+# "MET b>ng tCng p m.i"). Thay theo cụm có ngữ cảnh: "MET" đứng một mình là mét, chỉ đổi khi đứng trước BANG/CAT.
+_OCR_TCVN3_RESIDUE: Final = (
+    (re.compile(r"\bB>NG\b"), "BANG"),
+    (re.compile(r"\bTCNG\b"), "TANG"),
+    (re.compile(r"\bC3/4T\b"), "CAT"),
+    (re.compile(r"\bM(?:A?E|EE)T (?=BANG\b|CAT\b)"), "MAT "),
+    (re.compile(r"\bTANG P (?=M\.?I\b)"), "TANG AP "),
+    (re.compile(r"\b(BANG|TANG|AP) M\.?I\b"), r"\1 MAI"),
+)
+
+
 def _fold_ocr_vni(text: str) -> str:
-    """Thay các từ dư VNI sau OCR (đã hoa, không dấu) bằng từ đúng; chữ khác giữ nguyên."""
-    return _OCR_VNI_WORD.sub(lambda m: _OCR_VNI_RESIDUE[m.group(1)], text)
+    """Thay các từ dư VNI/TCVN3 sau OCR (đã hoa, không dấu) bằng từ đúng; chữ khác giữ nguyên."""
+    text = _OCR_VNI_WORD.sub(lambda m: _OCR_VNI_RESIDUE[m.group(1)], text)
+    for pattern, repl in _OCR_TCVN3_RESIDUE:
+        text = pattern.sub(repl, text)
+    return text
 
 
 @lru_cache(maxsize=_CACHE)

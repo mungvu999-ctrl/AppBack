@@ -37,7 +37,8 @@ logger = logging.getLogger(__name__)
 # Trần `build_layer` (K-56): 60 s, ghi đè bằng env `PERF_BUILD_LAYER_MAX_S` (máy dev chậm, runner khác).
 # Số đo (thời lượng cả test = khởi động + dựng đầu vào + `build_layer`, junit-perf.xml của job `perf` CI, `main`,
 # 13-15/11/2026, 5 lượt): 15,4 / 18,8 / 19,6 / 24,0 / 24,0 s — điển hình ~20 s, nên `elapsed` của riêng `build_layer`
-# còn thấp hơn. Lịch sử review: CI tới 38,8 s ở PR nặng, máy dev đang tải 58–62 s. Trần 60 s >= 2x giá trị đo lớn nhất (24 s) và 3x điển hình: vẫn bắt hồi quy bậc hai, không đỏ vì
+# còn thấp hơn. Lịch sử review: CI tới 38,8 s ở PR nặng, máy dev đang tải 58-62 s.
+# Trần 60 s >= 2x giá trị đo lớn nhất (24 s) và 3x điển hình: vẫn bắt hồi quy bậc hai, không đỏ vì
 # runner chậm (trước đây 30 s, chỉ cách đo lớn nhất 6 s). Log `build_layer elapsed=` không vào log CI (mức INFO không
 # hiện), nên số đo `elapsed` được ghi thêm vào junit qua `record_property`.
 _BUDGET_S = float(os.environ.get("PERF_BUILD_LAYER_MAX_S", "60.0"))

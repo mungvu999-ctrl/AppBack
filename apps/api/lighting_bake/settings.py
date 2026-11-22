@@ -14,10 +14,13 @@ UPLOAD_BODY_LIMIT: Final = 128 * 1024 * 1024
 
 
 class LightingBakeSettings(BaseSettings):
-    """Trần `storage.put` của N42 và các mốc tuổi của lịch quét."""
+    """Công tắc `lighting_bake_enabled` (bật cùng profile `bake`), trần `storage.put` N42, mốc tuổi lịch quét."""
 
     model_config = SettingsConfigDict(extra="ignore", env_file=None)
 
+    # ponytail: cờ tay, không dò worker sống (heartbeat). Cờ bật mà worker `bake` chết thì lượt vẫn kẹt
+    # `queued` đến `queued_max_age_s` rồi lịch quét chốt `failed`; nâng lên heartbeat khi cần.
+    lighting_bake_enabled: bool = False
     lighting_bake_upload_max_bytes: PositiveInt = UPLOAD_BODY_LIMIT
     lighting_bake_resend_after_s: PositiveInt = 600
     lighting_bake_queued_max_age_s: PositiveInt = 6 * 3600

@@ -18,3 +18,9 @@ extra = ["C16", "C18"]
 op = "drawings_complete_upload"
 # C18: #7 ghi nhật ký FLOOR_UPLOAD_COMPLETE. Thân chỉ có `uploadId`, không có chuỗi người nhập.
 extra = ["C18"]
+
+[[endpoint]]
+op = "drawings_rerun_upload"
+# N51 (K-06): thân rỗng, không chuỗi người nhập → miễn C16. C10 "+ngoài" (xếp
+# `pipeline.orchestrate.start`): hai test riêng `…__C10_queue_once`, `…__C10_no_key_replay`.
+waive = { C16 = "thân rỗng, không có chuỗi người nhập để chuẩn hoá NFC" }

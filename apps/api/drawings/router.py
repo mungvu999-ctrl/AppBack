@@ -1,4 +1,4 @@
-"""Route của lượt tải bản vẽ: #5 init, #6 khúc, #7 complete, #8 progress (B2-04 [2], [7]).
+"""Route của lượt tải bản vẽ: #5 init, #6 khúc, #7 complete, #8 progress (B2-04 [2], [7]), N51 chạy lại (K-06).
 
 Router **mỏng** như `apps/api/floors/router.py`: quyền và hạn mức nằm ở `dependencies=`
 (quyền **trước** hạn mức, mẫu `apps/api/project_members/router.py`), nghiệp vụ ở
@@ -20,7 +20,7 @@ from starlette.responses import Response
 from apps.api.core.deps import ClockDep, CurrentPrincipal, DbSession, Storage
 from apps.api.core.ratelimit import key_user, rate_limit
 from apps.api.core.routing import protected_router, route_options
-from apps.api.drawings import complete, thumbnails, uploads
+from apps.api.drawings import complete, rerun, thumbnails, uploads
 from apps.api.drawings.latest import router as latest_router
 from apps.api.drawings.progress import progress_wire
 from apps.api.drawings.run_history import router as run_history_router
@@ -47,6 +47,16 @@ _init_limit: Final = rate_limit(
     on_error="open",
 )
 """Hạn mức #5 ([6]): `store="cache"`, `on_error="open"` — Redis chết không chặn người tải."""
+
+_rerun_limit: Final = rate_limit(
+    "drawings_rerun",
+    limit=lambda: get_drawings_settings().drawings_rerun_rate_limit,
+    window_s=lambda: get_drawings_settings().drawings_rerun_rate_window_s,
+    key=key_user,
+    store="cache",
+    on_error="open",
+)
+"""Hạn mức N51: chặn bấm "Chạy lại" lặp mãi khi lỗi không phải lỗi tạm (ảnh hỏng)."""
 
 
 @router.post(
@@ -106,6 +116,19 @@ async def drawings_read_progress(project_id: str, upload_id: str, db: DbSession)
     """#8 — `Progress` hiện tại của một lượt tải, mọi trạng thái (BE-BIND §4)."""
     facts = await uploads.load_upload(db, project_id=project_id, upload_id=upload_id)
     return ProgressOut.model_validate(await progress_wire(db, facts.id))
+
+
+@router.post(
+    "/projects/{project_id}/drawings/uploads/{upload_id}/rerun",
+    dependencies=[_upload_gate, Depends(_rerun_limit)],
+)
+@route_options(idempotency="auto")
+async def drawings_rerun_upload(
+    project_id: str, upload_id: str, db: DbSession, storage: Storage, clock: ClockDep
+) -> ProgressOut:
+    """N51 — chạy lại lượt tải hỏng từ tệp gốc trong kho; thân rỗng, trả `Progress` `pending` (K-06)."""
+    wire = await rerun.rerun_upload(db, storage, project_id=project_id, upload_id=upload_id, clock=clock)
+    return ProgressOut.model_validate(wire)
 
 
 @router.post("/projects/{project_id}/drawings/page-thumbnails", dependencies=[_upload_gate])

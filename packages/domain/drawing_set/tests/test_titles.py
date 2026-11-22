@@ -48,6 +48,10 @@ SMALL = [line(f"P{i}", 100 + 90 * i, 100, 160 + 90 * i, 130) for i in range(6)] 
         (".mAEt c3/4t a-a", ".MAT CAT A-A"),
         ("MET b>ng tCng p m.i", "MAT BANG TANG AP MAI"),
         ("DAI 5 MET", "DAI 5 MET"),  # "MET" đứng một mình là mét: giữ
+        ("MAET BAENG LAAU2", "MAT BANG LAU2"),  # số dính liền sau từ dư VNI (DM-481, K-30a)
+        ("mAEt b>ng tCng1", "MAT BANG TANG1"),  # số dính liền sau từ dư TCVN3 (DM-528)
+        ("MAET B>NG m,i", "MAT BANG MAI"),  # "m¸i" ra "m,i" (DM-445)
+        ("TCNGA LAAUX2", "TCNGA LAAUX2"),  # chữ dính sau từ thì không phải từ đó: giữ
         ("日本 plan", "PLAN"),
         ("", ""),
     ],
@@ -65,6 +69,8 @@ def test_fold(text: str, expected: str) -> None:
         ("MAET BAENG LAAU 3 TL: 1/100", 3, "lau"),
         ("MET b>ng tCng 2", 2, "tang"),
         ("MET b>ng tCng p m.i", "attic", None),
+        ("MAET BAENG LAAU2", 2, "lau"),
+        ("mAEt b>ng tCng1", 1, "tang"),
     ],
 )
 def test_parse_title_reads_ocr_vni_residue(text: str, storey: object, numbering: str | None) -> None:

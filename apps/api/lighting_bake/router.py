@@ -1,4 +1,4 @@
-"""Route N42-N44, N49 của nướng ánh sáng; router mỏng, nghiệp vụ ở `service.py`.
+"""Route N42-N44, N50 của nướng ánh sáng; router mỏng, nghiệp vụ ở `service.py`.
 
 `discover_routers()` tự nạp `ROUTERS` của module này — không có file đăng ký riêng.
 N42 đòi `layer.edit` (viewer → 403), N43/N44 chỉ đòi là thành viên; người ngoài → 404 (K08).
@@ -44,7 +44,7 @@ async def lighting_bake_start_bake(
 
 @router.get("/projects/{project_id}/lighting-bakes/availability", dependencies=[_member_gate])
 async def lighting_bake_read_availability(project_id: str, settings: BakeSettings) -> LightingBakeAvailability:
-    """N49 — `enabled`: máy chủ có worker nướng hay không (cờ `LIGHTING_BAKE_ENABLED`)."""
+    """N50 — `enabled`: máy chủ có worker nướng hay không (cờ `LIGHTING_BAKE_ENABLED`)."""
     return service.read_availability(settings)
 
 

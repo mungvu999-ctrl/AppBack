@@ -30,7 +30,7 @@ def latest_path(project_id: str) -> str:
 
 
 def availability_path(project_id: str) -> str:
-    """Đường N49."""
+    """Đường N50."""
     return f"/api/projects/{project_id}/lighting-bakes/availability"
 
 

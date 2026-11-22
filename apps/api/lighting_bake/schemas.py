@@ -19,6 +19,6 @@ class LightingBake(WireModel):
 
 
 class LightingBakeAvailability(WireModel):
-    """N49 — dự án này có nướng được không (mẫu `DesignConceptState.enabled`)."""
+    """N50 — dự án này có nướng được không (mẫu `DesignConceptState.enabled`)."""
 
     enabled: bool

@@ -95,7 +95,7 @@ async def start_bake(
 
 
 def read_availability(settings: LightingBakeSettings) -> LightingBakeAvailability:
-    """N49 — công tắc nướng ánh sáng của máy chủ."""
+    """N50 — công tắc nướng ánh sáng của máy chủ."""
     return LightingBakeAvailability(enabled=settings.lighting_bake_enabled)
 
 

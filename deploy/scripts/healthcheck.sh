@@ -7,26 +7,21 @@
 # Mã thoát: 0 luôn, trừ khi đối số/môi trường hỏng.
 set -euo pipefail
 
-# json_escape (thân cảnh báo) dùng chung với backup.sh qua lib.sh — không còn python3 (NO-189).
-# shellcheck source=deploy/scripts/lib.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# alert() dùng chung (L5-N03) nằm ở alert.sh; nó tự nạp lib.sh (json_escape, không python3 — NO-189).
+# shellcheck source=deploy/scripts/alert.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/alert.sh"
+
+# `--test-alert`: gửi một tin thử (kiểm ALERT_WEBHOOK_URL) rồi thoát, không đụng bộ đếm lỗi.
+if [[ "${1:-}" == "--test-alert" ]]; then
+  test_alert
+  exit 0
+fi
 
 state_dir="${APPBACK_STATE_DIR:-/var/lib/appback}"
 mkdir -p "$state_dir"
 state_file="$state_dir/health-failures"
 base_url="${APPBACK_BASE_URL:-http://127.0.0.1}"
 disk_path="${APPBACK_DISK_PATH:-/}"
-
-# Cảnh báo: một dòng stderr + POST JSON {"text","content"} nếu có ALERT_WEBHOOK_URL.
-alert() {
-  local msg="$1" payload
-  echo "cảnh báo: $msg" >&2
-  if [[ -n "${ALERT_WEBHOOK_URL:-}" ]]; then
-    payload="{\"text\": \"$(json_escape "$msg")\", \"content\": \"$(json_escape "$msg")\"}"
-    curl -fsS --max-time 10 -X POST -H 'Content-Type: application/json' -d "$payload" "$ALERT_WEBHOOK_URL" >/dev/null \
-      || echo "cảnh báo: gửi ALERT_WEBHOOK_URL hỏng" >&2
-  fi
-}
 
 failures=0
 [[ -f "$state_file" ]] && failures="$(cat "$state_file")"

@@ -109,7 +109,8 @@ async def test_floors_patch_spatial_floor__C01_is_section(
 async def test_floors_patch_spatial_floor__C01_is_section_resent(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """HS-03: gửi lại `isSection: true` cho dòng đã là mặt cắt không ẩn lại tầng người dùng đã cho hiện, không ghi nhật ký."""
+    """HS-03: gửi lại `isSection: true` cho dòng đã là mặt cắt không ẩn lại tầng người dùng đã cho hiện,
+    không ghi nhật ký."""
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     floor = await make_floor(db_session, project=project, order=0)

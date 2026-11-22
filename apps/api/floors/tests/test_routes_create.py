@@ -293,7 +293,9 @@ async def test_floors_create_floor__restore_within_window_keeps_pk_and_counts(
         .values(walls_total=5, hidden=True)
     )
     await db_session.execute(
-        update(FloorRow).where(FloorRow.pk == floor.pk).values(deleted_at=fake_clock.now(), hidden_in_3d=True, is_section=True)
+        update(FloorRow)
+        .where(FloorRow.pk == floor.pk)
+        .values(deleted_at=fake_clock.now(), hidden_in_3d=True, is_section=True)
     )
     await db_session.commit()
     fake_clock.advance(timedelta(minutes=9))

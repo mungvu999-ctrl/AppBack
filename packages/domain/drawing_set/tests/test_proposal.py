@@ -661,7 +661,8 @@ def test_section_rung_stands_in_for_a_storey_without_a_drawing() -> None:
 
 
 def test_mezzanine_plan_does_not_shift_the_chain() -> None:
-    """Mặt bằng lửng có bậc riêng trong chuỗi cốt: chuỗi vẫn đọc đúng theo số tầng, chiều cao đạt như khi không có lửng."""
+    """Mặt bằng lửng có bậc riêng trong chuỗi cốt: chuỗi vẫn đọc đúng theo số tầng, chiều cao đạt như khi
+    không có lửng."""
     section = _section(("±0.000", 1000.0), ("+1.800", 820.0), ("+3.600", 640.0), ("+6.900", 310.0), ("+10.200", 10.0))
     views = [
         _view("a", "MẶT BẰNG TẦNG 1", "±0.000", "±0.000", position=0),

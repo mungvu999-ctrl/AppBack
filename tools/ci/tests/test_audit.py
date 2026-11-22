@@ -156,7 +156,7 @@ def test_default_today_used_when_not_passed(tmp_path: Path) -> None:
 
 
 def test_committed_allowlist_is_valid_and_only_has_known_entries(tmp_path: Path) -> None:
-    """Tệp thật hợp lệ; chỉ chứa mục miễn đã biết (K-51: CVE-2026-126360 tới 06/12/2026 — xoá khi sàn >=1.45.2 vào main)."""
+    """Tệp thật hợp lệ; chỉ chứa mục miễn đã biết (K-51: CVE-2026-126360 tới 06/12/2026, xoá khi sàn >=1.45.2)."""
     allow = REPO_ROOT / "tools" / "ci" / "audit-allowlist.toml"
     entries, errors = _load_allowlist(allow, datetime.date.fromisoformat(_TODAY))
     assert {e.id for e in entries} <= {"CVE-2026-126360"}

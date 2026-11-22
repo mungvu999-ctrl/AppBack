@@ -214,9 +214,9 @@ def test_every_workflow_building_web_checks_out_appfront() -> None:
                 and step.get("with", {}).get("repository") == _APPFRONT_REPOSITORY
             ]
             assert checkout_paths, f"{where}: thiếu bước checkout {_APPFRONT_REPOSITORY}"
-            assert any(
-                p and appfront_repo.rstrip("/").endswith(f"/{p}") for p in checkout_paths
-            ), f"{where}: path checkout {checkout_paths} không khớp APPFRONT_REPO={appfront_repo}"
+            assert any(p and appfront_repo.rstrip("/").endswith(f"/{p}") for p in checkout_paths), (
+                f"{where}: path checkout {checkout_paths} không khớp APPFRONT_REPO={appfront_repo}"
+            )
     assert seen >= 3, "không thấy đủ job dựng ảnh web (ci, deploy, restore-drill) — regex trôi?"
 
 

@@ -1,0 +1,31 @@
+# Stack QA f14: nâng hạn mức theo IP cho lượt QA (BE mặc định: recovery 10 / 900 s — apps/api/auth_recovery/settings.py:24-25;
+# login 30 / 60 s — apps/api/auth/settings.py:35-36). Một lượt Phase 1 cần ~18 recovery / 900 s và ~49 login (QA-01b, 2026-10-09).
+# Hành vi 429 thật vẫn được pytest BE kiểm (monkeypatch hạn mức) và UI kiểm bằng [mocked response].
+# drawings_init (upload #5) 60 / 600 s MỖI NGƯỜI (apps/api/drawings/settings.py:23-24, pydantic-settings, không tiền tố):
+# phase 03 có ~17 tệp edge cùng dùng admin chung → nâng lên 300 (QA-03d). Giữ khớp qa.config.json env.vars
+# E2E_DRAWINGS_INIT_RATE_LIMIT (phase03_pipeline_api "roles" đếm tới trần này rồi đợi 429).
+# users_invite (30 / 3600 s) là hằng `Final` trong apps/api/users/router.py:32-33, KHÔNG có biến môi trường để nâng.
+# Nạp qua tools/f14/chuoi.sh (DC có -f qa-limits.override.example.yml) — BUG-053.
+services:
+  api:
+    restart: unless-stopped
+    environment:
+      RECOVERY_IP_LIMIT: "60"
+      LOGIN_IP_LIMIT: "120"
+      DRAWINGS_INIT_RATE_LIMIT: "300"
+  # Tự bật lại cùng Docker Desktop (máy khởi động lại vẫn có BE cho `pnpm dev:be` ở 18080).
+  postgres: { restart: unless-stopped }
+  redis-broker: { restart: unless-stopped }
+  redis-cache: { restart: unless-stopped }
+  minio: { restart: unless-stopped }
+  mailpit: { restart: unless-stopped }
+  worker: { restart: unless-stopped }
+  beat: { restart: unless-stopped }
+  # SegFormer-B2 (seg-b2-colab-v2, 2026-10-22): hộp cát đánh giá trần mặc định 4 GiB RLIMIT_AS → ORT hỏng cấp 768 MiB.
+  # Lượt chấm B2 dùng ~5,2 GiB cả container → nâng trần 6g của base.yml.
+  ml:
+    restart: unless-stopped
+    mem_limit: 12g
+    environment:
+      ML_EVAL_MAX_BYTES: "17179869184"
+  web: { restart: unless-stopped }

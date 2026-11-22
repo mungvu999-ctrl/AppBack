@@ -26,6 +26,7 @@ bash tools/verify/run.sh <việc>
 | `lock` | `uv lock` (không `--upgrade`), chép `uv.lock` ra worktree | worker khi thêm thư viện ngoài bảng BE-00 §13.1 |
 | `shell` | bash trong container, để gỡ lỗi (`run.sh shell < lệnh.sh` chạy không tương tác). `--fast` và `shell` giữ khoá cổng **dùng chung**: chạy cùng nhau được, không chạy cạnh cổng đầy đủ — đừng giữ shell tương tác lâu, nó chặn cổng của phiên khác | worker |
 | `hold -- <lệnh>` | chạy lệnh trên host khi giữ khoá cổng một mình (dựng ảnh web f14, build nặng), xếp hàng chung với `verify` | mọi phiên |
+| `bash tools/f14/chuoi.sh <pha>` | chuỗi fullstack F-14 (stack compose `f14`, trong git từ K-63): pha `build up seed run`; `down` chạy `down -v` nên đòi `--yes`. Bí mật/trạng thái ở `$F14_DIR` ngoài git; chi tiết `docs/SETUP.md` §5.4. **Không chạy pha nào khi chưa được giao** | người điều phối |
 | `openapi` | xuất `openapi.json` hợp nhất | **chỉ người điều phối** |
 | `merge-heads <tên>` | tạo revision merge hai head | **chỉ người điều phối** |
 | `gc` | dọn venv/mypy cache của worktree đã xoá | người điều phối |

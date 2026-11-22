@@ -15,3 +15,11 @@
 #
 # Bản commit ban đầu (B0-09 w-tools): chưa có lỗ hổng nào cần miễn, để trống — `ignore` vắng
 # mặt được đọc là mảng rỗng.
+
+# K-51 (22/11/2026): opentelemetry-api 1.45.1 (phụ thuộc gián tiếp của fastapi) dính CVE-2026-126360,
+# bản sửa 1.45.2. Miễn tạm 14 ngày để mở khoá `lint` trong lúc người điều phối đặt sàn
+# `opentelemetry-api>=1.45.2` ở `pyproject.toml` + `uv.lock` (phương án A). Xoá mục này khi sàn vào `main`.
+[[ignore]]
+id = "CVE-2026-126360"
+reason = "opentelemetry-api 1.45.1 gián tiếp qua fastapi; chờ sàn >=1.45.2 trong constraint-dependencies (K-51)"
+expires = 2026-12-06

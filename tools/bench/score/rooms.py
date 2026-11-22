@@ -107,7 +107,8 @@ def _overlap_ratio(polys: list[list[Point]]) -> Any:
         acc += np.asarray(im, dtype=np.int16)
     two = acc >= 2
     core = two[1:-1, 1:-1] & two[:-2, 1:-1] & two[2:, 1:-1] & two[1:-1, :-2] & two[1:-1, 2:]
-    return core.sum() / max((acc >= 1).sum(), 1)
+    covered = int((acc >= 1).sum())
+    return core.sum() / max(covered, 1)
 
 
 def _validity_mark(case: Case, c: dict[str, str]) -> tuple[int, int, Any]:

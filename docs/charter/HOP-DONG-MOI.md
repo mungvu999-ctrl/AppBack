@@ -240,6 +240,16 @@ F-07: hộp thoại A9 khi gỡ; ánh xạ `MEMBER_*`.
 - **N6 `PUT …/settings`** (GV): `UpdateProjectSettingsSchema = VersionedWriteSchema(ProjectSettingsBodySchema)`; 409 với `remoteChanges: []`.
 - Tên, mã, địa chỉ vẫn đi #26. F-07 gửi hai request và báo lỗi phần hỏng.
 
+### N51 — `POST /api/projects/{project_id}/drawings/uploads/{upload_id}/rerun` → `Progress` *(K-06)*
+
+- Màn hỏng của màn Xử lý: "Chạy lại từ bản gốc" mở lượt chạy mới cho **cùng** lượt tải (giữ tệp gốc, trang, vùng
+  cắt đã chọn), không tải lại tệp. Thân rỗng; response `ProgressSchema` (`pending`) như #8; FE chuyển về màn Xử lý
+  của lượt tải đó. Quyền `floor.upload`; hạn mức 10 lần / 10 phút mỗi người (429 `RATE_LIMITED`).
+- Chỉ lượt tải `complete` **mới nhất** của tầng, và chỉ khi lượt chạy mới nhất của nó `failed`. Lỗi (đều 409):
+  `UPLOAD_NOT_COMPLETE` (lượt tải chưa xong/bị từ chối), `UPLOAD_SUPERSEDED` (tầng có bản vẽ mới hơn),
+  `PIPELINE_RUNNING` (đang chạy — bấm đôi), `PIPELINE_NOT_FAILED` (đã xong), `UPLOAD_SOURCE_GONE` (tệp gốc không còn
+  trong kho → FE giữ nút "Tải lại bản vẽ"). 404 `resource: "upload"` khi lượt tải không thuộc dự án.
+
 ### N7b — `GET /api/projects/{project_id}/pipeline-runs` → `pipelineRuns.ts` *(UIFIX-B7)*
 
 - Lượt xử lý của dự án, mới nhất trước; `limit` + `cursor` (`CursorPage`); thành viên dự án đọc được, người ngoài/dự án không có → 404. Mỗi mục một lượt của một tầng: trạng thái, bước, %, `createdAt`/`startedAt`/`endedAt`/`updatedAt`, mã lỗi. Màn: tab Nhật ký của màn Xử lý (N5-08).
@@ -688,6 +698,9 @@ ruleConfig.ts       RULE_OVERRIDE_SEVERITIES · RuleOverrideSchema · ProjectRul
   Bearer (không dùng `<img src>`), đổi sang blob URL cho bản xem thử.
 - Mã hỏng (`failureCode`): `LIGHTING_BAKE_FAILED`, `LIGHTING_BAKE_TIMEOUT`, `LIGHTING_BAKE_OUTPUT_INVALID`,
   `LIGHTING_BAKE_STALLED`.
+- N50 `GET …/lighting-bakes/availability` → `LightingBakeAvailabilitySchema {enabled: boolean}` (K-09): máy chủ có worker nướng hay không (cờ
+  `LIGHTING_BAKE_ENABLED`, mặc định `false`). `false` → FE ẩn thẻ "Nướng ánh sáng"; N42 khi cờ tắt → 503 `LIGHTING_BAKE_DISABLED`
+  (`Retry-After: 10`). FE coi lỗi/thiếu khoá như `false`.
 
 ## 12. AI chọn phong cách nội thất → `designConcept.ts` (AID-01)
 

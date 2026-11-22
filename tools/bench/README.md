@@ -27,11 +27,35 @@ Mọi đường dẫn qua biến môi trường (`tools/bench/config.py`), khôn
 - Kiểm replay trung thực so với lượt thật: `python -X utf8 -m tools.bench.replay.check <thư mục ra>`.
 - Tải/làm mới `ml-cache` từ f14: `python -X utf8 -m tools.bench.replay.dump [--force]`.
 
+## Cổng chống tụt (K-17b)
+
+Replay sau-ML trên `ml-cache` rồi so với `baseline/main.json` (kết luận + im lặng từng ca của tập bench và F, kèm SHA
+nguồn và sha256 của `ml-cache` lúc chụp). Đỏ khi một tập tụt **> 2 ca ĐẠT** hoặc **tăng ≥ 1 lỗi im lặng** (Q8). Cổng chỉ
+bắt tụt ở phần SAU ML (dựng, trộn, quality, readiness); đổi mô hình ML không hiện ra vì `ml-cache` cố định.
+
+- Cả chuỗi (replay → chấm → so): `python -X utf8 -m tools.bench.gate ci <worktree> <thư mục ra> [--local]`.
+  `--local` chạy `inner.py` bằng venv hiện tại (CI, hoặc trong ảnh worker); không có thì dùng `BENCH_WORKER_IMAGE`.
+- So hai lượt đã chấm: `python -X utf8 -m tools.bench.gate compare tools/bench/baseline/main.json --set bench=<lượt>
+  --set F=<lượt> [--ml-cache $BENCH_ROOT/ml-cache]` (mã 0 xanh, 1 tụt, 2 lỗi dữ liệu).
+- PR cố ý đổi kết quả (hay đổi thước, đổi `ml-cache`): chụp lại baseline trong cùng PR bằng `gate snapshot ...
+  --source-sha <sha> --ml-cache ...` từ lượt replay của nhánh, ghi lý do ở `changes/`. Nên chụp trên Linux (trong ảnh
+  worker hay CI): chấm trên Windows lệch số lẻ ở `info` (vd `P6_sum_m2` 59,7 so 59,6), kết luận hiện trùng.
+- Workflow `.github/workflows/bench.yml` (PR chạm pipeline/readiness/`tools/bench`): công tắc biến repo `BENCH_GATE`
+  = `off` | `auto` (mặc định — thiếu dữ liệu thì bỏ qua, xanh) | `required`. Runner GitHub chưa có dữ liệu (NO-468) nên
+  hiện luôn bỏ qua; khi có kho riêng thêm bước tải vào `$BENCH_ROOT` rồi đặt `required`.
+
 ## Cấu trúc
 
 `score/` tách theo nhóm tiêu chí (`reliability` R/D, `scale` S, `walls` W, `openings` O, `rooms` P, `probe` M0/F/U,
 `verdict`, `engine`, `report`; `io` đọc đáp án/độ lệch trang). `api.py`/`stack.py`/`calibrate.py` phục vụ `run_bench`.
 `replay/inner.py` chạy trong container worker nên chỉ nhập `apps`/`packages` của worktree mount.
+
+## Lỗi im lặng (K-11)
+
+`silent` = ca **TRƯỢT** mà sản phẩm vẫn báo tầng **"Sẵn sàng"** (`readiness.state == "ready"`). Tầng `needsReview`/
+`notEvaluated` hay lượt thất bại không có readiness đều đã cảnh báo người dùng nên không tính. Ca hành vi (nhóm D/E có
+`behaviour`) giữ luật riêng: trượt mà không báo đúng lý do. Cột `silent_old` giữ luật cũ (suy từ finding/lý do, bỏ sót
+ca trượt vì ≥ 3 mốc C) để so số với các lượt trước K-11. Layer có số NaN/vô cực: R2 = T, chỉ chấm R1-R3 (`info.nonfinite`).
 
 ## Test
 

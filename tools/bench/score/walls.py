@@ -74,10 +74,11 @@ def _envelope(case: Case, c: dict[str, str]) -> tuple[float | None, tuple[Arr, A
         return None, None, []
     a, lo = grid
     pts = _room_points(case)
-    cells = [tuple(int(v) for v in (q - lo) / _CELL) for q in pts]
-    cells = [(x, y) for x, y in cells if 0 <= x < a.shape[1] and 0 <= y < a.shape[0]]
-    enclosed = sum(a[y, x] != 128 for x, y in cells) / len(cells) if cells else None
-    leaked = [list(q) for q, (x, y) in zip(pts, cells, strict=False) if a[y, x] == 128]
+    cells = [(q, tuple(int(v) for v in (q - lo) / _CELL)) for q in pts]
+    on_grid = [(q, (x, y)) for q, (x, y) in cells if 0 <= x < a.shape[1] and 0 <= y < a.shape[0]]
+    # Giữ điểm đi cùng ô của nó khi lọc ô ngoài lưới: ghép lại bằng zip sau khi lọc làm lệch điểm (NO-466)
+    enclosed = sum(a[y, x] != 128 for _, (x, y) in on_grid) / len(on_grid) if on_grid else None
+    leaked = [list(q) for q, (x, y) in on_grid if a[y, x] == 128]
     c["W1"] = "—" if enclosed is None else "Đ" if enclosed >= 0.9 else "C" if enclosed >= 0.75 else "T"
     return enclosed, (a == 128, lo, _CELL), leaked
 

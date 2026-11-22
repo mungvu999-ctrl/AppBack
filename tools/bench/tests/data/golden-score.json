@@ -45,7 +45,8 @@
    "U3": "Đ"
   },
   "verdict": "TRƯỢT",
-  "silent": false,
+  "silent": true,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -153,7 +154,8 @@
    "U3": "Đ"
   },
   "verdict": "TRƯỢT",
-  "silent": false,
+  "silent": true,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -261,7 +263,8 @@
    "U3": "Đ"
   },
   "verdict": "TRƯỢT",
-  "silent": false,
+  "silent": true,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -334,6 +337,7 @@
   },
   "verdict": "?",
   "silent": false,
+  "silent_old": false,
   "info": {
    "walls": 5,
    "rooms": 2,
@@ -356,7 +360,8 @@
     "R3": "—",
     "D": "?"
    },
-   "silent": false
+   "silent": false,
+   "silent_old": false
   }
  },
  {
@@ -370,6 +375,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "walls": 5,
    "rooms": 2,
@@ -400,6 +406,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "walls": 5,
    "rooms": 2,
@@ -429,6 +436,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "walls": 5,
    "rooms": 2,
@@ -458,6 +466,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "walls": 5,
    "rooms": 2,
@@ -487,6 +496,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "walls": 0,
    "rooms": 0,
@@ -516,6 +526,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "walls": 5,
    "rooms": 2,
@@ -545,6 +556,7 @@
   },
   "verdict": "?",
   "silent": false,
+  "silent_old": false,
   "info": {
    "walls": 5,
    "rooms": 2,
@@ -574,6 +586,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "walls": 5,
    "rooms": 2,
@@ -603,6 +616,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "walls": 0,
    "rooms": 0,
@@ -632,6 +646,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "walls": 21200.0,
    "rooms": 2,
@@ -661,6 +676,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "walls": 0,
    "rooms": 0,
@@ -690,6 +706,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "walls": 5,
    "rooms": 2,
@@ -719,6 +736,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "walls": 5,
    "rooms": 2,
@@ -751,6 +769,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "walls": 5,
    "rooms": 2,
@@ -816,6 +835,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -924,6 +944,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -1035,6 +1056,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -1146,6 +1168,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -1257,6 +1280,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 300.0,
@@ -1368,6 +1392,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -1479,6 +1504,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -1583,7 +1609,8 @@
     "U1": "Đ",
     "U3": "Đ"
    },
-   "silent": true
+   "silent": true,
+   "silent_old": true
   }
  },
  {
@@ -1633,6 +1660,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -1739,7 +1767,8 @@
     "U1": "Đ",
     "U3": "Đ"
    },
-   "silent": false
+   "silent": true,
+   "silent_old": false
   }
  },
  {
@@ -1789,6 +1818,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -1893,7 +1923,8 @@
     "U1": "Đ",
     "U3": "Đ"
    },
-   "silent": false
+   "silent": false,
+   "silent_old": false
   }
  },
  {
@@ -1943,6 +1974,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -2054,6 +2086,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -2165,6 +2198,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -2276,6 +2310,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -2387,6 +2422,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -2498,6 +2534,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "failed",
    "process_s": 5.0,
@@ -2609,6 +2646,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -2720,6 +2758,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -2831,6 +2870,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -2942,6 +2982,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -3053,6 +3094,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -3179,6 +3221,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -3290,6 +3333,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -3398,6 +3442,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -3509,6 +3554,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -3617,6 +3663,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -3728,6 +3775,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -3798,6 +3846,123 @@
   "outcome": "trượt"
  },
  {
+  "id": "v-half-open-offgrid",
+  "group": "A",
+  "c": {
+   "R1": "Đ",
+   "R2": "Đ",
+   "R3": "—",
+   "S1": "Đ",
+   "S2": "—",
+   "S3": "Đ",
+   "S5": "—",
+   "S4": "Đ",
+   "W1": "T",
+   "W2": "Đ",
+   "W3": "Đ",
+   "W4": "Đ",
+   "W5": "—",
+   "W6": "—",
+   "O2": "—",
+   "O1": "C",
+   "O1b": "Đ",
+   "O1c": "C",
+   "O3": "Đ",
+   "O4": "Đ",
+   "O5": "Đ",
+   "P1": "Đ",
+   "P2": "Đ",
+   "P3": "T",
+   "P4": "Đ",
+   "P5": "Đ",
+   "P6": "Đ",
+   "P7": "Đ",
+   "M0": "C",
+   "M1": "?",
+   "M2": "?",
+   "M3": "?",
+   "M4": "?",
+   "M5": "?",
+   "F1": "Đ",
+   "F2": "Đ",
+   "F3": "Đ",
+   "F4": "Đ",
+   "U1": "Đ",
+   "U3": "Đ"
+  },
+  "verdict": "TRƯỢT",
+  "silent": true,
+  "silent_old": true,
+  "info": {
+   "status": "completed",
+   "process_s": 60.0,
+   "scale_ai": 40.0,
+   "scale_key": 40.0,
+   "scale_note": null,
+   "offset": [
+    12,
+    9
+   ],
+   "walls": 5,
+   "rooms": 2,
+   "doors": 1,
+   "windows": 1,
+   "key_doors": 2,
+   "key_windows": 1,
+   "key_rooms": 3,
+   "S3_err_pct": 0.0,
+   "W1_enclosed": 0.5,
+   "W1_leaked_mm": [
+    [
+     2080.0,
+     2400.0
+    ]
+   ],
+   "W2_tier_ok": 1.0,
+   "W4": [
+    0,
+    0
+   ],
+   "W5": [
+    null,
+    null
+   ],
+   "W6_bad": [],
+   "O1c": 0.6666666666666666,
+   "O2": null,
+   "O3_viol": 0,
+   "O5_missing": 0,
+   "P3": 0.6666666666666666,
+   "P4": 1.0,
+   "P5_median_pct": 6.333333333333336,
+   "P6_sum_m2": 18.7,
+   "P6_key_m2": 18.72,
+   "P7": {
+    "self_cross": 0,
+    "under_1m2": 0,
+    "overlap": 0.0
+   },
+   "F": {
+    "items": 6,
+    "in_room": 1.0,
+    "near_door": 0,
+    "too_close": 0.0
+   },
+   "U1_s": 65.0,
+   "U3_fixes": 5,
+   "findings": [
+    "LOW_CONTRAST"
+   ],
+   "readiness": {
+    "state": "ready",
+    "reasons": []
+   }
+  },
+  "verdict_auto": "TRƯỢT",
+  "step1": false,
+  "outcome": "trượt"
+ },
+ {
   "id": "v-height-bad",
   "group": "A",
   "c": {
@@ -3844,6 +4009,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -3909,6 +4075,33 @@
   "outcome": "trượt"
  },
  {
+  "id": "v-inf-opening",
+  "group": "A",
+  "c": {
+   "R1": "Đ",
+   "R2": "T",
+   "R3": "—"
+  },
+  "verdict": "TRƯỢT",
+  "silent": true,
+  "silent_old": true,
+  "info": {
+   "status": "completed",
+   "process_s": 60.0,
+   "nonfinite": true,
+   "findings": [
+    "LOW_CONTRAST"
+   ],
+   "readiness": {
+    "state": "ready",
+    "reasons": []
+   }
+  },
+  "verdict_auto": "TRƯỢT",
+  "step1": false,
+  "outcome": "trượt"
+ },
+ {
   "id": "v-labels",
   "group": "A",
   "c": {
@@ -3955,6 +4148,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -4066,6 +4260,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -4177,6 +4372,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -4242,6 +4438,33 @@
   "outcome": "trượt"
  },
  {
+  "id": "v-nan-wall",
+  "group": "A",
+  "c": {
+   "R1": "Đ",
+   "R2": "T",
+   "R3": "—"
+  },
+  "verdict": "TRƯỢT",
+  "silent": true,
+  "silent_old": true,
+  "info": {
+   "status": "completed",
+   "process_s": 60.0,
+   "nonfinite": true,
+   "findings": [
+    "LOW_CONTRAST"
+   ],
+   "readiness": {
+    "state": "ready",
+    "reasons": []
+   }
+  },
+  "verdict_auto": "TRƯỢT",
+  "step1": false,
+  "outcome": "trượt"
+ },
+ {
   "id": "v-no-doors",
   "group": "A",
   "c": {
@@ -4288,6 +4511,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -4399,6 +4623,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -4510,6 +4735,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -4621,6 +4847,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": null,
@@ -4732,6 +4959,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -4840,6 +5068,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -4951,6 +5180,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "missing",
    "process_s": null,
@@ -5062,6 +5292,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -5173,6 +5404,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": null,
@@ -5284,6 +5516,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -5395,6 +5628,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -5503,6 +5737,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -5623,6 +5858,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -5734,6 +5970,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -5845,6 +6082,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -5956,6 +6194,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -6067,6 +6306,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -6178,6 +6418,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -6286,6 +6527,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -6397,6 +6639,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -6505,6 +6748,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -6613,6 +6857,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -6724,6 +6969,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -6835,6 +7081,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -6946,6 +7193,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -7057,6 +7305,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -7168,6 +7417,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -7279,6 +7529,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -7390,6 +7641,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -7455,6 +7707,120 @@
   "outcome": "trượt"
  },
  {
+  "id": "v-review-wrong-place",
+  "group": "A",
+  "c": {
+   "R1": "Đ",
+   "R2": "Đ",
+   "R3": "—",
+   "S1": "Đ",
+   "S2": "—",
+   "S3": "Đ",
+   "S5": "—",
+   "S4": "Đ",
+   "W1": "Đ",
+   "W2": "Đ",
+   "W3": "T",
+   "W4": "Đ",
+   "W5": "—",
+   "W6": "—",
+   "O2": "—",
+   "O1": "Đ",
+   "O1b": "Đ",
+   "O1c": "Đ",
+   "O3": "Đ",
+   "O4": "Đ",
+   "O5": "Đ",
+   "P1": "Đ",
+   "P2": "Đ",
+   "P3": "Đ",
+   "P4": "Đ",
+   "P5": "C",
+   "P6": "Đ",
+   "P7": "Đ",
+   "M0": "Đ",
+   "M1": "?",
+   "M2": "?",
+   "M3": "?",
+   "M4": "?",
+   "M5": "?",
+   "F1": "Đ",
+   "F2": "Đ",
+   "F3": "Đ",
+   "F4": "Đ",
+   "U1": "Đ",
+   "U3": "Đ"
+  },
+  "verdict": "TRƯỢT",
+  "silent": false,
+  "silent_old": true,
+  "info": {
+   "status": "completed",
+   "process_s": 60.0,
+   "scale_ai": 40.0,
+   "scale_key": 40.0,
+   "scale_note": null,
+   "offset": [
+    12,
+    9
+   ],
+   "walls": 5,
+   "rooms": 2,
+   "doors": 2,
+   "windows": 1,
+   "key_doors": 2,
+   "key_windows": 1,
+   "key_rooms": 2,
+   "S3_err_pct": 0.0,
+   "W1_enclosed": 1.0,
+   "W1_leaked_mm": [],
+   "W2_tier_ok": 1.0,
+   "W4": [
+    0,
+    0
+   ],
+   "W5": [
+    null,
+    null
+   ],
+   "W6_bad": [],
+   "O1c": 1.0,
+   "O2": null,
+   "O3_viol": 0,
+   "O5_missing": 0,
+   "P3": 1.0,
+   "P4": 1.0,
+   "P5_median_pct": 8.055555555555571,
+   "P6_sum_m2": 18.7,
+   "P6_key_m2": 18.72,
+   "P7": {
+    "self_cross": 0,
+    "under_1m2": 0,
+    "overlap": 0.0
+   },
+   "F": {
+    "items": 6,
+    "in_room": 1.0,
+    "near_door": 0,
+    "too_close": 0.0
+   },
+   "U1_s": 65.0,
+   "U3_fixes": 0,
+   "findings": [
+    "LOW_CONTRAST"
+   ],
+   "readiness": {
+    "state": "needsReview",
+    "reasons": [
+     "scaleUnresolved"
+    ]
+   }
+  },
+  "verdict_auto": "TRƯỢT",
+  "step1": false,
+  "outcome": "trượt"
+ },
+ {
   "id": "v-room-bad",
   "group": "A",
   "c": {
@@ -7501,6 +7867,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -7612,6 +7979,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -7723,6 +8091,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -7833,7 +8202,8 @@
    "U3": "Đ"
   },
   "verdict": "TRƯỢT",
-  "silent": false,
+  "silent": true,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -7947,6 +8317,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -8055,7 +8426,8 @@
    "U3": "Đ"
   },
   "verdict": "TRƯỢT",
-  "silent": false,
+  "silent": true,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -8167,6 +8539,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -8274,7 +8647,8 @@
    "U3": "Đ"
   },
   "verdict": "TRƯỢT",
-  "silent": false,
+  "silent": true,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 250.0,
@@ -8385,7 +8759,8 @@
    "U3": "Đ"
   },
   "verdict": "TRƯỢT",
-  "silent": false,
+  "silent": true,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -8497,6 +8872,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -8608,6 +8984,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -8719,6 +9096,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -8827,6 +9205,7 @@
   },
   "verdict": "ĐẠT",
   "silent": false,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -8934,7 +9313,8 @@
    "U3": "Đ"
   },
   "verdict": "TRƯỢT",
-  "silent": false,
+  "silent": true,
+  "silent_old": false,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -9043,6 +9423,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 900.0,
@@ -9154,6 +9535,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -9265,6 +9647,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,
@@ -9376,6 +9759,7 @@
   },
   "verdict": "TRƯỢT",
   "silent": true,
+  "silent_old": true,
   "info": {
    "status": "completed",
    "process_s": 60.0,

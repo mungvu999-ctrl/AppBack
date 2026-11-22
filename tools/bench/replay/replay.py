@@ -1,6 +1,7 @@
 """Chạy lại phần SAU ML (dựng + trộn + quality + readiness) bằng mã của một worktree AppBack trên ml-cache/.
 
 python -X utf8 -m tools.bench.replay.replay <worktree> <thư mục ra> [--set bench|F|all] [--jobs 4] [--cases a b ...]
+    [--local]
 
 Ra <ra>/<ca>/{layer,spatial,quality,progress,meta}.json + page.png: cùng dạng `run_bench` nên `python -m
 tools.bench.score <ra>` chấm được (tập F: `BENCH_ROOT` trỏ vào gốc tập F). Thêm replay.json (trạng thái, giờ),
@@ -9,7 +10,8 @@ built-layer.json (layer.json bước dựng), run-quality.json (quality.json c�
 Không tái tạo (lấy nguyên từ lượt gốc, vì nằm TRƯỚC ML hoặc ngoài BE): quality.json của API (đánh giá ảnh),
 spatial.json, meta.json (process_s của lượt gốc), probe.json/3d*.png (cảnh AppFront - không chép, M0/F1-4 thành "-").
 Mã chạy trong container `BENCH_WORKER_IMAGE` (mặc định `appback-worker:f14`: thư viện của ảnh f14; worktree đổi
-uv.lock thì phải dựng ảnh), --network none, worktree mount chỉ đọc ở /tmp/w.
+uv.lock thì phải dựng ảnh), --network none, worktree mount chỉ đọc ở /tmp/w. `--local` (CI, K-17b): chạy `inner.py`
+bằng chính trình Python đang chạy (venv `uv sync --all-packages` của worktree), không cần docker.
 """
 
 from __future__ import annotations
@@ -55,11 +57,22 @@ def docker_command(worktree: Path, cache: Path, out: Path, image: str, cases: li
     ]  # fmt: skip
 
 
-def run_container(cmd: list[str]) -> subprocess.Popen[str]:
-    """Chạy một container replay; stdout+stderr gộp để in từng dòng."""
-    return subprocess.Popen(  # noqa: S603 - lệnh dựng từ `docker_command`, không có chuỗi người dùng qua shell
-        cmd, env={**os.environ, "MSYS_NO_PATHCONV": "1"}, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, encoding="utf-8",
+def local_command(worktree: Path, cache: Path, out: Path, cases: list[str]) -> tuple[list[str], dict[str, str]]:
+    """(lệnh, biến môi trường thêm) chạy `inner.py` bằng trình Python hiện tại, đọc mã của `worktree` (không docker)."""
+    env = {
+        "PYTHONPATH": str(worktree), "PYTHONDONTWRITEBYTECODE": "1", "BENCH_REPLAY_CACHE": str(cache),
+        "BENCH_REPLAY_OUT": str(out),
+    }  # fmt: skip
+    return [sys.executable, str(INNER), *cases], env
+
+
+def run_container(
+    cmd: list[str], extra_env: dict[str, str] | None = None, cwd: Path | None = None
+) -> subprocess.Popen[str]:
+    """Chạy một container replay (hoặc `inner.py` cục bộ); stdout+stderr gộp để in từng dòng."""
+    return subprocess.Popen(  # noqa: S603 - lệnh dựng từ `docker_command`/`local_command`, không qua shell
+        cmd, env={**os.environ, "MSYS_NO_PATHCONV": "1", **(extra_env or {})}, stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT, text=True, encoding="utf-8", cwd=cwd,
     )  # fmt: skip
 
 
@@ -118,14 +131,23 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--set", choices=["bench", "F", "all"], default="all")
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--cases", nargs="*")
+    ap.add_argument("--local", action="store_true", help="chạy inner.py bằng Python hiện tại, không docker (CI)")
     return ap
+
+
+def _start(a: argparse.Namespace, cache: Path, out: Path, cases: list[str]) -> subprocess.Popen[str]:
+    """Khởi một tiến trình replay cho `cases`: container `BENCH_WORKER_IMAGE`, hoặc cục bộ khi `--local`."""
+    if a.local:
+        cmd, env = local_command(a.worktree.resolve(), cache.resolve(), out.resolve(), cases)
+        return run_container(cmd, env, cwd=a.worktree.resolve())  # cùng thư mục làm việc như `-w /tmp/w`
+    return run_container(docker_command(a.worktree.resolve(), cache, out.resolve(), config.bench_worker_image(), cases))
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Điểm vào: chia ca của mỗi tập cho `--jobs` container, đợi xong rồi `finish` từng ca. Trả mã thoát."""
     a = _parser().parse_args(argv)
     root = config.bench_root()
-    cache, image = config.ml_cache(root), config.bench_worker_image()
+    cache = config.ml_cache(root)
     sets = config.replay_sets(root)
     names = ["bench", "F"] if a.set == "all" else [a.set]
     plan = [(s, c) for s in names for c in cases_of(sets[s][0], cache) if not a.cases or c in a.cases]
@@ -137,12 +159,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for s in names:  # chia đều các ca của mỗi tập cho --jobs container
         cs = [c for s2, c in plan if s2 == s]
         k = max(1, min(a.jobs, len(cs)))
-        cmds = [
-            docker_command(a.worktree.resolve(), cache, outs[s].resolve(), image, cs[i::k])
-            for i in range(k)
-            if cs[i::k]
-        ]
-        procs += [run_container(c) for c in cmds]
+        procs += [_start(a, cache, outs[s], cs[i::k]) for i in range(k) if cs[i::k]]
     for p in procs:
         for line in p.stdout or []:
             sys.stdout.write(line)

@@ -2,6 +2,8 @@
 
 python /inner.py <ca> [<ca> ...]    (PYTHONPATH=/tmp/w; /cache chỉ đọc, /out ghi được)
 
+Chạy ngoài container (`replay --local`, CI): `BENCH_REPLAY_CACHE`/`BENCH_REPLAY_OUT` thay /cache, /out.
+
 Đường gọi y như stack, bỏ DB/kho: build_layer (tasks._build_and_write) -> BuiltLayer to_json/from_json
 (persist.read_built) -> with_floor_height + make_merge trên tài liệu tầng rỗng (persist._write_ai_layer, tầng mới)
 -> _check_candidate + _with_areas (writer._next_layer) -> build_report + _summary (quality.run_quality)
@@ -16,6 +18,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import sys
 import time
 import traceback
@@ -272,5 +275,10 @@ def run_cases(cases: list[str], steps: Steps, cache: Path = CACHE, out: Path = O
         sys.stdout.flush()
 
 
+def dirs_from_env(env: dict[str, str] | os._Environ[str]) -> tuple[Path, Path]:
+    """(cache, out): `BENCH_REPLAY_CACHE`/`BENCH_REPLAY_OUT` khi chạy ngoài container, mặc định /cache, /out."""
+    return Path(env.get("BENCH_REPLAY_CACHE") or CACHE), Path(env.get("BENCH_REPLAY_OUT") or OUT)
+
+
 if __name__ == "__main__":
-    run_cases(sys.argv[1:], load_steps())
+    run_cases(sys.argv[1:], load_steps(), *dirs_from_env(os.environ))

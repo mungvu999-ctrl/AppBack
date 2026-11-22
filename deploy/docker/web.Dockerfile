@@ -20,7 +20,7 @@ RUN npm install -g pnpm@9.4.0 \
 # còn lại cần 1.30.7+/1.31.9+ — ảnh chưa ra, trivy tạm miễn ở tools/ci/web.trivyignore (hết hạn
 # 2026-12-06, xem changes/WEB-NGINX-CVE.md). Nâng: lên tag stable 1.30.x mới hơn (≥ 1.30.7 thì bỏ
 # tệp miễn); sang mainline phải ≥ 1.31.9.
-FROM nginxinc/nginx-unprivileged:1.30.6-alpine@sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03
+FROM nginxinc/nginx-unprivileged:1.31.7-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e
 
 # trivy CRITICAL (CVE-2026-111497, 02/11/2026): ảnh nền, kể cả 1.30.6-alpine, còn brotli-libs 1.2.0-r1.
 # Sàn `>=` chứ không ghim `=`: Alpine gỡ bản cũ khỏi kho. Bỏ khối này khi ảnh nền tự có ≥ 1.2.1-r0.

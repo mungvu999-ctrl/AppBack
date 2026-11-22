@@ -189,6 +189,8 @@ services:
       redis-broker:
         condition: service_healthy
 
+  # LB-01: profile tuỳ chọn. Bật `--profile bake` thì đặt LIGHTING_BAKE_ENABLED=true trong appback.env
+  # (mặc định false: FE ẩn nút "Nướng ánh sáng", N42 trả 503). Không bật profile thì để false.
   bake:
     extends:
       file: base.yml

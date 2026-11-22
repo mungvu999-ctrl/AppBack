@@ -54,6 +54,10 @@ async def test_share_links_roles_and_lifecycle(api_client: httpx.AsyncClient, db
     token = link["url"].rsplit("/", 1)[1]
     assert len(token) >= 40
 
+    refused = await api_client.post(path, headers=headers_of(engineer), json={"password": "bi-mat-123"})
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["field"] == "password"
+
     listed = await api_client.get(path, headers=headers_of(admin))
     assert [item["id"] for item in listed.json()] == [link["id"]]
 
@@ -70,6 +74,15 @@ async def test_share_links_roles_and_lifecycle(api_client: httpx.AsyncClient, db
     assert revoked.json()["status"] == "revoked"
     gone = await api_client.get(f"/api/share/{token}")
     assert (gone.status_code, gone.json()["code"], gone.json()["reason"]) == (404, "NOT_FOUND", "revoked")
+
+
+async def test_share_link_empty_password_is_accepted(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+    """`password: ""` không phải mật khẩu → 201, `passwordProtected=false` (chỉ chuỗi khác rỗng bị 422)."""
+    project, _, engineer, _, _ = await _setup(db_session)
+    path = f"/api/projects/{project.id}/share-links"
+    created = await api_client.post(path, headers=headers_of(engineer), json={"password": ""})
+    assert created.status_code == 201, created.text
+    assert created.json()["passwordProtected"] is False
 
 
 async def test_share_link_expired_and_unknown_token(

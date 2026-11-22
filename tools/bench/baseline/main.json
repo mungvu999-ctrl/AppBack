@@ -1,0 +1,394 @@
+{
+ "format": 1,
+ "sets": {
+  "F": {
+   "f-01": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-02": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-03": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "f-04": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-05": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-06": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-07": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-08": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "f-09": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "f-10": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-11": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-12": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-13": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-14": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-15": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-16": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-17": {
+    "silent": true,
+    "verdict": "TRƯỢT"
+   },
+   "f-18": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-19": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-20": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-22": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-23": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-24": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-25": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "f-26": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "f-27": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "f-28": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "f-29": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "f-30": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   }
+  },
+  "bench": {
+   "brochure-ch11": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "ch-01": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "ch-02": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "ch-03": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "ch-03-scan": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "ch-04": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "ch-05": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "ch-06": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "ch-07": {
+    "silent": true,
+    "verdict": "TRƯỢT"
+   },
+   "ch-08": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "ch-09": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "ch-10": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "ch-11": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "ch-12": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "ch-13": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "ch-14": {
+    "silent": true,
+    "verdict": "TRƯỢT"
+   },
+   "cn-01": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "cn-02": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "cn-03": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "cn-04": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "cn-05": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "cn-06": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "cn-07": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "cn-08": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "cn-09": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "cn-10": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "cn-11": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "cn-12": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "cn-13": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "cn-14": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "cn-15": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "cn-16": {
+    "silent": true,
+    "verdict": "TRƯỢT"
+   },
+   "cn-17": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "cn-18": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "cn-19": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "cn-20": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "cn-21": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "cn-22": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "e-aka-1": {
+    "silent": true,
+    "verdict": "TRƯỢT"
+   },
+   "e-aka-2": {
+    "silent": true,
+    "verdict": "TRƯỢT"
+   },
+   "e-aka-3": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "e-hin-1": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "e-hin-2": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "e-hin-3": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "e-imp-1": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "e-imp-2": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "e-isg-1": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "e-mpp-1": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "e-sun-1": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "e-sun-2": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "huge-ch03": {
+    "silent": true,
+    "verdict": "TRƯỢT"
+   },
+   "jpeg-q8-ch10": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "lowres-ch06": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "nt-01-single": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "nt-02-cubicasa-3floors": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "nt-03-vn-2plans-titleblock": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "nt-04-section": {
+    "silent": true,
+    "verdict": "TRƯỢT"
+   },
+   "nt-05-inverted": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "nt-06-rot90": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "nt-07-render3d": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "photo-tilted-ch05": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "syn-can-ho-150": {
+    "silent": false,
+    "verdict": "ĐẠT"
+   },
+   "syn-can-ho-4pn": {
+    "silent": true,
+    "verdict": "TRƯỢT"
+   },
+   "syn-penthouse": {
+    "silent": true,
+    "verdict": "TRƯỢT"
+   },
+   "two-page-ch04": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   },
+   "vector-apt": {
+    "silent": false,
+    "verdict": "TRƯỢT"
+   }
+  }
+ },
+ "source": {
+  "ml_cache_sha256": "1689d316543b3bac81031adf1cfc203744208195f06385941d889a28cf172c87",
+  "note": "pipeline origin/main 8967c76a + scorer K-11 (d63042e1); replay --local in appback-worker:f14 (Linux) on ml-cache, sets runs/r4b + tap-f/runs/f2",
+  "pipeline_sha": "8967c76a5fa193b1d769631ff9ea9afd6a4abce4"
+ }
+}

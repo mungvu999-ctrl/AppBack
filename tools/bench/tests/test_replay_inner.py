@@ -273,3 +273,10 @@ def test_load_steps_binds_real_pipeline() -> None:
     for f in fields(steps):
         assert getattr(steps, f.name) is not None or f.name == "not_a_floor_plan"
     assert steps.page_vectors[1].endswith(".json")
+
+
+def test_dirs_from_env_defaults_to_container_paths() -> None:
+    """Không đặt biến: /cache, /out như trong container; `replay --local` đặt `BENCH_REPLAY_*` thì dùng chúng."""
+    assert inner.dirs_from_env({}) == (inner.CACHE, inner.OUT)
+    env = {"BENCH_REPLAY_CACHE": "/x/c", "BENCH_REPLAY_OUT": "/x/o"}
+    assert inner.dirs_from_env(env) == (Path("/x/c"), Path("/x/o"))

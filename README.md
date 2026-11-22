@@ -26,3 +26,6 @@ cho mục đích thương mại**:
   và ghi lại để theo dõi chất lượng mô hình qua các lần huấn luyện —
   **không phải cổng chất lượng**: `just verify` không hỏng vì các số đo này
   thấp.
+
+Bảng đầy đủ giấy phép từng thành phần: `docs/legal/THIRD-PARTY-LICENSES.md`. Trọng số mô hình được tải về khi
+chạy (bản ghim kèm SHA-256 ở `packages/ml_contracts/pinned.py`), **không phân phối trong repo**.

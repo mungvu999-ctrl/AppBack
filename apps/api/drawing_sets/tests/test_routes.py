@@ -299,3 +299,25 @@ def test_house_proposal_out__marked_section() -> None:
     dumped = house_proposal_out(HouseProposal(floors), (), frozenset({"L-S"})).model_dump(by_alias=True)["floors"]
     assert (dumped[0]["isSection"], dumped[0]["kind"]) == (True, "section")
     assert "isSection" not in dumped[1]
+
+
+def test_house_proposal_out__levels_outside_floor_range_are_dropped(caplog: pytest.LogCaptureFixture) -> None:
+    """L4-N07: cốt/chiều cao ngoài khoảng của `floors` (#34 sẽ 422) → vắng cùng độ tin, nguồn; số trong khoảng giữ."""
+    floor = FloorProposal(
+        "L",
+        "plan",
+        0.9,
+        elevation_mm=400_000,
+        elevation_confidence=0.9,
+        elevation_source="plan",
+        height_mm=3_300,
+        height_confidence=0.8,
+        height_source="dims",
+    )
+    with caplog.at_level(logging.WARNING, logger="apps.api.drawing_sets.schemas"):
+        wire = _wire(floor)
+    assert {"elevationMm", "elevationConfidence", "elevationSource"}.isdisjoint(wire)
+    assert (wire["heightMm"], wire["heightSource"]) == (3_300, "dims")
+    assert [r.message for r in caplog.records] == ["house_proposal_out_of_range"]
+    tall = _wire(FloorProposal("L", "plan", 0.9, height_mm=12_000, height_confidence=0.5, height_source="dims"))
+    assert {"heightMm", "heightConfidence", "heightSource"}.isdisjoint(tall)

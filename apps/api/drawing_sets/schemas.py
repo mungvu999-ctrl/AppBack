@@ -10,6 +10,7 @@ from collections.abc import Iterable
 from typing import Final, Literal, get_args
 
 from apps.api.core.wire import WireModel
+from apps.api.floors.schemas import ELEVATION_MAX, ELEVATION_MIN, HEIGHT_MAX, HEIGHT_MIN
 from packages.domain.drawing_set import FloorProposal, HouseProposal
 from packages.domain.drawing_set.proposal import ORDER_TEXT_CONFLICT
 
@@ -93,6 +94,17 @@ def _unit(value: float | None) -> float | None:
     return None if value is None else min(1.0, max(0.0, value))
 
 
+def _in_range(value: int | None, lo: int, hi: int, field: str) -> bool:
+    """Số nằm trong khoảng của `floors` (#34 nhận được) — ngoài khoảng thì người dùng "Nhận" cũng bị 422.
+
+    Ngoài khoảng → bỏ cả số, độ tin, nguồn (vắng, W2) và ghi log; FE vẫn `.catch` phòng thủ (L4-N07, NO-442 mục 3).
+    """
+    if value is None or lo <= value <= hi:
+        return True
+    _log.warning("house_proposal_out_of_range", extra={"field": field, "value": value})
+    return False
+
+
 def _question(code: str, floor: FloorProposal) -> dict[str, str | int | None]:
     """Một câu hỏi ra dây; `ORDER_TEXT_CONFLICT` mang lý do của miền (lý do lạ → vắng, không 500)."""
     out: dict[str, str | int | None] = {"code": _wire(code, _CODES, "STOREY_UNSURE", "questions")}
@@ -107,7 +119,12 @@ def _floor_out(floor: FloorProposal, section: bool = False) -> FloorProposalOut:
     """Một tầng ra dây; `section`: dòng được người dùng đánh dấu mặt cắt (`isSection: true`, vắng khi không).
 
     Giá trị ngoài enum dây: `kind` → `other`, nhãn tầng → vắng, nguồn → `default`, mã câu hỏi → `STOREY_UNSURE`.
+    Cốt/chiều cao ngoài khoảng của `floors` → vắng cùng độ tin và nguồn của nó.
     """
+    elevation = _in_range(floor.elevation_mm, ELEVATION_MIN, ELEVATION_MAX, "elevation_mm")
+    height = _in_range(floor.height_mm, HEIGHT_MIN, HEIGHT_MAX, "height_mm")
+    elevation_source = _wire(floor.elevation_source, _SOURCES, "default", "elevation_source")
+    height_source = _wire(floor.height_source, _SOURCES, "default", "height_source")
     return FloorProposalOut.model_validate(
         {
             "floor_id": floor.floor_id,
@@ -116,12 +133,12 @@ def _floor_out(floor: FloorProposal, section: bool = False) -> FloorProposalOut:
             "storey_label": _wire(floor.storey_label, _LABELS, None, "storey_label"),
             "storey_no": floor.storey_no,
             "storey_confidence": _unit(floor.storey_confidence),
-            "elevation_mm": floor.elevation_mm,
-            "elevation_confidence": _unit(floor.elevation_confidence),
-            "elevation_source": _wire(floor.elevation_source, _SOURCES, "default", "elevation_source"),
-            "height_mm": floor.height_mm,
-            "height_confidence": _unit(floor.height_confidence),
-            "height_source": _wire(floor.height_source, _SOURCES, "default", "height_source"),
+            "elevation_mm": floor.elevation_mm if elevation else None,
+            "elevation_confidence": _unit(floor.elevation_confidence) if elevation else None,
+            "elevation_source": elevation_source if elevation else None,
+            "height_mm": floor.height_mm if height else None,
+            "height_confidence": _unit(floor.height_confidence) if height else None,
+            "height_source": height_source if height else None,
             "questions": [_question(code, floor) for code in floor.questions],
             "is_section": True if section else None,
         }

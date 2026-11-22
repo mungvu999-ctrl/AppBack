@@ -8,6 +8,8 @@ nên id có thể tái dùng sau khi tầng cũ đã xoá mềm quá cửa sổ 
 CHECK ở đây là tầng phòng thủ cuối (như `project_floor_summaries`, B2-01) — nơi báo lỗi
 cho người dùng là `apps/api/floors` (422 theo [2]), không phải DB.
 `hidden_in_3d` (FE3D-B3): tầng bị ẩn khỏi cảnh 3D, mặc định `false`.
+`is_section` (HS-03): bản vẽ của dòng này là mặt cắt chứ không phải mặt bằng một tầng, mặc định `false`;
+đề xuất cho cả nhà (`apps/api/drawing_sets`) đọc cốt trên nó thay vì coi nó là một sàn.
 """
 
 from typing import Final
@@ -34,6 +36,7 @@ class FloorRow(Base, TimestampMixin, SoftDeleteMixin):
     elevation_mm: Mapped[int] = mm_column()
     height_mm: Mapped[int] = mm_column()
     hidden_in_3d: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    is_section: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     created_by: Mapped[str] = mapped_column(Text)
 
     __table_args__ = (

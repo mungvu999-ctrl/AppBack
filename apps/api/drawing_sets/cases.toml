@@ -1,0 +1,3 @@
+# Case thêm của đề xuất cho cả nhà (HS-02, CASE.md §2.3). Route chỉ đọc, Loại Đ: không cần khai gì.
+# Case chung C04 C05 C12 C13 C25 do `apps/api/core/tests/test_common.py` chạy; C01 C06 ở `tests/test_routes.py`.
+# C16 không áp — GET không có thân. Công tắc tắt (200 `enabled: false`) có test riêng `__disabled`.

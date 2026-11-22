@@ -96,11 +96,21 @@ class FloorPatchIn(WireRequest):
     height_mm: HeightField | None = None
     # FE3D-B3: alias tay vì `to_camel("hidden_in_3d")` ra `hiddenIn3D` (chữ sau số bị viết hoa).
     hidden_in_3d: StrictBool | None = Field(default=None, alias="hiddenIn3d")
+    # HS-03: bản vẽ của tầng này là mặt cắt. Đọc lại ở `FloorOut.isSection` (K-31) và `GET …/house-proposal`.
+    is_section: StrictBool | None = None
     drawings: JsonValue = None
     area_m2: JsonValue = None
 
     @field_validator(
-        "id", "name", "order", "elevation_mm", "height_mm", "hidden_in_3d", mode="before", check_fields=False
+        "id",
+        "name",
+        "order",
+        "elevation_mm",
+        "height_mm",
+        "hidden_in_3d",
+        "is_section",
+        mode="before",
+        check_fields=False,
     )
     @classmethod
     def _no_explicit_null(cls, value: Any) -> Any:

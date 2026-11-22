@@ -2135,6 +2135,18 @@
       "FloorIdField": {
         "type": "string"
       },
+      "FloorKind": {
+        "enum": [
+          "plan",
+          "section",
+          "elevation",
+          "roof",
+          "site",
+          "detail",
+          "other"
+        ],
+        "type": "string"
+      },
       "FloorLayerDocumentOut": {
         "additionalProperties": false,
         "description": "N16 — lớp của một tầng; `scaleStatus` vắng khi tỉ lệ do người đặt hay chưa có (W24).\n\n`readiness` luôn có (FIX-P0-10): \"lượt chạy xong\" chưa có nghĩa \"tầng dùng được\".",
@@ -2417,7 +2429,7 @@
       },
       "FloorOut": {
         "additionalProperties": false,
-        "description": "`FloorSchema` — chỉ khai ở đây, B2-03 là nơi dựng (cổng `project.floors`).\n\n`hiddenIn3d` (FE3D-B3) luôn có trên dây; mặc định `false` chỉ cho chỗ dựng tay (test, fake).",
+        "description": "`FloorSchema` — chỉ khai ở đây, B2-03 là nơi dựng (cổng `project.floors`).\n\n`hiddenIn3d` (FE3D-B3) luôn có trên dây; mặc định `false` chỉ cho chỗ dựng tay (test, fake).\n`isSection` (K-31, HS-03) chỉ có khi `true` (dòng là mặt cắt), vắng khi không (W2): FE cũ strict vẫn đọc được\nmọi tầng thường; FE phải khai khoá tuỳ chọn này trước khi BE lên `main`.",
         "properties": {
           "areaM2": {
             "anyOf": [
@@ -2453,6 +2465,17 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "isSection": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issection"
           },
           "name": {
             "title": "Name",
@@ -2525,6 +2548,17 @@
               }
             ]
           },
+          "isSection": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issection"
+          },
           "name": {
             "anyOf": [
               {
@@ -2547,6 +2581,139 @@
           }
         },
         "title": "FloorPatchIn",
+        "type": "object"
+      },
+      "FloorProposalOut": {
+        "additionalProperties": false,
+        "description": "Đề xuất cho một tầng; `storeyLabel`, cốt và chiều cao vắng khi máy không đề xuất.",
+        "properties": {
+          "elevationConfidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elevationconfidence"
+          },
+          "elevationMm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elevationmm"
+          },
+          "elevationSource": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LevelSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "floorId": {
+            "title": "Floorid",
+            "type": "string"
+          },
+          "heightConfidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heightconfidence"
+          },
+          "heightMm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heightmm"
+          },
+          "heightSource": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LevelSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "isSection": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issection"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FloorKind"
+          },
+          "kindConfidence": {
+            "title": "Kindconfidence",
+            "type": "number"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionOut"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "storeyConfidence": {
+            "title": "Storeyconfidence",
+            "type": "number"
+          },
+          "storeyLabel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoreyLabel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "storeyNo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storeyno"
+          }
+        },
+        "required": [
+          "floorId",
+          "kind",
+          "kindConfidence",
+          "storeyConfidence",
+          "questions"
+        ],
+        "title": "FloorProposalOut",
         "type": "object"
       },
       "FloorQualityOut": {
@@ -3365,6 +3532,37 @@
       "HeightField": {
         "type": "integer"
       },
+      "HouseProposalOut": {
+        "additionalProperties": false,
+        "description": "`GET …/house-proposal`: công tắc, các tầng theo thứ tự dự án và id lượt chạy đã cho chữ.\n\nCông tắc tắt → `{\"enabled\": false, \"floors\": [], \"runIds\": []}` (mẫu N47), không phải lỗi.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "floors": {
+            "items": {
+              "$ref": "#/components/schemas/FloorProposalOut"
+            },
+            "title": "Floors",
+            "type": "array"
+          },
+          "runIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Runids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "floors",
+          "runIds"
+        ],
+        "title": "HouseProposalOut",
+        "type": "object"
+      },
       "InitUploadBody": {
         "additionalProperties": false,
         "description": "Thân #5; `pageIndex` vắng = 0 (F-03), `mimeType` rỗng được nhận (magic bytes quyết ở #7).\n\n`crop` vắng/null = cả trang; có thì pipeline của tầng chỉ xử lý vùng đó (MULTI-FLOOR-01).",
@@ -3667,6 +3865,17 @@
         ],
         "title": "LevelOut",
         "type": "object"
+      },
+      "LevelSource": {
+        "enum": [
+          "plan",
+          "plan+section",
+          "section",
+          "dims",
+          "convention",
+          "default"
+        ],
+        "type": "string"
       },
       "LibraryGroup": {
         "enum": [
@@ -4867,6 +5076,13 @@
       "OrderField": {
         "type": "integer"
       },
+      "OrderReason": {
+        "enum": [
+          "title",
+          "level"
+        ],
+        "type": "string"
+      },
       "PageThumbnailsOut": {
         "additionalProperties": false,
         "description": "`{pages: [\"data:image/png;base64,…\", …]}`, phần tử thứ i là trang i (đếm từ 0).",
@@ -5770,6 +5986,53 @@
           "floors"
         ],
         "title": "QualityAssessmentOut",
+        "type": "object"
+      },
+      "QuestionCode": {
+        "enum": [
+          "STOREY_UNSURE",
+          "STOREY_CONFLICT",
+          "ORDER_TEXT_CONFLICT",
+          "LEVEL_MISSING",
+          "HEIGHT_ASSUMED",
+          "NOT_A_PLAN",
+          "NO_TEXT"
+        ],
+        "type": "string"
+      },
+      "QuestionOut": {
+        "additionalProperties": false,
+        "description": "Một câu hỏi cho người dùng: chỉ mã, FE viết câu tiếng Việt.\n\n`ORDER_TEXT_CONFLICT` kèm lý do: `reason` = tên hình (\"title\") hay cốt (\"level\") mâu thuẫn thứ tự tầng của\ndự án, và `textStoreyNo` = số tầng chữ ghi (khi đọc được). Các mã khác không có hai trường này (vắng, W2).",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/QuestionCode"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "textStoreyNo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Textstoreyno"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "QuestionOut",
         "type": "object"
       },
       "ReadinessOut": {
@@ -7339,6 +7602,18 @@
         ],
         "title": "SplitCountsOut",
         "type": "object"
+      },
+      "StoreyLabel": {
+        "enum": [
+          "ground",
+          "basement",
+          "mezzanine",
+          "tum",
+          "attic",
+          "roof_terrace",
+          "floor"
+        ],
+        "type": "string"
       },
       "StraightenIn": {
         "additionalProperties": false,
@@ -11558,6 +11833,49 @@
         "summary": "Spatial Write Layer",
         "tags": [
           "spatial"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/house-proposal": {
+      "get": {
+        "description": "Đề xuất cho cả nhà tính ngay lúc đọc; công tắc tắt → `enabled: false`, rỗng (service không được gọi).",
+        "operationId": "drawing_sets_read_house_proposal_api_projects__project_id__house_proposal_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HouseProposalOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawing Sets Read House Proposal",
+        "tags": [
+          "drawing_sets"
         ]
       }
     },

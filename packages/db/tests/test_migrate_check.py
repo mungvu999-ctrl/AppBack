@@ -1,6 +1,7 @@
 """`migrate_check` — bước 6 của verify (BE-00 §6.1). Chạy Postgres thật (K23)."""
 
 import ast
+import asyncio
 import os
 import shutil
 from collections.abc import Awaitable, Callable
@@ -11,7 +12,7 @@ import pytest
 from alembic import command
 from alembic.script import ScriptDirectory
 from sqlalchemy import Boolean, CheckConstraint, Column, Enum, Integer, MetaData, Table, Text, make_url, text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.schema import CreateTable
 from sqlalchemy.types import TypeEngine
 
@@ -19,6 +20,7 @@ from packages.core import pinned_images
 from packages.db import migrate_check
 from packages.db.base import NAMING_CONVENTION
 from packages.db.migrate_check import SCRIPT_LOCATION, alembic_config, run_checks
+from packages.db.settings import reset_database_settings_cache
 from packages.testing.fixtures import db as db_fixtures
 
 REVISION = '''\
@@ -327,3 +329,36 @@ async def test_run_checks__merge_revision_from_template_passes(migrations: Path,
     results = await run_checks(config, url, metadata=thing_metadata(), seed_runner=no_seed)
     assert failed_steps(results) == []
     assert len(results) == 10
+
+
+async def _execute(url: str, sql: str) -> list[Any]:
+    """Chạy một câu SQL trên `url` bằng kết nối riêng (ngoài Alembic), trả các dòng nếu có."""
+    engine = create_async_engine(url)
+    try:
+        async with engine.begin() as connection:
+            result = await connection.execute(text(sql))
+            return list(result) if result.returns_rows else []
+    finally:
+        await engine.dispose()
+
+
+def test_hs_03_upgrade_tolerates_column_added_by_hand(url: str) -> None:
+    """L4-N02: f14 đã có `floors.is_section` thêm bằng SQL tay; `r20261121_hs_03` chạy qua, không thêm lần hai,
+    và đường lùi/tiến bình thường vẫn chạy (cột bị bỏ rồi được thêm lại)."""
+    hs_03, parent = "r20261121_hs_03", "r20261103_bench3d_07"
+    config = alembic_config()
+    columns = (
+        "SELECT count(*) FROM information_schema.columns WHERE table_name = 'floors' AND column_name = 'is_section'"
+    )
+    reset_database_settings_cache()  # env.py đọc `DatabaseSettings` có cache; `url` vừa đặt `DATABASE_URL`
+    try:
+        command.upgrade(config, parent)
+        asyncio.run(_execute(url, "ALTER TABLE floors ADD COLUMN is_section boolean NOT NULL DEFAULT false"))
+        command.upgrade(config, hs_03)
+        assert asyncio.run(_execute(url, columns)) == [(1,)]
+        command.downgrade(config, parent)
+        assert asyncio.run(_execute(url, columns)) == [(0,)]
+        command.upgrade(config, hs_03)
+        assert asyncio.run(_execute(url, columns)) == [(1,)]
+    finally:
+        reset_database_settings_cache()

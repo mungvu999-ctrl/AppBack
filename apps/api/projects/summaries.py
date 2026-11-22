@@ -217,7 +217,7 @@ def _derive_status(
 
 
 async def project_rollups(db: AsyncSession, project_ids: Sequence[str]) -> dict[str, ProjectRollup]:
-    """Số gộp của từng dự án bằng **một** `GROUP BY` (bỏ dòng ẩn); dự án không có dòng → 0 tầng.
+    """Số gộp của từng dự án bằng **một** `GROUP BY` (bỏ dòng ẩn và mặt cắt); dự án không có dòng → 0 tầng.
 
     Lô rỗng trả `{}` **không** chạy câu nào: một trang danh sách rỗng không đáng một vòng DB
     cho `IN ()`.
@@ -258,7 +258,12 @@ async def project_rollups(db: AsyncSession, project_ids: Sequence[str]) -> dict[
             ),
         )
         .outerjoin(FloorDocumentRow, FloorDocumentRow.floor_pk == FloorRow.pk)
-        .where(summary.project_id.in_(list(project_ids)), summary.hidden.is_(False))
+        .where(
+            summary.project_id.in_(list(project_ids)),
+            summary.hidden.is_(False),
+            # L4-N03: mặt cắt (HS-03) không là tầng; `IS NOT true` giữ dòng không có `FloorRow` (outer join).
+            FloorRow.is_section.is_not(True),
+        )
         .group_by(summary.project_id)
     )
     rollups: dict[str, ProjectRollup] = {project_id: _EMPTY_ROLLUP for project_id in project_ids}

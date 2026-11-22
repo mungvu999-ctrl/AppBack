@@ -184,6 +184,38 @@ async def test_default_floor_id_prefers_unreviewed_then_order_then_id(
     assert rollup.default_floor_id == "L-a"
 
 
+async def test_section_row_leaves_the_rollup(
+    db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
+) -> None:
+    """L4-N03: dòng đánh dấu mặt cắt (`floors.is_section`) không là "tầng" ở tóm tắt dự án.
+
+    Nhà 1 tầng đã duyệt hết + 1 mặt cắt có "tường" chưa duyệt: đếm 1 tầng, không cộng diện tích
+    hay tường của mặt cắt, `defaultFloorId` không mở vào mặt cắt, dự án vẫn "đã duyệt".
+    """
+    project = await make_project(db_session, owner=await make_user(db_session))
+    await make_floor(db_session, project=project, level_id=FLOOR, order=1)
+    section = await make_floor(db_session, project=project, level_id=OTHER, order=0)
+    section.is_section = True
+    counts = [(FLOOR, 4, 4, Decimal("20.00")), (OTHER, 3, 0, Decimal("7.50"))]
+    for level_id, total, reviewed, area in counts:
+        await set_layer_counts(
+            db_session,
+            project_id=project.id,
+            floor_level_id=level_id,
+            walls_total=total,
+            walls_reviewed=reviewed,
+            area_m2=area,
+        )
+        await set_upload_state(
+            db_session, project_id=project.id, floor_level_id=level_id, has_upload=True, pipeline_state="completed"
+        )
+    await db_session.commit()
+    rollup = await _rollup(db_sessionmaker, project.id)
+    totals = (rollup.floor_count, rollup.area_m2, rollup.walls_total, rollup.walls_reviewed)
+    assert totals == (1, Decimal("20.00"), 4, 4)
+    assert (rollup.default_floor_id, rollup.status, rollup.legacy_status) == (FLOOR, "done", "approved")
+
+
 async def test_rollups_of_thirty_projects_run_one_query(
     db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:

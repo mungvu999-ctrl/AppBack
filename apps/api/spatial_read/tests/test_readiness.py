@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 
 import pytest
+from pydantic import ValidationError
 
 from apps.api.spatial_read.assemble import effective_scale_source
 from apps.api.spatial_read.documents import ScaleSource, empty_document
@@ -110,6 +111,65 @@ def test_readiness_of_table(
     """Mỗi lý do bật/tắt đúng luật; thứ tự lý do cố định; `level_reviewed` chỉ tắt lý do cấp lượt."""
     out = readiness_of(run=run, scale_source=scale_source, layer=layer)
     assert (out.state, out.reasons) == (state, reasons)
+
+
+def _pinned(name: str, family: ModelFamily) -> dict[str, object]:
+    """Ref dạng ghim (`pinned_name`) của một họ, dạng JSONB như `pin_models` ghi."""
+    return ModelRef(
+        version_id=new_id("mdl", SystemClock()),
+        family=family,
+        weights_key=None,
+        pinned_name=name,
+        checksum_sha256="b" * 64,
+    ).model_dump(mode="json")
+
+
+def _with_pin(family: ModelFamily, ref: object) -> RunFacts:
+    """Lượt sạch, mọi họ ghim bản storage, riêng `family` thay bằng `ref`."""
+    base = _run()
+    return RunFacts(pinned={**base.pinned, family: ref}, quality_summary=CLEAN)
+
+
+@pytest.mark.parametrize(
+    ("family", "ref", "reasons"),
+    [
+        pytest.param(
+            "openingAndFurnitureDetection",
+            _pinned("yolov8n", "openingAndFurnitureDetection"),
+            ("fallbackObjectModel",),
+            id="detection-yolov8n",
+        ),
+        pytest.param(
+            "openingAndFurnitureDetection",
+            _pinned("yolov8s", "openingAndFurnitureDetection"),
+            ("fallbackObjectModel",),
+            id="detection-yolov8s",
+        ),
+        pytest.param(
+            "openingAndFurnitureDetection", _stored("openingAndFurnitureDetection"), (), id="detection-weights-key"
+        ),
+        pytest.param("dimensionReading", _pinned("rapidocrRec", "dimensionReading"), (), id="other-family-pinned"),
+    ],
+)
+def test_readiness_of_coco_pinned_is_fallback(family: ModelFamily, ref: object, reasons: tuple[str, ...]) -> None:
+    """L2-N01: detector COCO gốc ghim (không thấy ô mở) báo `fallbackObjectModel`; ref storage và họ khác thì không."""
+    out = readiness_of(run=_with_pin(family, ref), scale_source="human", layer=UNREVIEWED)
+    assert out.reasons == reasons
+    assert out.state == ("needsReview" if reasons else "ready")
+
+
+def test_readiness_of_coco_pinned_silenced_when_reviewed() -> None:
+    """Tầng đã kiểm (`level_reviewed`) tắt lý do dự phòng, kể cả với detector COCO ghim."""
+    run = _with_pin("openingAndFurnitureDetection", _pinned("yolov8n", "openingAndFurnitureDetection"))
+    assert readiness_of(run=run, scale_source="human", layer=REVIEWED).reasons == ()
+
+
+def test_readiness_of_malformed_pin_still_raises() -> None:
+    """Dữ liệu `pinned` hỏng dạng vẫn nổ `ValidationError` như trước (không im lặng thành "ready")."""
+    with pytest.raises(ValidationError):
+        readiness_of(
+            run=_with_pin("openingAndFurnitureDetection", {"pinnedName": 7}), scale_source="human", layer=UNREVIEWED
+        )
 
 
 def test_readiness_of_human_scale_demoted_on_other_page() -> None:

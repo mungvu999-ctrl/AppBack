@@ -43,6 +43,9 @@ COCO_TO_LABEL: Final[Mapping[str, DetectionLabel]] = MappingProxyType(
 )
 """Tên lớp COCO của `yolov8n` gốc → nhãn; lớp COCO khác bị bỏ."""
 
+OPENING_BLIND_PINNED: Final = frozenset({"yolov8n", "yolov8s"})
+"""Tên model ghim (`ModelRef.pinned_name`) là detector COCO gốc: không có lớp cửa/cửa sổ nên không thấy ô mở."""
+
 
 @dataclass(frozen=True, slots=True)
 class LabelTarget:

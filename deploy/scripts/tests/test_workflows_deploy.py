@@ -188,6 +188,38 @@ def test_restore_drill_yml_builds_then_runs_drill() -> None:
     assert any("deploy/scripts/drill.sh" in r for r in runs)
 
 
+_WEB_BUILD_RE = re.compile(r"job\.sh build|web-context\.sh")
+_APPFRONT_REPOSITORY = "mungvu999-ctrl/AppFront"
+
+
+def test_every_workflow_building_web_checks_out_appfront() -> None:
+    """K-38: job nào dựng ảnh web (`job.sh build` hoặc `web-context.sh`) phải có `env.APPFRONT_REPO` và một bước
+    checkout `mungvu999-ctrl/AppFront` vào đúng `path` đó — thiếu thì `web-context.sh` rơi về `<cha>/AppFront` không
+    tồn tại trên runner (restore-drill hỏng 8/8 lượt)."""
+    seen = 0
+    for path in sorted((REPO_ROOT / ".github" / "workflows").glob("*.yml")):
+        doc = _load_yaml(path)
+        for job_name, job in (doc.get("jobs") or {}).items():
+            if not any(_WEB_BUILD_RE.search(r) for r in _walk_key(job, "run")):
+                continue
+            seen += 1
+            where = f"{path.name}:{job_name}"
+            env = {**(doc.get("env") or {}), **(job.get("env") or {})}
+            appfront_repo = env.get("APPFRONT_REPO")
+            assert appfront_repo, f"{where}: dựng ảnh web nhưng thiếu env.APPFRONT_REPO"
+            checkout_paths = [
+                step.get("with", {}).get("path")
+                for step in job.get("steps", [])
+                if str(step.get("uses", "")).startswith("actions/checkout@")
+                and step.get("with", {}).get("repository") == _APPFRONT_REPOSITORY
+            ]
+            assert checkout_paths, f"{where}: thiếu bước checkout {_APPFRONT_REPOSITORY}"
+            assert any(p and appfront_repo.rstrip("/").endswith(f"/{p}") for p in checkout_paths), (
+                f"{where}: path checkout {checkout_paths} không khớp APPFRONT_REPO={appfront_repo}"
+            )
+    assert seen >= 3, "không thấy đủ job dựng ảnh web (ci, deploy, restore-drill) — regex trôi?"
+
+
 # ---------------------------------------------------------------------------
 # Đoạn bash kiểm tag của rollback — trích thẳng từ YAML, chạy thật (không chép regex)
 # ---------------------------------------------------------------------------

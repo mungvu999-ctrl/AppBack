@@ -89,7 +89,7 @@ Environment.
 | `PRODUCTION_SSH_KEY` | khoá riêng cho production (khuyến nghị khác staging) | job `production` |
 | `PRODUCTION_HOST` | host hoặc IP VPS production | " |
 | `PRODUCTION_KNOWN_HOSTS` | `known_hosts` của host production | " |
-| `ALERT_WEBHOOK_URL` | URL webhook cảnh báo — mục 4; đặt ở **Environment `alerts`** (không phải secret repo) | `notify.yml` (`environment: alerts`), `healthcheck.sh` |
+| `ALERT_WEBHOOK_URL` | URL webhook cảnh báo — mục 4; đặt ở **Environment `alerts`** (không phải secret repo) | `notify.yml` (`environment: alerts`), `alert.sh`, `healthcheck.sh` |
 | `BACKUP_TARGET` | đường đích sao lưu (cục bộ hoặc điểm gắn đã đồng bộ ra xa) | `backup.sh` trên VPS |
 | `BACKUP_AGE_RECIPIENT` | khoá công khai `age` — mục 6 | `backup.sh` trên VPS |
 
@@ -122,6 +122,24 @@ curl --fail --max-time 10 -H 'Content-Type: application/json' \
   -d '{"text":"thử ALERT_WEBHOOK_URL","content":"thử ALERT_WEBHOOK_URL"}' \
   "$ALERT_WEBHOOK_URL"
 ```
+
+**Đặt secret (người, một lần):** `gh secret set ALERT_WEBHOOK_URL --env alerts` rồi dán URL từ bàn phím (không đưa
+vào chat/log); khi có VPS thêm dòng `ALERT_WEBHOOK_URL=…` vào `/etc/appback/appback.env`.
+
+**Gửi tin thử bằng chính mã của repo (L5-N03):**
+```bash
+gh workflow run notify.yml -f message="thử cảnh báo"   # từ GitHub Actions: tin tới kênh trong <= 60 giây
+deploy/scripts/healthcheck.sh --test-alert              # trên VPS, sau khi nạp appback.env
+deploy/scripts/alert.sh --test-alert                    # cùng hàm `alert()`
+```
+Cả hai cờ thoát 0; webhook hỏng chỉ in cảnh báo ra stderr. `alert()` nằm ở `deploy/scripts/alert.sh`;
+`healthcheck.sh` (và các script sau này) `source` nó.
+
+**Kênh dự phòng khi webhook rỗng hoặc POST hỏng:** `notify.yml` không im lặng — nó in `::warning::` (lượt hiện màu
+cảnh báo) và mở một **issue nhãn `alert`** bằng `GITHUB_TOKEN` (quyền `issues: write` chỉ ở mức job; workflow-level
+vẫn `{}`). Lần hỏng sau của cùng workflow được **bình luận vào issue đang mở** (tiêu đề `Cảnh báo: <tên workflow>`),
+không tạo issue mới; chủ repo nhận email của GitHub. Thử: tạm xoá secret rồi
+`gh workflow run notify.yml -f message=thu` → có issue `Cảnh báo: Notify (tin thử)`. Đóng issue khi đã xử lý xong.
 
 ## 5. GitHub Environment `staging`, `production`
 
@@ -209,7 +227,8 @@ sudo systemctl enable --now appback-backup.timer appback-health.timer
 
 - `appback-backup.timer`: chạy `backup.sh` 02:30 hằng ngày (giờ hệ thống VPS).
 - `appback-health.timer`: chạy `healthcheck.sh` mỗi 5 phút — `/api/ready`
-  hỏng hai lần liên tiếp hoặc đĩa > 85% → POST `ALERT_WEBHOOK_URL`.
+  hỏng hai lần liên tiếp hoặc đĩa > 85% → POST `ALERT_WEBHOOK_URL`. `healthcheck.sh --test-alert` gửi
+  một tin thử (xem §4).
 - Bản sao lưu tạo trước khi `backup.sh` chạy bằng `deploy` (umask 077, `mc --user`) có thể còn
   thư mục `objects/**` thuộc root, làm xoay vòng hỏng EPERM: một lần khi nâng cấp,
   `sudo chown -R deploy: "$BACKUP_TARGET"`.

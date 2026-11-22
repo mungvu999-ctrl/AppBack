@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from deploy.scripts.tests.support import REPO_ROOT, HttpStub, Reply, fake_bin, run_script
+from deploy.scripts.tests.support import REPO_ROOT, HttpStub, Reply, fake_bin, read_log, run_script
 
 SCRIPT = REPO_ROOT / "deploy" / "scripts" / "healthcheck.sh"
+ALERT_SH = REPO_ROOT / "deploy" / "scripts" / "alert.sh"
 
 
 def _fake_df(pct: int, bin_dir: Path) -> Path:
@@ -112,3 +114,66 @@ def test_healthcheck_without_webhook_url_no_post_but_warns(tmp_path: Path) -> No
         assert result.returncode == 0, result.stderr
         assert "cảnh báo" in result.stderr
         assert stub.posts == []
+
+
+def test_healthcheck_test_alert_posts_exactly_one_message_and_exits_0(tmp_path: Path) -> None:
+    """L5-N03: `--test-alert` gọi curl đúng một lần (POST tin thử tới webhook), thoát 0, không đụng bộ đếm lỗi."""
+    log = tmp_path / "fake.log"
+    bin_dir = fake_bin(tmp_path / "bin", {"curl": "exit 0"})
+    result = run_script(
+        SCRIPT,
+        ["--test-alert"],
+        env={
+            "FAKE_LOG": str(log),
+            "APPBACK_STATE_DIR": str(tmp_path / "state"),
+            "ALERT_WEBHOOK_URL": "http://webhook.invalid/hook",
+        },
+        bin_dir=bin_dir,
+    )
+    assert result.returncode == 0, result.stderr
+    curls = [line for line in read_log(log) if line.startswith("curl ")]
+    assert len(curls) == 1, curls
+    assert "http://webhook.invalid/hook" in curls[0]
+    assert "tin thử" in curls[0]
+    assert not (tmp_path / "state" / "health-failures").exists()
+
+
+def test_healthcheck_test_alert_real_post_has_text_equal_content(tmp_path: Path) -> None:
+    """`--test-alert` POST thật vào HttpStub: JSON một dòng, `text` = `content`."""
+    with HttpStub() as stub:
+        result = run_script(
+            SCRIPT,
+            ["--test-alert"],
+            env={"APPBACK_STATE_DIR": str(tmp_path / "state"), "ALERT_WEBHOOK_URL": f"{stub.url}/hook"},
+        )
+        assert result.returncode == 0, result.stderr
+        assert len(stub.posts) == 1
+        payload = json.loads(stub.posts[0][1].decode("utf-8"))
+    assert payload["text"] == payload["content"]
+    assert "tin thử" in payload["text"]
+
+
+def test_alert_sh_test_alert_flag_and_usage(tmp_path: Path) -> None:
+    """`alert.sh --test-alert` gửi một tin rồi thoát 0; không đối số hoặc đối số lạ → thoát 2 và không POST."""
+    with HttpStub() as stub:
+        env = {"ALERT_WEBHOOK_URL": f"{stub.url}/hook"}
+        ok = run_script(ALERT_SH, ["--test-alert"], env=env)
+        bad = run_script(ALERT_SH, [], env=env)
+        assert ok.returncode == 0, ok.stderr
+        assert bad.returncode == 2
+        assert len(stub.posts) == 1
+
+
+def test_alert_sh_without_webhook_only_warns_on_stderr(tmp_path: Path) -> None:
+    """Không có `ALERT_WEBHOOK_URL`: `--test-alert` chỉ in cảnh báo ra stderr, thoát 0."""
+    result = run_script(ALERT_SH, ["--test-alert"], env={"ALERT_WEBHOOK_URL": ""})
+    assert result.returncode == 0, result.stderr
+    assert "cảnh báo" in result.stderr
+
+
+def test_healthcheck_sources_alert_sh_instead_of_defining_alert() -> None:
+    """L5-N03: `alert()` chỉ định nghĩa ở `alert.sh`; `healthcheck.sh` `source` nó (K-37, K-39 dùng lại)."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "alert.sh" in text
+    assert "\nalert() {" not in text
+    assert "\nalert() {" in ALERT_SH.read_text(encoding="utf-8")

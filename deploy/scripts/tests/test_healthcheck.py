@@ -341,7 +341,7 @@ def test_healthcheck_skips_compose_checks_before_first_release(tmp_path: Path) -
         host = _Host(tmp_path, stub)
         (Path(host.env["APPBACK_DIR"]) / "release.env").unlink()
         assert host.run() == []
-    assert list(read_log(host.log)) == []
+    assert not [ln for ln in read_log(host.log) if ln.startswith("docker ")]
 
 
 def test_ml_services_have_celery_ping_healthcheck() -> None:

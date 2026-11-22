@@ -76,6 +76,9 @@ gh api repos/mungvu999-ctrl/AppBack/rulesets --jq '.[] | select(.target=="tag")'
   với tiêu đề mới, không cần đẩy commit rỗng hay bấm re-run (mặc định
   `pull_request` không có `edited` sẽ giữ payload cũ). `ci.yml` không có
   `edited` (NO-182): check `skipped` trùng tên sẽ thoả required check.
+- Nhóm Dependabot đặt tên ngắn (`uv`, `actions`, `docker`) để tiêu đề PR nhóm còn ≤ 72 ký tự
+  (L8-N02; `test_github_config.py` kiểm công thức). PR **đơn lẻ** của gói tên dài (vd
+  `opentelemetry-exporter-otlp-proto-grpc`) vẫn có thể vượt 72: sửa tiêu đề PR trước khi squash.
 
 **Kiểm:**
 

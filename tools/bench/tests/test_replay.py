@@ -133,10 +133,13 @@ def test_finish_not_replayed_copies_original(tmp_path: Path) -> None:
 class FakeProc:
     """Tiến trình docker giả: phát vài dòng và ghi `replay.json` cho các ca vào thư mục ra."""
 
-    def __init__(self, cmd: list[str], skip: set[str]) -> None:
-        """Lấy thư mục ra và ca từ lệnh (đối số sau /inner.py và nguồn mount /out)."""
-        out = next(a for a in cmd if a.endswith(":/out")).rsplit(":/out", 1)[0]
-        cases = cmd[cmd.index("/inner.py") + 1 :]
+    def __init__(self, cmd: list[str], skip: set[str], env: dict[str, str] | None = None) -> None:
+        """Lấy thư mục ra và ca từ lệnh (docker: sau /inner.py, nguồn mount /out; cục bộ: `BENCH_REPLAY_OUT`)."""
+        if env:
+            out, cases = env["BENCH_REPLAY_OUT"], cmd[2:]
+        else:
+            out = next(a for a in cmd if a.endswith(":/out")).rsplit(":/out", 1)[0]
+            cases = cmd[cmd.index("/inner.py") + 1 :]
         for c in cases:
             if c not in skip:
                 wjson(Path(out) / c / "replay.json", {"replayed": False})
@@ -164,10 +167,12 @@ def test_main_splits_cases_over_jobs(
     monkeypatch.delenv("BENCH_RUN_F", raising=False)
     monkeypatch.delenv("BENCH_ROOT_F", raising=False)
     cmds: list[list[str]] = []
+    envs: list[dict[str, str] | None] = []
 
-    def fake_run(cmd: list[str]) -> FakeProc:
+    def fake_run(cmd: list[str], extra_env: dict[str, str] | None = None, cwd: Path | None = None) -> FakeProc:
         cmds.append(cmd)
-        return FakeProc(cmd, skip={"a3"})
+        envs.append(extra_env)
+        return FakeProc(cmd, skip={"a3"}, env=extra_env)
 
     monkeypatch.setattr(replay, "run_container", fake_run)
     wt = tmp_path / "wt"
@@ -184,6 +189,22 @@ def test_main_splits_cases_over_jobs(
     assert replay.main([str(wt), str(tmp_path / "rb"), "--set", "bench", "--cases", "a2"]) == 0
     assert len(cmds) == 1
     assert (tmp_path / "rb" / "a2" / "meta.json").exists()
+    # --local: inner.py chạy bằng Python hiện tại, cache/out qua biến môi trường (CI không có docker image)
+    cmds.clear()
+    envs.clear()
+    assert replay.main([str(wt), str(tmp_path / "rc"), "--set", "F", "--local"]) == 0
+    assert cmds[0][:2] == [sys.executable, str(replay.INNER)]
+    assert envs[0] is not None
+    assert envs[0]["BENCH_REPLAY_OUT"] == str((tmp_path / "rc").resolve())
+    assert (tmp_path / "rc" / "f1" / "meta.json").exists()
+
+
+def test_local_command_points_inner_at_dirs() -> None:
+    """`local_command`: PYTHONPATH là worktree, cache/out qua `BENCH_REPLAY_*`, các ca nối sau `inner.py`."""
+    cmd, env = replay.local_command(Path("/w"), Path("/c"), Path("/o"), ["x"])
+    assert cmd == [sys.executable, str(replay.INNER), "x"]
+    assert env["PYTHONPATH"] == str(Path("/w"))
+    assert (env["BENCH_REPLAY_CACHE"], env["BENCH_REPLAY_OUT"]) == (str(Path("/c")), str(Path("/o")))
 
 
 # ---------------------------------------------------------------- check

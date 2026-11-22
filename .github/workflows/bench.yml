@@ -1,0 +1,51 @@
+name: Bench
+
+# K-17b: cổng chống tụt độ đúng — replay phần SAU ML (dựng + trộn + quality + readiness) của PR trên `ml-cache`
+# cố định, chấm bằng thước `tools/bench`, so `tools/bench/baseline/main.json` (đỏ khi một tập tụt > 2 ca ĐẠT hoặc
+# tăng lỗi im lặng). Không cần GPU/mô hình. Tệp riêng (không nằm trong `ci.yml`) để không đụng tám job cổng.
+#
+# Dữ liệu (ảnh bản vẽ, đáp án, `ml-cache`, lượt gốc) ở NGOÀI repo (Q8 a) và chưa có kho riêng để runner tải (NO-468):
+# công tắc biến repo `BENCH_GATE` = off | auto (mặc định: thiếu dữ liệu → bỏ qua, xanh) | required (thiếu → đỏ).
+# Khi có kho: thêm bước tải vào `$BENCH_ROOT` trước bước cổng, rồi đặt `BENCH_GATE=required`. Chưa phải check bắt buộc.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/worker/pipeline_*/**"
+      - "apps/api/spatial_read/**"
+      - "apps/ml/**"
+      - "packages/vision/**"
+      - "packages/domain/spatial/**"
+      - "packages/ml_contracts/**"
+      - "tools/bench/**"
+      - ".github/workflows/bench.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  UV_COMPILE_BYTECODE: "1"
+
+jobs:
+  bench-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BENCH_GATE: ${{ vars.BENCH_GATE || 'auto' }}
+      BENCH_ROOT: ${{ runner.temp }}/bench-data
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false # job chỉ đọc, không push
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.12.12"
+          cache-dependency-glob: "uv.lock"
+      - run: uv sync --locked --all-packages
+      # Chỗ bước tải dữ liệu bench vào "$BENCH_ROOT" (chờ kho riêng, NO-468).
+      - run: uv run --no-sync python -X utf8 -m tools.bench.gate ci . "$RUNNER_TEMP/bench-out" --local --jobs 4

@@ -328,7 +328,8 @@ def test_lib_env_files_and_defaults_follow_release_layout(tmp_path: Path) -> Non
     env = appback_dir(tmp_path / "b", running=OLD, env_lines="COMPOSE_PROFILES=ml\n")
     root = env["APPBACK_DIR"]
     got = _lib(show, {**env, "COMPOSE_PROFILES": "minio"})
-    assert got == f"{root}/appback.env,{root}/release.env|{root}/current/deploy/compose/prod.yml|ghcr.io/mungvu999-ctrl|http://127.0.0.1|minio"
+    files = f"{root}/appback.env,{root}/release.env"
+    assert got == f"{files}|{root}/current/deploy/compose/prod.yml|ghcr.io/mungvu999-ctrl|http://127.0.0.1|minio"
 
 
 def test_lib_caller_env_files_disable_env_management(tmp_path: Path) -> None:

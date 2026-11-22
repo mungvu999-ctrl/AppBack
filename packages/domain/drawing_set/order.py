@@ -4,7 +4,8 @@ Dọc thứ tự dự án số tầng tăng dần; lửng là sàn riêng không
 Số đọc từ chữ `n` hợp thứ tự khi `n - s` không giảm dọc dãy ("TẦNG 2" rồi "TẦNG 4" vẫn hợp); giữ tập nặng
 nhất (tổng độ tin) các số như vậy làm neo. Sàn còn lại đếm từ neo gần nhất phía dưới (không có thì phía trên;
 không neo nào thì sàn đầu là tầng 1). Chữ mâu thuẫn thứ tự (số bị loại, hầm nằm trên trệt, tum/sân thượng nằm
-dưới một tầng thường, cốt riêng lệch thứ tự quá 0,25 m): GIỮ thứ tự, độ tin tầng <= 0,65, trả `OrderConflict`.
+dưới một tầng thường, cốt riêng lệch thứ tự quá 0,25 m, số không thể đúng — lớn hơn số sàn + 1 hay nhảy so với
+neo kề quá số sàn giữa chúng + 1): GIỮ thứ tự, độ tin tầng <= 0,65, trả `OrderConflict`.
 
 Độ tin (luật hai nguồn): số từ chữ được một neo kề xác nhận đúng khoảng cách trong thứ tự (cùng `n - s`) là
 hai nguồn độc lập cùng ý -> 0,95 (chỉ khi số đọc từ tên hình; số chỉ suy từ cốt tối đa 0,8); số chỉ suy từ thứ
@@ -15,6 +16,7 @@ hoặc không có neo.
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from itertools import pairwise
+from statistics import median
 from typing import Final, Literal
 
 from packages.domain.drawing_set.storeys import StoreyChoice, StoreyLabel
@@ -91,6 +93,28 @@ def _anchors(slots: Sequence[Slot], pos: dict[str, int]) -> dict[str, _Anchor]:
         if slot.view_id in pos and (n := _text_number(slot.choice)) is not None
     ]
     return {texts[i][3]: (texts[i][0], texts[i][1]) for i in _kept([t[:3] for t in texts])}
+
+
+def _implausible_titles(kept: dict[str, _Anchor], floor_count: int) -> set[str]:
+    """Mã các neo có số tầng không thể đúng với dự án: số > số sàn + 1, hoặc bước nhảy so với neo kề lớn hơn số
+    sàn giữa chúng + 1 (bỏ một số như "TẦNG 2" rồi "TẦNG 4" vẫn hợp; lửng đã không chiếm vị trí).
+
+    Vì sao: tên hình và thứ tự cùng đến từ MỘT lần OCR, nên một chữ số đọc sai ("TẦNG 8" ngay trên "TẦNG 1",
+    không có cốt phản bác) vẫn qua `_kept` và các sàn sau đếm theo nó im lặng (K-30b). Trong cặp nhảy bất thường,
+    neo có `n - s` xa trung vị hơn bị loại; ngang nhau thì loại cả hai (hỏi thừa còn hơn sai im lặng). Không bắt
+    được số sai mà vẫn hợp lý (2↔3 đúng chỗ trống) — giới hạn đã biết, đường nâng cấp là mã câu hỏi riêng (K-31).
+    """
+    out = {vid for vid, (_, n) in kept.items() if n > floor_count + 1}
+    rest = sorted((a, vid) for vid, a in kept.items() if vid not in out)
+    if not rest:
+        return out
+    mid = median(a[1] - a[0] for a, _ in rest)
+    for (a, low), (b, high) in pairwise(rest):
+        if b[1] - a[1] <= b[0] - a[0] + 1:
+            continue
+        off_low, off_high = abs(a[1] - a[0] - mid), abs(b[1] - b[0] - mid)
+        out |= {low} if off_low > off_high else {high} if off_high > off_low else {low, high}
+    return out
 
 
 def _label(choice: StoreyChoice, number: int) -> StoreyLabel:
@@ -185,6 +209,8 @@ def follow_order(slots: Sequence[Slot]) -> tuple[dict[str, StoreyChoice], dict[s
         if slot.choice is None or slot.choice.label != "mezzanine":
             pos[slot.view_id] = len(pos)
     kept = _anchors(slots, pos)
+    for vid in _implausible_titles(kept, len(pos)):
+        del kept[vid]  # sàn đó điền theo thứ tự và hỏi `OrderConflict` như số bị `_kept` loại
     anchors = sorted(kept.values())
     exact = {x for a, b in pairwise(anchors) if b[1] - a[1] == b[0] - a[0] for x in (a, b)}
     plain = [pos[s.view_id] for s in slots if s.view_id in pos and s.choice and s.choice.label not in _ROOFISH]

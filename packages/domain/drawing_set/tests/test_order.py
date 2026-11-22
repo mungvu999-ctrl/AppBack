@@ -85,3 +85,48 @@ def test_level_only_numbers_never_reach_both_sources() -> None:
     out, conflicts = follow_order(slots)
     assert conflicts == {}
     assert [out[k].confidence for k in "abc"] == [0.8, 0.8, 0.8]
+
+
+def _house(*choices: StoreyChoice | None, size: int) -> tuple[dict[str, StoreyChoice], dict[str, OrderConflict]]:
+    """`choices` ở các sàn đầu, phần còn lại tới `size` sàn là hình không đọc được tên (vẫn chiếm chỗ)."""
+    rest = [_c(None, None, 0.0)] * (size - len(choices))
+    return follow_order([Slot(f"v{i}", c) for i, c in enumerate([*choices, *rest])])
+
+
+def test_misread_digit_above_ground_is_asked_not_kept() -> None:
+    """K-30b: "TẦNG 8" ngay trên "TẦNG 1" ở nhà 5 sàn, không cốt phản bác -> không làm neo, hỏi, sàn sau đếm từ 1."""
+    out, conflicts = _house(_c("ground", 1, 0.95), _c("floor", 8, 0.95), size=5)
+    assert conflicts == {"v1": OrderConflict("title", 8)}
+    assert [out[f"v{i}"].number for i in range(5)] == [1, 2, 3, 4, 5]
+    assert out["v1"].confidence <= 0.65
+    assert max(out[f"v{i}"].confidence for i in range(2, 5)) < 0.9
+
+
+def test_plausible_numbers_keep_both_sources() -> None:
+    """Số đúng chỗ (bỏ trống một sàn giữa) và nhà có lửng không bị gắn cờ."""
+    out, conflicts = _house(_c("ground", 1), _c(None, None, 0.0), _c("floor", 3), size=5)
+    assert conflicts == {}
+    assert (out["v0"].confidence, out["v2"].confidence) == (0.95, 0.95)
+    mezzanine = StoreyChoice("mezzanine", None, 0.85, ("text",), None, ())
+    numbers, conflicts = _numbers(_c("ground", 1), mezzanine, _c("floor", 2), _c("floor", 3))
+    assert (numbers, conflicts) == ([1, None, 2, 3], {})
+
+
+def test_number_above_floor_count_is_asked() -> None:
+    """Số lớn hơn số sàn + 1 không thể đúng, kể cả khi là neo duy nhất; số chỉ suy từ cốt hỏi theo cốt."""
+    numbers, conflicts = _numbers(_c("floor", 9), _c(None, None, 0.0), _c(None, None, 0.0))
+    assert (numbers, conflicts) == ([1, 2, 3], {"v0": OrderConflict("title", 9)})
+    level_only = StoreyChoice("floor", 7, 0.85, ("level",), None, ())
+    assert _numbers(_c("ground", 1), level_only)[1] == {"v1": OrderConflict("level", 7)}
+
+
+def test_jump_drops_the_anchor_off_the_median() -> None:
+    """Cặp neo nhảy bất thường: loại neo xa trung vị `n - s`; ngang nhau thì hỏi cả hai."""
+    _, conflicts = _house(_c("ground", 1), _c("floor", 2), _c("floor", 3), _c("floor", 9), size=12)
+    assert conflicts == {"v3": OrderConflict("title", 9)}
+    out, conflicts = _house(_c("ground", 1), _c("floor", 8), _c("floor", 9), _c("floor", 10), size=12)
+    assert conflicts == {"v0": OrderConflict("title", 1)}
+    assert out["v0"].number == 7
+    out, conflicts = _house(_c("ground", 1), _c("floor", 8), size=12)
+    assert conflicts == {"v0": OrderConflict("title", 1), "v1": OrderConflict("title", 8)}
+    assert [out[f"v{i}"].number for i in range(3)] == [1, 2, 3]

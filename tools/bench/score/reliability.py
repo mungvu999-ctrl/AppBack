@@ -32,8 +32,17 @@ def _broken(case: Case) -> bool:
     bad = [x for x in case.ops if x["wallId"] not in wall_ids]
     bad += [x for x in case.walls for i in x.get("openingIds", []) if i not in op_ids]
     bad += [r for r in case.rooms if any(i not in wall_ids for i in r.get("wallIds", []))]
+    return bool(bad) or has_nonfinite(case)
+
+
+def has_nonfinite(case: Case) -> bool:
+    """Có số NaN/vô cực trong toạ độ tường, bề dày, ô mở hay đường bao phòng (R2 = T).
+
+    Lượt có số như vậy không chấm hình học được (lưới vỏ W1, chồng lấn P7 sập), nên `score_case` dừng sớm (NO-467).
+    """
     nums = [v for w in case.wsegs for v in w] + [v for r in case.rooms for p in r["outline"] for v in (p["x"], p["y"])]
-    return bool(bad) or any(not math.isfinite(v) for v in nums)
+    nums += [w["thicknessMm"] for w in case.walls] + [v for o in case.ops for v in (o["offsetMm"], o["widthMm"])]
+    return any(not math.isfinite(v) for v in nums)
 
 
 def _wall_length(walls: list[Json]) -> float:

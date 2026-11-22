@@ -82,7 +82,8 @@ def render_markdown(name: str, res: list[Json]) -> list[str]:
     wrong = [r["id"] for r in res if (r["info"].get("right_reason") is False) and not r["silent"]]
     lines += [
         "",
-        f"**Lỗi im lặng: {sum(r['silent'] for r in res)}** (ngưỡng 0). "
+        f"**Lỗi im lặng: {sum(r['silent'] for r in res)}** (ngưỡng 0; TRƯỢT mà readiness `ready`, K-11 — luật cũ: "
+        f"{sum(r['silent_old'] for r in res)}). "
         "M1–M5 soát tay trên <id>/3d.png, 3d-top.png; R3 xem tay.",  # noqa: RUF001
         "Ca hành vi trượt có báo nhưng sai lý do (không phải MULTIPLE_PLANS / không phải mặt bằng): "
         f"{', '.join(wrong) or 'không'}.",

@@ -8,10 +8,10 @@ from tools.bench.score.case import Case, build_case
 from tools.bench.score.io import Bench, Json
 from tools.bench.score.openings import OpeningFacts, opening_marks
 from tools.bench.score.probe import FurnitureFacts, furniture_marks, probe_mark, usability_marks
-from tools.bench.score.reliability import behaviour_marks, reliability_marks
+from tools.bench.score.reliability import behaviour_marks, has_nonfinite, reliability_marks
 from tools.bench.score.rooms import RoomFacts, room_marks
 from tools.bench.score.scale import scale_marks
-from tools.bench.score.verdict import behaviour_verdict, is_silent, verdict_of
+from tools.bench.score.verdict import behaviour_verdict, is_silent, is_silent_old, verdict_of
 from tools.bench.score.walls import WallFacts, truth_marks, wall_marks
 
 
@@ -20,11 +20,29 @@ def _behaviour_case(case: Case, c: dict[str, str]) -> Json:
     beh, right, n = behaviour_marks(case, c)
     verdict, silent = behaviour_verdict(case, c, right)
     return {
-        "id": case.cid, "group": case.group, "c": c, "verdict": verdict, "silent": silent,
+        "id": case.cid, "group": case.group, "c": c, "verdict": verdict, "silent": silent, "silent_old": silent,
         "info": {
             **n, "findings": [f["code"] for f in case.findings], "readiness": case.ready, "behaviour": beh,
             "right_reason": right if verdict == "TRƯỢT" else None,
         },
+    }  # fmt: skip
+
+
+def _nonfinite_case(case: Case, c: dict[str, str], t: Any) -> Json:
+    """Kết quả ca có số không hữu hạn: chỉ R1-R3 (R2 = T nên TRƯỢT), không chấm hình học (NO-467)."""
+    verdict = verdict_of(list(c.values()))
+    info = {
+        "status": case.status, "process_s": t, "nonfinite": True, "findings": [f["code"] for f in case.findings],
+        "readiness": case.ready,
+    }  # fmt: skip
+    return _result(case, c, verdict, info)
+
+
+def _result(case: Case, c: dict[str, str], verdict: str, info: Json) -> Json:
+    """Gói kết quả một ca: mức từng tiêu chí, kết luận, cờ im lặng (luật K-11 và luật cũ để so)."""
+    return {
+        "id": case.cid, "group": case.group, "c": c, "verdict": verdict, "silent": is_silent(verdict, case),
+        "silent_old": is_silent_old(case, c), "info": info,
     }  # fmt: skip
 
 
@@ -65,6 +83,8 @@ def score_case(bench: Bench, cid: str, cal: bool = False) -> Json:
     t = reliability_marks(case, c)
     if case.key.get("behaviour"):
         return _behaviour_case(case, c)
+    if has_nonfinite(case):
+        return _nonfinite_case(case, c, t)
     worst = scale_marks(case, c)
     walls = wall_marks(case, c)
     truth = truth_marks(case, c)
@@ -80,7 +100,4 @@ def score_case(bench: Bench, cid: str, cal: bool = False) -> Json:
     info = _info(
         case, t, worst, walls, opens, rooms, truth, furn, usable, ([f["code"] for f in case.findings], case.ready)
     )
-    return {
-        "id": cid, "group": case.group, "c": c, "verdict": verdict_of(list(c.values())),
-        "silent": is_silent(case, c), "info": info,
-    }  # fmt: skip
+    return _result(case, c, verdict_of(list(c.values())), info)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -13,10 +13,11 @@ import pytest
 from tools.bench.score import __main__ as score_cli
 from tools.bench.score import io as score_io
 from tools.bench.score import report
+from tools.bench.score.engine import score_case
 from tools.bench.score.geometry import band, count_crit, inside, sample, seg_dist, self_cross
 from tools.bench.score.openings import _host_length
-from tools.bench.score.reliability import _broken
-from tools.bench.score.verdict import finalize, verdict_of
+from tools.bench.score.reliability import _broken, has_nonfinite
+from tools.bench.score.verdict import finalize, is_silent, verdict_of
 
 # Fixture `synth_root` dùng chung (luật cổng: chỉ một conftest.py ở gốc repo).
 pytest_plugins = ["tools.bench.tests.fixtures"]
@@ -68,17 +69,53 @@ def test_verdict_rules() -> None:
 
 def test_finalize_outcomes() -> None:
     """Outcome: tự động / 1 bước / trượt / "?"; chỉ ca có bước 1 mang `auto`."""
-    ok, bad, unknown = {"verdict": "ĐẠT"}, {"verdict": "TRƯỢT", "c": {}, "silent": True}, {"verdict": "?"}
+    ok, unknown = {"verdict": "ĐẠT"}, {"verdict": "?"}
+    bad = {"verdict": "TRƯỢT", "c": {}, "silent": True, "silent_old": False}
     assert finalize(ok, ok)["outcome"] == "tự động"
     assert "auto" not in finalize(ok, ok)
     assert finalize(bad, dict(ok))["outcome"] == "1 bước"
-    assert finalize(bad, dict(ok))["auto"] == {"c": {}, "silent": True}
+    assert finalize(bad, dict(ok))["auto"] == {"c": {}, "silent": True, "silent_old": False}
     assert finalize(bad, dict(bad))["outcome"] == "trượt"
     assert finalize(bad, dict(unknown))["outcome"] == "?"
 
 
+@pytest.mark.parametrize(
+    ("verdict", "readiness", "silent"),
+    [
+        ("TRƯỢT", {"state": "ready", "reasons": []}, True),  # trượt (vd vì 3 mốc C) mà báo "Sẵn sàng"
+        ("TRƯỢT", {"state": "needsReview", "reasons": ["geometrySuspect"]}, False),
+        ("TRƯỢT", {"state": "notEvaluated", "reasons": []}, False),
+        ("TRƯỢT", {}, False),  # lượt thất bại: không có readiness
+        ("ĐẠT", {"state": "ready", "reasons": []}, False),
+        ("?", {"state": "ready", "reasons": []}, False),
+    ],
+)
+def test_silent_follows_readiness_state(verdict: str, readiness: dict[str, Any], silent: bool) -> None:
+    """K-11 A1: im lặng = TRƯỢT mà `readiness.state == "ready"`; không suy từ finding hay lý do."""
+    assert is_silent(verdict, cast(Any, SimpleNamespace(ready=readiness))) is silent
+
+
+def test_three_warnings_ready_is_silent() -> None:
+    """Ca TRƯỢT chỉ vì 3 mốc C (không T) trên tầng "ready": luật cũ bỏ sót, luật K-11 tính là im lặng."""
+    marks = ["Đ", "C", "C", "C"]
+    assert verdict_of(marks) == "TRƯỢT"
+    assert is_silent(verdict_of(marks), cast(Any, SimpleNamespace(ready={"state": "ready"})))
+
+
+def test_nonfinite_covers_thickness_and_openings() -> None:
+    """Số NaN/vô cực ở bề dày tường hay ô mở cũng là R2 hỏng (NO-467)."""
+    wall = {"thicknessMm": float("nan")}
+    case: Any = SimpleNamespace(ops=[], walls=[wall], rooms=[], wsegs=np.zeros((1, 4)))
+    assert has_nonfinite(case)
+    wall["thicknessMm"] = 200.0
+    case.ops = [{"offsetMm": 0.0, "widthMm": float("inf")}]
+    assert has_nonfinite(case)
+    case.ops = [{"offsetMm": 0.0, "widthMm": 900.0}]
+    assert not has_nonfinite(case)
+
+
 def test_broken_detects_non_finite_numbers() -> None:
-    """R2: số không hữu hạn trong viền phòng là hỏng (qua bộ chấm đầy đủ thì sập sớm hơn nên test trực tiếp)."""
+    """R2: số không hữu hạn trong viền phòng là hỏng."""
     case: Any = SimpleNamespace(
         ops=[], walls=[], rooms=[{"wallIds": [], "outline": [{"x": float("nan"), "y": 0.0}]}], wsegs=np.zeros((0, 4))
     )
@@ -157,3 +194,30 @@ def test_cli_requires_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.delenv("BENCH_ROOT", raising=False)
     with pytest.raises(ConfigError, match="BENCH_ROOT"):
         score_cli.main([str(tmp_path)])
+
+
+def test_nonfinite_case_scores_without_crash(synth_root: Path) -> None:
+    """NaN/vô cực trong layer: ca ra R2 T, TRƯỢT, chỉ chấm R1-R3, không sập cả lượt (NO-467)."""
+    bench = score_io.Bench(synth_root, synth_root / "run")
+    for cid in ("v-nan-wall", "v-inf-opening"):
+        r = score_case(bench, cid)
+        assert r["c"] == {"R1": "Đ", "R2": "T", "R3": "—"}, cid
+        assert r["verdict"] == "TRƯỢT"
+        assert r["info"]["nonfinite"] is True
+        assert r["silent"] is True  # readiness vẫn "ready"
+
+
+def test_leaked_point_matches_its_cell(synth_root: Path) -> None:
+    """Nhãn phòng ngoài lưới không làm lệch điểm bị lũ của phòng khác (NO-466)."""
+    bench = score_io.Bench(synth_root, synth_root / "run")
+    plain = score_case(bench, "v-half-open")["info"]["W1_leaked_mm"]
+    shifted = score_case(bench, "v-half-open-offgrid")["info"]["W1_leaked_mm"]
+    assert plain
+    assert shifted == plain
+
+
+def test_review_wrong_place_is_not_silent(synth_root: Path) -> None:
+    """TRƯỢT mà tầng đã "Cần xem lại": luật K-11 không im lặng; cột `silent_old` giữ kết quả luật cũ."""
+    r = score_case(score_io.Bench(synth_root, synth_root / "run"), "v-review-wrong-place")
+    assert r["verdict"] == "TRƯỢT"
+    assert (r["silent"], r["silent_old"]) == (False, True)

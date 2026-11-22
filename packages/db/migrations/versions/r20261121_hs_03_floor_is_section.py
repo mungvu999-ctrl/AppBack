@@ -7,6 +7,10 @@ Create Date: 2026-11-21
 HS-03, expand thuần (BE-00 §6.1): `floors.is_section` — bản vẽ của dòng tầng này là mặt cắt, không phải mặt
 bằng một tầng (người dùng đánh dấu ở trình quản lý tầng). NOT NULL + `server_default false`: dòng cũ và mã cũ
 không ghi cột này đều nhận `false`, không backfill.
+
+Idempotent (L4-N02): stack thử f14 đã thêm cột bằng SQL tay trước khi có revision này; `upgrade` bỏ qua khi cột
+đã có (kiểm bằng `sa.inspect`, AppBack không chạy Alembic offline — `env.py`). Cột có sẵn mà khác kiểu/ràng buộc
+thì `migrate_check` (so metadata) bắt, không phải revision này.
 """
 
 from collections.abc import Sequence
@@ -25,7 +29,9 @@ COLUMN: Final = "is_section"
 
 
 def upgrade() -> None:
-    """Thêm cột NOT NULL có `server_default false` (dòng cũ nhận `false` ngay)."""
+    """Thêm cột NOT NULL có `server_default false` (dòng cũ nhận `false` ngay); cột đã có thì không làm gì."""
+    if COLUMN in {column["name"] for column in sa.inspect(op.get_bind()).get_columns(TABLE)}:
+        return
     op.add_column(TABLE, sa.Column(COLUMN, sa.Boolean(), server_default=sa.text("false"), nullable=False))
 
 

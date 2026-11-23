@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
+from apps.worker.pipeline_build.build import AreaLabel
 from apps.worker.pipeline_quality.checks import GeometryCheck, geometry_checks
 from packages.domain.spatial.integrity import IntegrityIssue, check_integrity, has_critical
 from packages.domain.spatial.model import Reviewed, SpatialLayer
@@ -82,11 +83,18 @@ def build_report(
     scale_basis: str | None = None,
     label_orientation: Mapping[str, int] | None = None,
     area_notes: Sequence[float] = (),
+    area_labels: Sequence[AreaLabel] = (),
 ) -> RunQualityReport:
     """Dựng báo cáo theo B5-07 [6]: toàn vẹn (`check_integrity`) + đếm tin cậy thấp bốn danh sách + kiểm hình học
-    (`scale_basis`, `label_orientation` của `layer.json`, BENCH3D-14; `area_notes`, BENCH3D-24)."""
+    (`scale_basis`, `label_orientation` của `layer.json`, BENCH3D-14; `area_notes`, BENCH3D-24; `area_labels`, K-16)."""
     issues = tuple(check_integrity(layer, level_id=level_id))
-    checks = geometry_checks(layer, scale_basis=scale_basis, label_orientation=label_orientation, area_notes=area_notes)
+    checks = geometry_checks(
+        layer,
+        scale_basis=scale_basis,
+        label_orientation=label_orientation,
+        area_notes=area_notes,
+        area_labels=area_labels,
+    )
     threshold_f = float(threshold)
     low_confidence = {name: _low_confidence_count(getattr(layer, name), threshold_f) for name in _LOW_CONFIDENCE_LISTS}
     return RunQualityReport(

@@ -5,6 +5,7 @@ from decimal import Decimal
 
 import pytest
 
+from apps.worker.pipeline_build.build import AreaLabel
 from apps.worker.pipeline_quality.checks import axis_share, geometry_checks, not_a_floor_plan
 from apps.worker.pipeline_quality.report import build_report
 from packages.domain.spatial.model import Opening, Point, Room, Segment, SpatialLayer, Wall
@@ -440,3 +441,67 @@ def test_odd_door_detail_lists_every_flagged_door() -> None:
             {"doors": 2, "minWidthMm": 400, "maxWidthMm": 3800, "openingIds": (doors[0].id, doors[2].id)},
         )
     ]
+
+
+def _two_rooms() -> SpatialLayer:
+    """Hai phòng 4 x 5 m (20 m² tim tường) cạnh nhau, tường 100 mm, mỗi phòng một cửa."""
+    walls = _walls(*_box(0, 0, 8000, 5000), ((4000, 0), (4000, 5000)), thickness=100)
+    rooms = (
+        _room(1, 0, 0, 4000, 5000, wall_ids=(walls[0].id, walls[4].id)),
+        _room(2, 4000, 0, 8000, 5000, wall_ids=(walls[0].id, walls[4].id)),
+    )
+    return _layer(walls, rooms, (_door(walls[4].id, 2000),))
+
+
+def _room_area(layer: SpatialLayer, *labels: AreaLabel, basis: str | None = "chain") -> dict[str, object] | None:
+    """Chi tiết `ROOM_AREA_TEXT_MISMATCH` (luôn chỉ báo); không bật → `None`."""
+    found = [
+        c for c in geometry_checks(layer, scale_basis=basis, area_labels=labels) if c.code == "ROOM_AREA_TEXT_MISMATCH"
+    ]
+    assert all(not c.critical for c in found)
+    return dict(found[0].detail) if found else None
+
+
+@pytest.mark.parametrize(
+    ("labels", "flagged"),
+    [
+        ((), False),
+        ((AreaLabel(2000, 2500, 19.0),), False),  # thông thủy ~19 m²: khớp
+        ((AreaLabel(2000, 2500, 22.9),), False),  # tim tường 20 m² + 15 %: đúng biên
+        ((AreaLabel(2000, 2500, 26.0),), True),  # lệch 30 %
+        ((AreaLabel(2000, 2500, 12.0),), True),
+        ((AreaLabel(2000, 2500, 12.0), AreaLabel(2500, 2500, 19.5)), False),  # một nhãn khớp là đủ (nhãn kia là tủ âm)
+        ((AreaLabel(9000, 2500, 3.0),), False),  # ngoài mọi phòng
+        ((AreaLabel(4000, 2500, 3.0),), False),  # trên tường chung: không thuộc riêng phòng nào
+        ((AreaLabel(2000, 2500, 39.0),), False),  # diện tích cả căn đặt trong phòng: không phải nhãn phòng
+    ],
+)
+def test_room_area_label_against_its_room(labels: tuple[AreaLabel, ...], flagged: bool) -> None:
+    """K-16 `ROOM_AREA_TEXT_MISMATCH`: nhãn "N m²" trong đúng một phòng lệch dải thông thủy-tim tường quá 15 % → báo."""
+    assert (_room_area(_two_rooms(), *labels) is not None) is flagged
+
+
+def test_merged_room_with_two_labels__flagged_with_detail() -> None:
+    """f-19: phòng khách gộp hai phòng thật (nhãn 14 + 10 m²) — tổng vẫn khớp nên `AREA_TEXT_MISMATCH` im lặng."""
+    layer = _two_rooms()
+    labels = (AreaLabel(1500, 2500, 9.0), AreaLabel(2500, 2500, 10.0), AreaLabel(6000, 2500, 19.0))
+    assert _room_area(layer, *labels) == {
+        "rooms": 1,
+        "labelledRooms": 2,
+        "worstRatio": 2.222,
+        "roomIds": (layer.rooms[0].id,),
+    }
+
+
+def test_room_area_label_skipped_without_rooms_or_measured_scale() -> None:
+    """Tỉ lệ `default` (diện tích vô nghĩa, đã có `scaleUnresolved`) hay tầng không phòng → không báo."""
+    assert _room_area(_two_rooms(), AreaLabel(2000, 2500, 40.0), basis="default") is None
+    assert _room_area(_layer(_walls(*_box(0, 0, 4000, 5000))), AreaLabel(2000, 2500, 40.0)) is None
+
+
+def test_single_room_label_matching_unit_total_is_still_compared() -> None:
+    """Tầng một phòng: nhãn là diện tích phòng (không lọc "diện tích căn" như tầng ≥ 2 phòng)."""
+    walls = _walls(*_box(0, 0, 4000, 5000), thickness=100)
+    layer = _layer(walls, (_room(1, 0, 0, 4000, 5000, wall_ids=(walls[0].id,)),), (_door(walls[0].id),))
+    assert _room_area(layer, AreaLabel(2000, 2500, 19.0)) is None
+    assert _room_area(layer, AreaLabel(2000, 2500, 30.0)) is not None

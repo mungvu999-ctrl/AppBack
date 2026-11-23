@@ -182,9 +182,8 @@ def _merged_layer(steps: Steps, built: Any, ctx: Json, out: Path) -> Any:
 
 def _quality(steps: Steps, built: Any, layer: Any, ctx: Json, st: Json, out: Path) -> Json:
     """Báo cáo chất lượng của pipeline (ghi `run-quality.json`) và bản tóm tắt như `quality.run_quality`."""
-    extra = (
-        {"area_notes": built.area_notes} if hasattr(built, "area_notes") else {}
-    )  # BENCH3D-24; mã cũ không nhận khoá này
+    # BENCH3D-24 `area_notes`, K-16 `area_labels`: mã cũ không nhận các khoá này
+    extra = {key: getattr(built, key) for key in ("area_notes", "area_labels") if hasattr(built, key)}
     report = steps.build_report(
         run_id=ctx["run"]["id"], revision=1, layer=layer, level_id=ctx["levelId"],
         threshold=Decimal(st["confidenceThreshold"]), scale_basis=built.scale_basis,

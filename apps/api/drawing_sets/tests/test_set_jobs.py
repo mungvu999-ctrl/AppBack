@@ -5,11 +5,14 @@ Thông điệp gửi sau commit bắt tại chỗ gửi (`DB_AFTER_COMMIT_INLINE
 chạy broker thật. Kết quả đọc của worker `ml` được ghi tay vào kho đúng khoá nó sẽ ghi.
 """
 
+import io
+import math
 from collections.abc import Coroutine
 from typing import Any, Final
 
 import numpy as np
 import pytest
+from PIL import Image
 from pydantic import BaseModel
 from redis import Redis as SyncRedis
 from sqlalchemy import select, text
@@ -36,7 +39,8 @@ from packages.testing.factories.drawing_sets import make_drawing_set, make_set_f
 from packages.testing.factories.projects import make_project
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.messaging import queued_payloads
-from packages.vision.preprocess import RgbImage, encode_png
+from packages.vision.preprocess import RgbImage, VisionError, encode_png, load_raster
+from packages.vision.preprocess.tests.synthetic import png_declaring
 
 Maker = async_sessionmaker[AsyncSession]
 Sent = list[tuple[str, dict[str, Any], float | None]]
@@ -211,6 +215,25 @@ async def test_analyze_stops_when_set_changed_midway(
     monkeypatch.setattr(jobs, "_write_pages", delete_then_write)
     assert await analyze_set(db_sessionmaker, local_storage, set_id, fake_clock) is False
     assert sent == []
+
+
+def test_render_page_downsamples_scan_over_decoder_default() -> None:
+    """NO-567: tờ PNG 5832x7027 (~41 Mpx, khổ DS-391, hơn trần 40 Mpx của `load_raster`) được co về dưới
+    `PAGE_MAX_PIXELS` giữ tỉ lệ thay vì `IMAGE_TOO_LARGE`; tờ khai quá `PAGE_DECODE_MAX_PIXELS` vẫn bị từ chối."""
+    scan = Image.new("L", (5832, 7027), 255)
+    scan.paste(0, (0, 3500, 5832, 3520))
+    buffer = io.BytesIO()
+    scan.save(buffer, format="PNG")
+    with pytest.raises(VisionError, match="IMAGE_TOO_LARGE"):
+        load_raster(buffer.getvalue())
+    with Image.open(io.BytesIO(jobs._render_page("png", buffer.getvalue(), 0))) as page:
+        width, height = page.size
+    assert width * height <= jobs.PAGE_MAX_PIXELS
+    assert width * height > 0.99 * jobs.PAGE_MAX_PIXELS
+    assert abs(width / height - 5832 / 7027) < 0.001
+    side = math.isqrt(jobs.PAGE_DECODE_MAX_PIXELS) + 1
+    with pytest.raises(VisionError, match="IMAGE_TOO_LARGE"):
+        jobs._render_page("png", png_declaring(side, side), 0)
 
 
 async def test_analyze_drawing_set__J03(

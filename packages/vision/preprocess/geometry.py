@@ -69,7 +69,7 @@ def working_gray(img: RgbImage) -> WorkingImage:
     return WorkingImage(np.asarray(small, dtype=np.uint8), scale)
 
 
-def _fit_size(width: int, height: int, max_pixels: int) -> tuple[int, int]:
+def fit_size(width: int, height: int, max_pixels: int) -> tuple[int, int]:
     """Kích thước lớn nhất ≤ `max_pixels` giữ gần đúng tỉ lệ; không vượt thì giữ nguyên.
 
     Tính bằng số nguyên (`isqrt`, chia lấy nguyên) nên `rộng · cao ≤ max_pixels` là bất
@@ -90,7 +90,7 @@ def cap_pixels(pixels: NDArray[np.uint8], max_pixels: int) -> tuple[NDArray[np.u
     ghép phép co vào homography. Không vượt trần → trả nguyên mảng vào, `1.0, 1.0`.
     """
     height, width = int(pixels.shape[0]), int(pixels.shape[1])
-    new_w, new_h = _fit_size(width, height, max_pixels)
+    new_w, new_h = fit_size(width, height, max_pixels)
     if (new_w, new_h) == (width, height):
         return pixels, 1.0, 1.0
     resized = cv2.resize(pixels, (new_w, new_h), interpolation=cv2.INTER_AREA)
@@ -390,7 +390,7 @@ def _warp_matrix_to_cap(
     Nhân trái bằng `diag(sx, sy, 1)` tương đương `compose` với phép co, nhưng không
     phải dựng `Homography` trung gian chỉ để vứt đi.
     """
-    out_w, out_h = _fit_size(width, height, max_pixels)
+    out_w, out_h = fit_size(width, height, max_pixels)
     if (out_w, out_h) == (width, height):
         return matrix, width, height
     shrink = np.diag([out_w / width, out_h / height, 1.0])

@@ -7,7 +7,7 @@ import pytest
 from PIL import Image, ImageFile
 
 from packages.vision.preprocess.errors import VisionError
-from packages.vision.preprocess.raster import encode_png, load_raster
+from packages.vision.preprocess.raster import encode_png, load_raster, load_raster_fit
 from packages.vision.preprocess.tests import synthetic
 
 
@@ -221,3 +221,86 @@ def test_load_raster_dim_photo_of_white_paper_is_kept() -> None:
     pixels = load_raster(synthetic.encode(source, "PNG")).pixels
     assert tuple(pixels[0, 0]) == (110, 110, 110)
     assert tuple(pixels[11, 5]) == (20, 20, 20)
+
+
+# ---------------------------------------------------------------- load_raster_fit (NO-567)
+@pytest.mark.parametrize(
+    "source",
+    [
+        Image.new("RGB", (301, 203), (240, 240, 240)),
+        Image.new("L", (301, 203), 240),
+        Image.new("P", (301, 203), 0),
+        Image.new("RGBA", (301, 203), (0, 0, 0, 0)),
+        Image.new("I;16", (301, 203), 0),
+    ],
+    ids=["rgb", "l", "p", "rgba", "gray16"],
+)
+def test_load_raster_fit_png_over_limit_is_downsampled(source: Image.Image) -> None:
+    """PNG vượt trần đích (61.103 > 20.000) nhưng dưới trần giải mã: co về khổ lớn nhất <= trần, giữ tỉ lệ, mọi
+    mode về RGB 8-bit — `load_raster` cùng trần thì `IMAGE_TOO_LARGE`."""
+    data = synthetic.encode(source, "PNG")
+    with pytest.raises(VisionError, match="IMAGE_TOO_LARGE"):
+        load_raster(data, max_pixels=20_000)
+    image = load_raster_fit(data, max_pixels=20_000, decode_max_pixels=100_000)
+    assert image.width_px * image.height_px <= 20_000
+    assert (image.width_px, image.height_px) == (172, 116)
+    assert image.pixels.dtype == np.uint8
+    assert image.pixels.shape[2] == 3
+
+
+def test_load_raster_fit_keeps_strokes_and_paper() -> None:
+    """Co lọc hộp giữ nét đậm (dải đen 10 px còn tối) và vẫn đảo nền tối như `load_raster`."""
+    light = Image.new("RGB", (400, 200), (250, 250, 250))
+    light.paste((0, 0, 0), (0, 100, 400, 110))
+    pixels = load_raster_fit(synthetic.encode(light, "PNG"), max_pixels=20_000, decode_max_pixels=100_000).pixels
+    assert pixels.shape[:2] == (100, 200)
+    assert tuple(pixels[0, 0]) == (250, 250, 250)
+    assert int(pixels[52, 100, 0]) < 10
+    dark = Image.new("RGB", (400, 200), (10, 10, 10))
+    dark.paste((250, 250, 250), (0, 100, 400, 110))
+    inverted = load_raster_fit(synthetic.encode(dark, "PNG"), max_pixels=20_000, decode_max_pixels=100_000).pixels
+    assert tuple(inverted[0, 0]) == (245, 245, 245)
+
+
+def test_load_raster_fit_jpeg_uses_draft_then_fits() -> None:
+    """JPEG 8 x trần đích (cạnh lẻ): `draft` của bộ giải hạ cỡ trước, rồi co đúng về khổ vừa trần."""
+    data = synthetic.encode(Image.new("RGB", (801, 401), (200, 200, 200)), "JPEG")
+    image = load_raster_fit(data, max_pixels=40_000, decode_max_pixels=400_000)
+    assert (image.width_px, image.height_px) == (282, 141)
+
+
+def test_load_raster_fit_under_limit_is_unchanged() -> None:
+    """Ảnh đã dưới trần đích: không co, pixel y như `load_raster`."""
+    data = synthetic.encode(Image.new("RGB", (100, 50), (7, 70, 170)), "PNG")
+    fitted = load_raster_fit(data, max_pixels=20_000, decode_max_pixels=100_000)
+    np.testing.assert_array_equal(fitted.pixels, load_raster(data, max_pixels=20_000).pixels)
+
+
+def test_load_raster_fit_bomb_checks_decode_limit_before_decode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PNG khai vượt trần giải mã bị chặn từ `w x h` ở đầu tệp — `ImageFile.load` không chạy lần nào; ảnh khai
+    quá trần riêng của Pillow (`DecompressionBombError`) cũng là `IMAGE_TOO_LARGE`."""
+    calls = 0
+    original = ImageFile.ImageFile.load
+
+    def counting_load(self: ImageFile.ImageFile) -> object:
+        """Bản `ImageFile.load` có đếm."""
+        nonlocal calls
+        calls += 1
+        return original(self)
+
+    monkeypatch.setattr(ImageFile.ImageFile, "load", counting_load)
+    for width, height in ((9_000, 9_000), (20_000, 20_000)):
+        with pytest.raises(VisionError, match="IMAGE_TOO_LARGE"):
+            load_raster_fit(synthetic.png_declaring(width, height), max_pixels=1_000, decode_max_pixels=80_000_000)
+    assert calls == 0
+
+
+@pytest.mark.parametrize("kind", ["png", "jpeg"])
+def test_load_raster_fit_corrupt_file(kind: str) -> None:
+    """Tệp cụt vẫn là `FILE_CORRUPT`, không bị nuốt thành ảnh co; byte lạ là `FILE_TYPE_MISMATCH`."""
+    source = Image.effect_noise((300, 300), 64).convert("RGB")
+    data = synthetic.encode(source, kind.upper())
+    with pytest.raises(VisionError, match="FILE_CORRUPT"):
+        load_raster_fit(_half(data), max_pixels=20_000, decode_max_pixels=100_000)
+    with pytest.raises(VisionError, match="FILE_TYPE_MISMATCH"):
+        load_raster_fit(b"not an image at all", max_pixels=20_000, decode_max_pixels=100_000)

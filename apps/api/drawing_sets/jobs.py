@@ -40,8 +40,7 @@ from packages.messaging.payloads.drawing_sets import (
 from packages.ml_contracts.drawing_sets import DRAWING_SET_READ_TASK, READ_BUDGET_S, DrawingSetReadPayload, PageRef
 from packages.storage.keys import drawing_set_page
 from packages.storage.port import ObjectStorage, read_all_capped
-from packages.vision.preprocess import RgbImage, VisionError, encode_png, load_raster, render_pdf_page
-from packages.vision.preprocess.geometry import cap_pixels
+from packages.vision.preprocess import DEFAULT_MAX_PIXELS, VisionError, encode_png, load_raster_fit, render_pdf_page
 
 _log: Final = logging.getLogger(__name__)
 
@@ -51,6 +50,10 @@ PAGE_MAX_PIXELS: Final = 24_000_000
 """Ảnh trang cho màn duyệt **và** OCR: 24 Mpx ≈ A1 ở 170 dpi. Đo trên 10 tờ DS- (khung đáp án): đúng loại 49/104 ở
 16 Mpx, 57/104 ở cả khổ gốc ~25 Mpx; OCR 4-32 s/tờ ở 24 Mpx (`changes/K-32a.md`). Nâng thì ảnh màn duyệt nặng hơn
 (đường nâng cấp: ảnh xem trước riêng cỡ nhỏ, NO-546)."""
+PAGE_DECODE_MAX_PIXELS: Final = 2 * DEFAULT_MAX_PIXELS
+"""Trần giải mã một tờ PNG/JPEG (80 Mpx, kiểm từ `w x h` ở đầu tệp trước khi giải mã — chặn bom nén): đủ A1 ở
+300 dpi (~70 Mpx); lớn hơn vẫn `IMAGE_TOO_LARGE`. PNG giải mã đủ khổ nên đỉnh bộ nhớ ~ trần x số kênh (RGB ~240 MB)
+trước khi co về `PAGE_MAX_PIXELS` (NO-567); dưới trần riêng của Pillow (~89 Mpx) nên không có cảnh báo bom."""
 READ_PROGRESS: Final = 40
 """Tiến độ khi đã dựng xong trang và đang chờ worker `ml` đọc (N57 hiện cho người dùng)."""
 TEXT_FAMILY: Final = "dimensionReading"
@@ -115,12 +118,12 @@ async def _snapshot(sessionmaker: async_sessionmaker[AsyncSession], set_id: str)
 def _render_page(kind: str, data: bytes, index: int) -> bytes:
     """PNG một trang ≤ `PAGE_MAX_PIXELS` (đồng bộ, PDFium/PIL — người gọi chạy trên luồng phụ, R-23).
 
-    Ảnh PNG/JPEG là một trang: nạp với trần mặc định của tiền xử lý (40 Mpx, như #7) rồi co về trần trang — nạp
-    thẳng với trần trang thì ảnh quét lớn hơn bị từ chối (`IMAGE_TOO_LARGE`) thay vì được co.
+    Ảnh PNG/JPEG là một trang: nạp có giảm mẫu về trần trang (`load_raster_fit`, NO-567) — tờ quét lớn hơn trần
+    trang, kể cả hơn 40 Mpx của #7 (DS-391 5832x7027), được co thay vì `IMAGE_TOO_LARGE`; chỉ tờ khai quá
+    `PAGE_DECODE_MAX_PIXELS` mới bị từ chối.
     """
     if kind != "pdf":
-        pixels, _sx, _sy = cap_pixels(load_raster(data).pixels, PAGE_MAX_PIXELS)
-        return encode_png(RgbImage(pixels))
+        return encode_png(load_raster_fit(data, max_pixels=PAGE_MAX_PIXELS, decode_max_pixels=PAGE_DECODE_MAX_PIXELS))
     return encode_png(render_pdf_page(data, index, max_pixels=PAGE_MAX_PIXELS))
 
 

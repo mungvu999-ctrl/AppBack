@@ -51,6 +51,43 @@ async def test_drawing_sets_read_set__C01(
     assert [view["pageIndex"] for view in wire["views"]] == [0, 1]
 
 
+def _block(**fields: str) -> dict[str, object]:
+    """`machine` của một hình có khung tên (dạng `set_analysis._block`: mỗi trường `{value, confidence}`)."""
+    return {"titleBlock": {name: {"value": value, "confidence": 0.9} for name, value in fields.items()}}
+
+
+async def test_read_set_title_block_and_sheet_no(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage
+) -> None:
+    """K-65: `sheetNo` theo trang của hình; `titleBlock` chung = trường các trang khớp, trường lệch bị bỏ."""
+    stage = await make_stage(db_session)
+    seeded = await seed_review_set(db_session, local_storage, stage, views=3, pages=3)
+    common = {"owner": "Anh Nguyễn Văn An", "project": "Nhà phố An", "location": "Quận 7"}
+    seeded.views[0].machine = _block(**common, sheetNo="KT-01", date="01/11/2026")
+    seeded.views[1].machine = _block(**common, sheetNo="KT-02", date="02/11/2026")
+    seeded.views[2].machine = {"questions": ["NO_TEXT"]}
+    await db_session.commit()
+    wire = (await api_client.get(set_path(stage.project_id, seeded.drawing_set.id), headers=stage.headers)).json()
+    assert [view.get("sheetNo") for view in wire["views"]] == ["KT-01", "KT-02", None]
+    assert wire["titleBlock"] == common  # `date` lệch giữa hai trang: bỏ; trang không đọc được không bỏ phiếu
+    assert None not in wire["titleBlock"].values()
+
+
+async def test_read_set_without_title_block_omits_keys(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage
+) -> None:
+    """K-65 (W2): không hình nào đọc được khung tên, hay hình đã bỏ → `titleBlock` và `sheetNo` vắng khoá."""
+    stage = await make_stage(db_session)
+    seeded = await seed_review_set(db_session, local_storage, stage, views=2, pages=2)
+    seeded.views[1].machine = _block(project="Nhà phố An", sheetNo="KT-09")
+    seeded.views[1].excluded = True
+    await db_session.commit()
+    wire = (await api_client.get(set_path(stage.project_id, seeded.drawing_set.id), headers=stage.headers)).json()
+    assert "titleBlock" not in wire
+    assert wire["views"][1]["sheetNo"] == "KT-09"  # số hiệu vẫn của hình, kể cả đã bỏ
+    assert all("sheetNo" not in view for view in wire["views"][:1])
+
+
 async def test_drawing_sets_read_set__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Người ngoài dự án → 404 `resource:"project"`."""
     stage = await make_stage(db_session)

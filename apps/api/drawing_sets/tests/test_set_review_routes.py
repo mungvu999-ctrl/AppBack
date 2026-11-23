@@ -354,3 +354,44 @@ async def test_drawing_sets_replace_views__disabled(
         views_path(stage.project_id, seeded.drawing_set.id), json=views_body(0), headers=stage.headers
     )
     assert (response.status_code, response.json()["code"]) == (503, "DRAWING_SET_DISABLED")
+
+
+async def test_replace_views_renames_set_and_replay_is_idempotent(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    local_storage: LocalDiskStorage,
+) -> None:
+    """K-65: `body.name` đổi tên bộ (trim + NFC); gửi lại y hệt → 200 không đổi gì; thân không có `name` giữ tên."""
+    stage, seeded = await _seed(db_session, local_storage)
+    path = views_path(stage.project_id, seeded.drawing_set.id)
+    body = views_body(0, edit_of(seeded.views[0]))
+    body["body"]["name"] = f"  {unicodedata.normalize('NFD', 'Nhà phố An')} "
+    first = await api_client.put(path, json=body, headers=stage.headers)
+    assert (first.status_code, first.json()["name"], first.json()["revision"]) == (200, "Nhà phố An", 1)
+    replay = await api_client.put(path, json=body, headers=stage.headers)
+    assert (replay.status_code, replay.json()["name"], replay.json()["revision"]) == (200, "Nhà phố An", 1)
+    async with db_sessionmaker() as session:
+        stmt = select(DrawingSetRow).where(DrawingSetRow.id == seeded.drawing_set.id)
+        row = (await session.execute(stmt)).scalar_one()
+    assert row.name == "Nhà phố An"
+    keep = await api_client.put(path, json=views_body(1, edit_of(seeded.views[0])), headers=stage.headers)
+    assert (keep.status_code, keep.json()["name"], keep.json()["revision"]) == (200, "Nhà phố An", 2)
+    again = views_body(2, edit_of(seeded.views[0]))
+    again["body"]["name"] = "Tên khác"
+    assert (await api_client.put(path, json=again, headers=stage.headers)).json()["name"] == "Tên khác"
+
+
+@pytest.mark.parametrize("name", ["", "   ", "x" * 121, 5])
+async def test_replace_views_rejects_bad_name(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage, name: object
+) -> None:
+    """K-65: tên rỗng, toàn khoảng trắng, quá 120 ký tự hay không phải chuỗi → 422 `field: "body.name"`."""
+    stage, seeded = await _seed(db_session, local_storage)
+    body = views_body(0, edit_of(seeded.views[0]))
+    body["body"]["name"] = name
+    response = await api_client.put(
+        views_path(stage.project_id, seeded.drawing_set.id), json=body, headers=stage.headers
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["field"] == "body.name"

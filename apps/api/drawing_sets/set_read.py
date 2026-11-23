@@ -21,6 +21,7 @@ from apps.api.drawing_sets.set_schemas import (
     DrawingSetFileOut,
     DrawingSetOut,
     DrawingSetSummaryOut,
+    DrawingSetTitleBlockOut,
     DrawingSetViewOut,
     ViewQuestionOut,
     ViewTargetOut,
@@ -29,6 +30,7 @@ from apps.api.drawing_sets.settings import get_drawing_set_settings
 from apps.api.drawings.drawings import drawing_urls
 from packages.db.models.drawing_sets import DrawingSetFileRow, DrawingSetRow, DrawingSetViewRow
 from packages.db.models.floors import FloorRow
+from packages.domain.drawing_set.set_title_block import common_title_block, sheet_no_of
 from packages.storage.keys import drawing_set_page
 from packages.storage.port import ObjectStorage
 
@@ -127,6 +129,7 @@ def _view_out(view: DrawingSetViewRow, floor_level_id: str | None, image_url: st
             "kind": view.kind if view.kind in _KINDS else "other",
             "kind_confidence": _unit(view.kind_confidence),
             "title_text": view.title_text,
+            "sheet_no": sheet_no_of(view.machine),
             "storey_label": view.storey_label if view.storey_label in _LABELS else None,
             "storey_no": view.storey_no,
             "storey_confidence": _unit(view.storey_confidence),
@@ -135,6 +138,12 @@ def _view_out(view: DrawingSetViewRow, floor_level_id: str | None, image_url: st
             "upload_id": view.upload_id,
         }
     )
+
+
+def _title_block(views: Sequence[DrawingSetViewRow]) -> DrawingSetTitleBlockOut | None:
+    """Khung tên chung của bộ từ các hình đang dùng (K-65); không trường nào chung thì cả khoá vắng."""
+    common = common_title_block(((view.file_id, view.page_index), view.machine) for view in views if not view.excluded)
+    return DrawingSetTitleBlockOut.model_validate(common) if common else None
 
 
 async def _image_urls(
@@ -183,6 +192,7 @@ async def set_wire(db: AsyncSession, storage: ObjectStorage, drawing_set: Drawin
             "error_code": drawing_set.error_code,
             "created_at": drawing_set.created_at,
             "confirmed_at": drawing_set.confirmed_at,
+            "title_block": _title_block(views),
             "files": [_file_out(row) for row in files],
             "views": [_view_out(view, level_id, url) for (view, level_id), url in zip(view_rows, urls, strict=True)],
         }

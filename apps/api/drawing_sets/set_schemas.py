@@ -97,8 +97,12 @@ class ViewEditIn(WireRequest):
 
 
 class ViewsBodyIn(WireRequest):
-    """`body` của N59: **cả** danh sách hình (thay thế), tối đa `VIEWS_MAX`."""
+    """`body` của N59: **cả** danh sách hình (thay thế), tối đa `VIEWS_MAX`; `name` tuỳ chọn đổi tên bộ (K-65).
 
+    `name` vắng = giữ tên hiện có (không có cách xoá tên); có thì luật như N54 (trim + NFC, 1-120 ký tự).
+    """
+
+    name: FloorName | None = None
     views: list[ViewEditIn] = Field(max_length=VIEWS_MAX)
 
 
@@ -153,7 +157,7 @@ class DrawingSetFileOut(WireModel):
 
 
 class DrawingSetViewOut(WireModel):
-    """Một hình của bộ; `imageUrl` = ảnh trang ký sẵn (W23), `uploadId` chỉ có sau N60."""
+    """Một hình của bộ; `imageUrl` = ảnh trang ký sẵn (W23), `sheetNo` = số hiệu theo khung tên, `uploadId` sau N60."""
 
     id: str
     file_id: str
@@ -165,12 +169,22 @@ class DrawingSetViewOut(WireModel):
     kind: FloorKind
     kind_confidence: float = Field(ge=0.0, le=1.0)
     title_text: str | None = None
+    sheet_no: str | None = None
     storey_label: StoreyLabel | None = None
     storey_no: int | None = None
     storey_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     questions: list[ViewQuestionOut]
     target: ViewTargetOut | None = None
     upload_id: str | None = None
+
+
+class DrawingSetTitleBlockOut(WireModel):
+    """Khung tên chung của bộ (K-65): chỉ trường mà các trang đọc được khớp nhau; trường lệch/không đọc được vắng."""
+
+    owner: str | None = None
+    project: str | None = None
+    location: str | None = None
+    date: str | None = None
 
 
 class DrawingSetOut(WireModel):
@@ -184,6 +198,7 @@ class DrawingSetOut(WireModel):
     error_code: str | None = None
     created_at: WireDatetime
     confirmed_at: WireDatetime | None = None
+    title_block: DrawingSetTitleBlockOut | None = None
     files: list[DrawingSetFileOut]
     views: list[DrawingSetViewOut]
 

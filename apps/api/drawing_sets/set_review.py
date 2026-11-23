@@ -2,7 +2,7 @@
 
 Luật thay thế (K-32a §3): hình máy (`ai`) không bao giờ mất — vắng khỏi danh sách thì giữ nguyên, có mặt thì chỉ
 được sửa khung/loại/tầng/đích/`excluded`, không đổi tệp hay trang; hình người vẽ (`user`) vắng khỏi danh sách thì xoá.
-Thứ tự hình = thứ tự trong danh sách, hình máy vắng đứng sau.
+Thứ tự hình = thứ tự trong danh sách, hình máy vắng đứng sau. `body.name` (K-65) có thì đặt lại tên bộ, vắng thì giữ.
 
 Thắng thua quyết bằng **một** câu `UPDATE … WHERE revision = :base RETURNING` (K07, mẫu `project_settings`), khoá luôn
 dòng bộ tới hết giao dịch: hai lượt lưu song song cùng base → đúng một bên thắng, bên kia 409 (C14). Câu đó trả 0 dòng
@@ -225,5 +225,7 @@ async def replace_views(
         ):
             return await set_wire(db, storage, current)
         raise VersionConflictError(current_version=current.revision, remote_changes=[])
+    if body.name is not None:
+        claimed.name = body.name
     await _rewrite_views(db, claimed, body.views, context, clock)
     return await set_wire(db, storage, claimed)

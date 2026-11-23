@@ -2104,6 +2104,16 @@
           "status": {
             "$ref": "#/components/schemas/SetStatus"
           },
+          "titleBlock": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DrawingSetTitleBlockOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "views": {
             "items": {
               "$ref": "#/components/schemas/DrawingSetViewOut"
@@ -2182,9 +2192,61 @@
         "title": "DrawingSetSummaryOut",
         "type": "object"
       },
+      "DrawingSetTitleBlockOut": {
+        "additionalProperties": false,
+        "description": "Khung tên chung của bộ (K-65): chỉ trường mà các trang đọc được khớp nhau; trường lệch/không đọc được vắng.",
+        "properties": {
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
+          }
+        },
+        "title": "DrawingSetTitleBlockOut",
+        "type": "object"
+      },
       "DrawingSetViewOut": {
         "additionalProperties": false,
-        "description": "Một hình của bộ; `imageUrl` = ảnh trang ký sẵn (W23), `uploadId` chỉ có sau N60.",
+        "description": "Một hình của bộ; `imageUrl` = ảnh trang ký sẵn (W23), `sheetNo` = số hiệu theo khung tên, `uploadId` sau N60.",
         "properties": {
           "crop": {
             "$ref": "#/components/schemas/CropOut"
@@ -2231,6 +2293,17 @@
             },
             "title": "Questions",
             "type": "array"
+          },
+          "sheetNo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sheetno"
           },
           "source": {
             "$ref": "#/components/schemas/ViewSource"
@@ -9124,8 +9197,18 @@
       },
       "ViewsBodyIn": {
         "additionalProperties": false,
-        "description": "`body` của N59: **cả** danh sách hình (thay thế), tối đa `VIEWS_MAX`.",
+        "description": "`body` của N59: **cả** danh sách hình (thay thế), tối đa `VIEWS_MAX`; `name` tuỳ chọn đổi tên bộ (K-65).\n\n`name` vắng = giữ tên hiện có (không có cách xoá tên); có thì luật như N54 (trim + NFC, 1-120 ký tự).",
         "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FloorName"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "views": {
             "items": {
               "$ref": "#/components/schemas/ViewEditIn"

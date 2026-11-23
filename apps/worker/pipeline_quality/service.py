@@ -144,12 +144,35 @@ def _critical_count(report: RunQualityReport) -> int:
     )
 
 
+NOTICE_CODES: Final = frozenset({"OPENING_SIZE_IMPLAUSIBLE", "ROOM_AREA_TEXT_MISMATCH"})
+"""Mã kiểm mức nhắc được đưa tới người dùng (K-15, K-16). Danh sách trắng, không phải "mọi kiểm `critical:false`": đo
+replay 96 ca, `ROOMS_WITHOUT_DOOR` bản không chặn có ở 41 ca (cả `OPEN_ENVELOPE`, `MULTIPLE_PLANS` không chặn nữa), hiện
+hết sẽ là nhắc chung chung ở nửa số tầng. Thêm mã (`ROTATED_PLAN`…) khi FE có câu riêng."""
+
+
+def _notice_checks(report: RunQualityReport) -> list[dict[str, object]]:
+    """Kiểm hình học mức nhắc (`critical:false`, trong `NOTICE_CODES`) kèm id cho `readiness.notices` (NO-488).
+
+    Id lấy từ `detail.openingIds` (K-15) hoặc `detail.roomIds` (K-16); kiểm không có id → `entityIds: []`.
+    Kiểm `critical` đã có đường `criticalChecks`, không lặp ở đây.
+    """
+    notices: list[dict[str, object]] = []
+    for check in report.checks:
+        if check.critical or check.code not in NOTICE_CODES:
+            continue
+        ids = check.detail.get("openingIds") or check.detail.get("roomIds") or ()
+        entity_ids = [] if isinstance(ids, float) else list(ids)
+        notices.append({"code": check.code, "entityIds": entity_ids})
+    return notices
+
+
 def _summary(report: RunQualityReport, built: BuiltLayer | None) -> dict[str, object]:
     """Tóm tắt lưu cột `quality_summary` (FIX-P0-09): đủ để tính readiness mà không cần `quality.json`.
 
     `criticalCount` đếm cả lỗi toàn vẹn lẫn kiểm hình học `critical` (BENCH3D-01): `hasCritical` true thì nó ≥ 1.
     BENCH3D-09: `criticalChecks` (mã kiểm hình học critical), `scaleBasis` và `scaleChecks` (khoá nghi vấn tỉ lệ)
     của `layer.json` cho `readiness.checks`, `scaleBasis` của N16; `layer.json` không đọc được → vắng hai khoá tỉ lệ.
+    NO-488: `noticeChecks` (`[{code, entityIds}]` của kiểm `critical:false`) cho `readiness.notices`; vắng khi không có.
     """
     summary: dict[str, object] = {
         "hasCritical": report.has_critical,
@@ -158,6 +181,9 @@ def _summary(report: RunQualityReport, built: BuiltLayer | None) -> dict[str, ob
         "checks": [check.code for check in report.checks],
         "criticalChecks": [check.code for check in report.checks if check.critical],
     }
+    notices = _notice_checks(report)
+    if notices:
+        summary["noticeChecks"] = notices
     if built is not None and built.scale_basis is not None:
         summary["scaleBasis"] = built.scale_basis
         summary["scaleChecks"] = sorted(built.scale_checks)

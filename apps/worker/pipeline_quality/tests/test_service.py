@@ -27,7 +27,8 @@ from apps.worker.pipeline_orchestrate.pins import load_pins
 from apps.worker.pipeline_persist.errors import PIPELINE_RESULT_INVALID
 from apps.worker.pipeline_persist.tests.helpers import open_run_at_build, put_layer, sample_built
 from apps.worker.pipeline_quality import service, tasks
-from apps.worker.pipeline_quality.report import QUALITY_ARTIFACT
+from apps.worker.pipeline_quality.checks import GeometryCheck
+from apps.worker.pipeline_quality.report import QUALITY_ARTIFACT, RunQualityReport
 from apps.worker.pipeline_quality.service import fail_quality, run_quality
 from apps.worker.pipeline_quality.tests.helpers import Arranged, open_run_at_quality
 from packages.core.ids import new_id
@@ -506,3 +507,40 @@ async def test_run_quality__design_concept_failure_does_not_break_the_run(
     assert outcome == "completed"
     status, step, _ = await _run_row(db_sessionmaker, arranged.run_id)
     assert (status, step) == ("completed", "qualityCheck")
+
+
+def _report_with(*checks: GeometryCheck) -> RunQualityReport:
+    return RunQualityReport(
+        run_id="run",
+        revision=1,
+        confidence_threshold=0.5,
+        issues=(),
+        has_critical=False,
+        low_confidence={},
+        checks=checks,
+    )
+
+
+def test_summary__notice_checks_carry_ids_of_non_critical_checks_only() -> None:
+    """NO-488: `noticeChecks` = kiểm `critical:false` trong danh sách trắng; critical và mã ngoài danh sách bị loại."""
+    report = _report_with(
+        GeometryCheck("OPENING_SIZE_IMPLAUSIBLE", False, {"doors": 2, "openingIds": ("O-1", "O-2")}),
+        GeometryCheck("ROOM_AREA_TEXT_MISMATCH", False, {"rooms": 1, "roomIds": ("R-1",)}),
+        GeometryCheck("ROTATED_PLAN", False, {"share": 0.5}),
+        GeometryCheck("ROOMS_WITHOUT_DOOR", False, {"doorlessRooms": 1, "roomIds": ("R-9",)}),
+        GeometryCheck("OPEN_ENVELOPE", True, {"share": 0.9}),
+    )
+    summary = service._summary(report, None)
+    assert summary["noticeChecks"] == [
+        {"code": "OPENING_SIZE_IMPLAUSIBLE", "entityIds": ["O-1", "O-2"]},
+        {"code": "ROOM_AREA_TEXT_MISMATCH", "entityIds": ["R-1"]},
+    ]
+    assert summary["criticalChecks"] == ["OPEN_ENVELOPE"]
+
+
+def test_summary__no_notice_checks_key_when_only_critical_or_no_checks() -> None:
+    """NO-488: không kiểm nhắc nào → vắng khoá (như lượt cũ), không `[]`."""
+    assert "noticeChecks" not in service._summary(_report_with(), None)
+    assert "noticeChecks" not in service._summary(
+        _report_with(GeometryCheck("OPEN_ENVELOPE", True, {"share": 0.9})), None
+    )

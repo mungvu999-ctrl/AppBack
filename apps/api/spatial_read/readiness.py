@@ -59,6 +59,10 @@ _ESTIMATED_BASES: Final = frozenset({"note", "door", "wallThickness"})
 
 _PIPELINE_BASES: Final = frozenset(get_args(ScaleBasis)) - {"human"}
 
+SECTION_ONLY_KEY: Final = "sectionOnly"
+"""Khoá của `quality_summary` do lượt mặt cắt chỉ đọc chữ ghi (K-32c, `pipeline_orchestrate.section`): tầng đó không
+có tường để kiểm nên `readiness` là `ready`, không chặn dự án bằng kiểm tường, tỉ lệ hay model dự phòng."""
+
 
 @dataclass(frozen=True, slots=True)
 class RunFacts:
@@ -209,6 +213,8 @@ def readiness_of(
     """
     reasons: list[ReadinessReason] = []
     summary = None if run is None else run.quality_summary
+    if summary is not None and summary.get(SECTION_ONLY_KEY) is True:
+        return ReadinessOut(state="ready", reasons=())
     state, _ = scale_state_of(scale_source, scale_source, scale_basis, summary, scale_accepted)
     if state not in (None, "determined", "userCalibrated"):
         reasons.append("scaleUnresolved")

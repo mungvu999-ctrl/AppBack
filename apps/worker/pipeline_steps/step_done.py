@@ -20,6 +20,7 @@ from apps.api.project_settings.read import read_settings
 from apps.worker.pipeline_build.artifacts import input_key, layer_key
 from apps.worker.pipeline_orchestrate.keys import run_prefix
 from apps.worker.pipeline_orchestrate.pins import RunPins, load_pins, record_used, set_step_requeue
+from apps.worker.pipeline_orchestrate.section import finish_section_run, is_section_run
 from apps.worker.pipeline_steps.errors import MODEL_PIN_MISMATCH, PIPELINE_RESULT_INVALID
 from packages.core.clock import Clock
 from packages.core.pipeline import PIPELINE_STEPS
@@ -221,7 +222,10 @@ async def _step_done(db: AsyncSession, payload: StepResultPayload, clock: Clock)
         return True
     used = await _ml_completed(db, run, payload, pins, clock)
     if used is not None and await _advance(db, run, used, clock):
-        await queue_build(db, run, clock=clock)
+        if is_section_run(used):
+            await finish_section_run(db, run_id=run.id, clock=clock)  # K-32c: mặt cắt không dựng, không ghi tầng
+        else:
+            await queue_build(db, run, clock=clock)
     return True
 
 

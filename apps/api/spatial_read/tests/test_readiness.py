@@ -33,6 +33,7 @@ REVIEWED = sample_floor_layer(0, level_id=LEVEL_ID, reviewed=True)
 UNREVIEWED = sample_floor_layer(0, level_id=LEVEL_ID)
 CRITICAL: Mapping[str, object] = {"hasCritical": True, "criticalCount": 1, "lowConfidence": {}}
 CLEAN: Mapping[str, object] = {"hasCritical": False, "criticalCount": 0, "lowConfidence": {}}
+SECTION_ONLY: Mapping[str, object] = {**CLEAN, "sectionOnly": True}
 
 
 def _stored(family: ModelFamily) -> dict[str, object]:
@@ -103,6 +104,19 @@ def _run(*, summary: Mapping[str, object] | None = CLEAN, classic: tuple[ModelFa
             id="reviewed-but-scale-unresolved-keeps-all",
         ),
         pytest.param(RunFacts(pinned={}, quality_summary=None), "human", UNREVIEWED, "ready", (), id="no-pins-row"),
+        pytest.param(
+            _run(summary=SECTION_ONLY, classic=MODEL_FAMILIES), "pipeline", UNREVIEWED, "ready", (), id="section-only"
+        ),
+        pytest.param(
+            _run(
+                summary={**SECTION_ONLY, "criticalChecks": ["OPEN_ENVELOPE"], "hasCritical": True, "criticalCount": 1}
+            ),
+            "project_default",
+            UNREVIEWED,
+            "ready",
+            (),
+            id="section-only-never-blocks",
+        ),
     ],
 )
 def test_readiness_of_table(

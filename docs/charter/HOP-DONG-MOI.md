@@ -762,8 +762,15 @@ ruleConfig.ts       RULE_OVERRIDE_SEVERITIES · RuleOverrideSchema · ProjectRul
 - Tải: N54 khai tệp → N55 gửi khúc từng tệp (như #6) → N56 chốt; tệp hỏng mang `rejectedCode` (mã U-case), bộ đi tiếp.
 - `DrawingSet`, `DrawingSetFile`, `DrawingSetView`, `ViewTarget`, `ViewEdit`, `DrawingSetSummary` — dạng ở K-32a §3.
   `kind`, `storeyLabel`, `questions[].code` dùng chung tập giá trị của §13. Tuỳ chọn vắng (W2), độ tin 0–1.
+- Khung tên (K-65): `DrawingSetView.sheetNo?` (số hiệu bản vẽ từ khung tên trang chứa hình) và
+  `DrawingSet.titleBlock?: {owner?, project?, location?, date?}` (chủ đầu tư, công trình, địa điểm, ngày). Khung tên
+  chung của bộ = giá trị mà MỌI trang đọc được trường đó đều khớp (chủ đầu tư/công trình/địa điểm: khớp gần đúng
+  chịu nhiễu OCR; ngày: khớp đúng); trang không đọc được không bỏ phiếu; có hai trang lệch thì BỎ trường đó. Hình đã
+  `excluded` không tính. Máy chỉ gợi ý (FE hiện để tham khảo và gợi ý tên bộ từ `project`, không tự ghi đè tên đã có).
+  Vắng, không `null` (W2). Không đổi N58.
 - Máy chỉ đề xuất: N59 lưu bản duyệt (GV, `revision`); chỉ N60 tạo tầng và lần tải. Mặt cắt (`mode: "section"`)
   không thành tầng thường; trước K-32c thành dòng `isSection: true` ẩn khỏi 3D.
+  N59 còn nhận `body.name?` (đổi tên bộ, luật như N54, vắng = giữ tên); FE điền sẵn gợi ý từ `titleBlock.project` khi bộ chưa có tên.
 - N59 thay cả danh sách: hình máy (`source: "ai"`) vắng khỏi danh sách được giữ nguyên (xếp sau), có mặt thì không đổi
   được `fileId`/`pageIndex`; hình người vẽ (`"user"`) vắng thì xoá.
 - `field` của 422 theo dạng chấm W7: N54 `files.<i>.sizeBytes` (tệp quá `UPLOAD_MAX_BYTES`) hay `files` (cả bộ quá

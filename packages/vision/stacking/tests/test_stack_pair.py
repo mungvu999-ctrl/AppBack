@@ -14,8 +14,8 @@ import cv2
 import numpy as np
 import pytest
 
-from packages.domain.drawing_set.stacking import FloorObservation, StackResult, confidence, stack_pair
-from packages.domain.drawing_set.stacking.tests.support import conflict_case, golden, load_view, synth
+from packages.vision.stacking import FloorObservation, StackResult, confidence, stack_pair
+from packages.vision.stacking.tests.support import conflict_case, golden, load_view, synth
 
 _TOL_MM: Final = 100  # ngưỡng chấm của nghiên cứu (đáp án đúng khi cách đáp án chuẩn ≤ mức này)
 # Dòng báo cáo `stacking2_report.md`, bảng nhãn quan sát: (dịch, độ tin, nền, điểm, tỉ lệ đối thủ, xác nhận bởi)

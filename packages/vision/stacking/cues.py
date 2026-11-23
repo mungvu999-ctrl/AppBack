@@ -19,7 +19,7 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
-from packages.domain.drawing_set.stacking.model import FloorObservation, Mask, PartialShift, Shift
+from packages.vision.stacking.model import FloorObservation, Mask, PartialShift, Shift
 
 GRID_TOL: Final = 200.0  # mm: một trục của B khớp một trục của A
 STAIR_HIT: Final = 300.0  # mm: hai tâm thang gần hơn mức này là cùng một thang

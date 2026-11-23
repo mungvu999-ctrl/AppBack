@@ -10,7 +10,7 @@ from typing import Any, Final
 
 import pytest
 
-from packages.domain.drawing_set.stacking import (
+from packages.vision.stacking import (
     Bubble,
     FloorObservation,
     LevelPoint,
@@ -21,9 +21,9 @@ from packages.domain.drawing_set.stacking import (
     register_v,
     row_labels,
 )
-from packages.domain.drawing_set.stacking.register_h import PlanAxes
-from packages.domain.drawing_set.stacking.register_v import _confidence as v_confidence
-from packages.domain.drawing_set.stacking.tests.support import DATA
+from packages.vision.stacking.register_h import PlanAxes
+from packages.vision.stacking.register_v import _confidence as v_confidence
+from packages.vision.stacking.tests.support import DATA
 
 _MM: Final = 10.0
 

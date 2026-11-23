@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from packages.domain.drawing_set.stacking import Box, Bubble, FloorObservation
-from packages.domain.drawing_set.stacking.cues import (
+from packages.vision.stacking import Box, Bubble, FloorObservation
+from packages.vision.stacking.cues import (
     Prepared,
     _peak2,
     binarize,
@@ -14,7 +14,7 @@ from packages.domain.drawing_set.stacking.cues import (
     cue_walls,
     prepare,
 )
-from packages.domain.drawing_set.stacking.tests.support import synth
+from packages.vision.stacking.tests.support import synth
 
 _MM = 10.0
 

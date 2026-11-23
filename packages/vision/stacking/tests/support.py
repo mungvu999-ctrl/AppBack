@@ -7,8 +7,8 @@ from typing import Any, Final
 import cv2
 import numpy as np
 
-from packages.domain.drawing_set.stacking import Box, Bubble, FloorObservation
-from packages.domain.drawing_set.stacking.model import Gray, Mask
+from packages.vision.stacking import Box, Bubble, FloorObservation
+from packages.vision.stacking.model import Gray, Mask
 
 DATA: Final = Path(__file__).parent / "data"
 

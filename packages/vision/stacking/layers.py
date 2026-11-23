@@ -16,8 +16,8 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
-from packages.domain.drawing_set.stacking.cues import COL_TOL, binarize, centroids
-from packages.domain.drawing_set.stacking.model import FloorObservation, Mask, Shift
+from packages.vision.stacking.cues import COL_TOL, binarize, centroids
+from packages.vision.stacking.model import FloorObservation, Mask, Shift
 
 G: Final = 25.0  # mm mỗi điểm của lưới kiểm
 D0: Final = 100.0  # mm: cách xa hơn mức này một điểm tường không còn tính là trùng

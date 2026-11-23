@@ -14,7 +14,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Final, Literal, NamedTuple
 
-from packages.domain.drawing_set.stacking.model import FloorObservation
+from packages.vision.stacking.model import FloorObservation
 
 TOL: Final = 100.0  # mm: một nhãn là nội lai khi lệch khỏi đường khớp không quá mức này
 _SCALE_RANGE: Final = (0.5, 2.0)  # |hệ số| ngoài dải này không phải cùng một bản vẽ

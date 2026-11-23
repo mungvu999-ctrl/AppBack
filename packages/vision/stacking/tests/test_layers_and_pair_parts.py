@@ -7,8 +7,8 @@ import cv2
 import numpy as np
 import pytest
 
-from packages.domain.drawing_set.stacking import Box, Bubble, Conflict, FloorObservation, confidence
-from packages.domain.drawing_set.stacking.layers import (
+from packages.vision.stacking import Box, Bubble, Conflict, FloorObservation, confidence
+from packages.vision.stacking.layers import (
     MAX_PTS,
     MIN_PTS,
     G,
@@ -21,7 +21,7 @@ from packages.domain.drawing_set.stacking.layers import (
     search_axis,
     verify,
 )
-from packages.domain.drawing_set.stacking.pair import (
+from packages.vision.stacking.pair import (
     CAP_NO_CLEAR,
     CAP_UNCONFIRMED,
     _complete,
@@ -31,7 +31,7 @@ from packages.domain.drawing_set.stacking.pair import (
     independent,
     proposals,
 )
-from packages.domain.drawing_set.stacking.tests.support import synth
+from packages.vision.stacking.tests.support import synth
 
 _MM = 10.0
 

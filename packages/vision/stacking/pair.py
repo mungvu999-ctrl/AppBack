@@ -18,9 +18,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Final
 
-from packages.domain.drawing_set.stacking.cues import CUES, Prepared, prepare
-from packages.domain.drawing_set.stacking.layers import Layer, corr_peaks, layer, refine, search_axis
-from packages.domain.drawing_set.stacking.model import (
+from packages.vision.stacking.cues import CUES, Prepared, prepare
+from packages.vision.stacking.layers import Layer, corr_peaks, layer, refine, search_axis
+from packages.vision.stacking.model import (
     Basis,
     Candidate,
     Conflict,

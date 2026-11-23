@@ -162,6 +162,19 @@ def test_built_layer__area_notes_round_trip_and_reject_bad_values() -> None:
             BuiltLayer.from_json(json.dumps(payload).encode())
 
 
+def test_built_layer__page_unavailable_round_trips_and_rejects_non_bool() -> None:
+    """L2-N02: `pageUnavailable` khứ hồi, vắng khi `False` (layer.json cũ đọc ra `False`); không phải bool → lỗi."""
+    built = dataclasses.replace(_built(), page_unavailable=True)
+    assert BuiltLayer.from_json(built.to_json()).page_unavailable is True
+    assert "pageUnavailable" not in json.loads(_built().to_json())
+    assert BuiltLayer.from_json(_built().to_json()).page_unavailable is False
+    for bad in (1, "true", None):
+        payload = json.loads(_built().to_json())
+        payload["pageUnavailable"] = bad
+        with pytest.raises(ValueError, match="pageUnavailable"):
+            BuiltLayer.from_json(json.dumps(payload).encode())
+
+
 def test_area_notes_reads_unit_areas_only() -> None:
     """Số kèm m2/m²/㎡ (cả trên đường kích thước gán nhầm), ≥ 25 m², không lặp; số đo dài và diện tích phòng bỏ."""
     texts = [

@@ -6,7 +6,7 @@ Không DB, không kho: `build_report` chỉ nhận một `SpatialLayer` dựng t
 import json
 from decimal import Decimal
 
-from apps.worker.pipeline_quality.report import build_report
+from apps.worker.pipeline_quality.report import PAGE_RASTER_UNAVAILABLE, build_report
 from packages.domain.spatial.model import Opening, Point, Segment, SpatialLayer, Wall
 
 _LEVEL = "L-LEVEL00000000001"
@@ -110,3 +110,24 @@ def test_build_report__missing_reference_issue_marks_critical() -> None:
     report = build_report(run_id="run_01", revision=1, layer=layer, level_id=_LEVEL, threshold=Decimal("0.7"))
     assert report.has_critical is True
     assert report.issues[0].rule == "missingReference"
+
+
+def test_build_report__page_unavailable_adds_critical_check_last() -> None:
+    """L2-N02: lớp dựng ở chế độ suy giảm (mất raster trang) → kiểm `PAGE_RASTER_UNAVAILABLE` critical, đứng cuối,
+    bật `has_critical`; không cờ → không có kiểm này."""
+    layer = SpatialLayer(walls=(_wall("W-WALL0000000001", confidence=0.9),), openings=(), rooms=(), furniture=())
+    plain, degraded = (
+        build_report(
+            run_id="run_01", revision=1, layer=layer, level_id=_LEVEL, threshold=Decimal("0.7"), page_unavailable=flag
+        )
+        for flag in (False, True)
+    )
+    assert PAGE_RASTER_UNAVAILABLE not in [check.code for check in plain.checks]
+    assert degraded.checks[-1].code == PAGE_RASTER_UNAVAILABLE
+    assert degraded.checks[-1].critical
+    assert degraded.has_critical
+    assert json.loads(degraded.to_json_bytes())["checks"][-1] == {
+        "code": PAGE_RASTER_UNAVAILABLE,
+        "critical": True,
+        "detail": {},
+    }

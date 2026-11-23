@@ -14,6 +14,7 @@ import pytest
 
 from apps.worker.pipeline_build import tasks
 from apps.worker.pipeline_build.artifacts import input_key, layer_key, walls_mask_key
+from apps.worker.pipeline_build.build import BuiltLayer
 from apps.worker.pipeline_build.tasks import BuildContext, build_pipeline_layer
 from packages.core.clock import SystemClock
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
@@ -104,8 +105,6 @@ def _results(client: SyncRedis, run_id: str) -> list[dict[str, object]]:
 
 def test_build_pipeline_layer__J01(broker: SyncRedis, context: LocalDiskStorage) -> None:
     """Ba artifact seed 100 → `layer.json` giải được, đúng một `step_done` `completed`."""
-    from apps.worker.pipeline_build.build import BuiltLayer
-
     payload = _payload()
     _seed_inputs(context, payload)
     key = layer_key(payload.run_prefix)
@@ -343,6 +342,39 @@ def test_build_pipeline_layer_reads_page_for_suggestions(
     for item in (payload, missing):
         (result,) = _results(broker, item.run_id)
         assert result["status"] == "completed"
+    # L2-N02: trang vắng → lớp dựng mang cờ suy giảm cho quality; đọc được trang hay thông điệp không có trang → không.
+    flags = []
+    for item in (payload, missing):
+        raw = asyncio.run(_read(context, layer_key(item.run_prefix)))
+        assert raw is not None
+        flags.append(BuiltLayer.from_json(raw).page_unavailable)
+    assert flags == [False, True]
+
+
+def test_build_without_page_key_has_no_degraded_flag(broker: SyncRedis, context: LocalDiskStorage) -> None:
+    """Thông điệp cũ không có `page_key`: không có trang để mất → không gắn `page_unavailable` (L2-N02)."""
+    payload = _payload()
+    _seed_inputs(context, payload)
+    _apply(payload)
+    raw = asyncio.run(_read(context, layer_key(payload.run_prefix)))
+    assert raw is not None
+    assert BuiltLayer.from_json(raw).page_unavailable is False
+
+
+def test_read_page_reraises_transient_storage_error(context: LocalDiskStorage) -> None:
+    """L2-N02 B: kho bận (`DEPENDENCY_UNAVAILABLE`) khi đọc trang không bị nuốt thành `None` mà nổi lên cho
+    `define_task` thử lại; chỉ lỗi vĩnh viễn (vắng, quá trần, hỏng) mới thành chế độ suy giảm."""
+
+    async def failing_open_read(key: str, *, chunk_size: int = 0) -> AsyncIterator[bytes]:
+        """Thay `open_read`: luôn báo kho bận."""
+        raise DEPENDENCY_UNAVAILABLE.error(retry_after=5)
+        yield b""  # không bao giờ chạy tới; chỉ để hàm là async generator thật
+
+    context.open_read = failing_open_read  # type: ignore[method-assign]  # vá thẳng instance cho test này
+    payload = _payload(page_key=f"projects/{_some_id('prj')}/floors/{_LEVEL}/uploads/{_some_id('upl')}/pages/0.png")
+    with pytest.raises(AppError) as excinfo:
+        asyncio.run(tasks._read_page(context, payload, max_bytes=100))
+    assert excinfo.value.code is DEPENDENCY_UNAVAILABLE
 
 
 async def _read(storage: LocalDiskStorage, key: str) -> bytes | None:

@@ -20,6 +20,10 @@ QUALITY_REPORT_MAX_BYTES: Final = 8 * 1024 * 1024
 QUALITY_ARTIFACT: Final = "quality.json"
 """Tên artifact ghi dưới `run_prefix(…, "qualityCheck")` (B5-07, luật chung)."""
 
+PAGE_RASTER_UNAVAILABLE: Final = "PAGE_RASTER_UNAVAILABLE"
+"""L2-N02: bước dựng không đọc được raster trang (`BuiltLayer.page_unavailable`) nên chạy chế độ suy giảm (cánh cửa
+không đọc, tường ký hiệu cửa không bỏ). Critical: lớp có thể sai mà nhìn không ra, tầng phải về "Cần xem lại"."""
+
 _LOW_CONFIDENCE_LISTS: Final = ("walls", "openings", "rooms", "furniture")
 """Bốn danh sách đếm tin cậy thấp, theo đúng thứ tự khoá của `lowConfidence`."""
 
@@ -82,11 +86,15 @@ def build_report(
     scale_basis: str | None = None,
     label_orientation: Mapping[str, int] | None = None,
     area_notes: Sequence[float] = (),
+    page_unavailable: bool = False,
 ) -> RunQualityReport:
     """Dựng báo cáo theo B5-07 [6]: toàn vẹn (`check_integrity`) + đếm tin cậy thấp bốn danh sách + kiểm hình học
-    (`scale_basis`, `label_orientation` của `layer.json`, BENCH3D-14; `area_notes`, BENCH3D-24)."""
+    (`scale_basis`, `label_orientation` của `layer.json`, BENCH3D-14; `area_notes`, BENCH3D-24; `page_unavailable`
+    → `PAGE_RASTER_UNAVAILABLE` đứng cuối, L2-N02)."""
     issues = tuple(check_integrity(layer, level_id=level_id))
     checks = geometry_checks(layer, scale_basis=scale_basis, label_orientation=label_orientation, area_notes=area_notes)
+    if page_unavailable:
+        checks = (*checks, GeometryCheck(code=PAGE_RASTER_UNAVAILABLE, critical=True, detail={}))
     threshold_f = float(threshold)
     low_confidence = {name: _low_confidence_count(getattr(layer, name), threshold_f) for name in _LOW_CONFIDENCE_LISTS}
     return RunQualityReport(

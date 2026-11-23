@@ -142,7 +142,7 @@ ScaleBasis = Literal["chain", "paired", "note", "door", "wallThickness", "defaul
 ước từ bề dày tường, hay tỉ lệ dự án. Chỉ nằm trong `layer.json`; API chưa trả."""
 
 _SCALE_BASES: Final = frozenset(get_args(ScaleBasis))
-_OPTIONAL_KEYS: Final = frozenset({"scaleBasis", "scaleChecks", "labelOrientation", "areaNotes"})
+_OPTIONAL_KEYS: Final = frozenset({"scaleBasis", "scaleChecks", "labelOrientation", "areaNotes", "pageUnavailable"})
 """Khoá gốc tuỳ chọn: `layer.json` dựng trước QT-SCALE không có `scaleBasis` vẫn đọc được."""
 
 ScaleChecks = Mapping[str, Mapping[str, float]]
@@ -175,6 +175,9 @@ class BuiltLayer:
     """BENCH3D-14: số nhãn chữ đọc dọc/ngang (`label_orientation`) cho kiểm `ROTATED_PLAN`; rỗng khi không nhãn nào."""
     area_notes: tuple[float, ...] = ()
     """BENCH3D-24: các số "N m²" (≥ `AREA_NOTE_MIN_M2`) OCR đọc trên bản vẽ (`area_notes`) cho `AREA_TEXT_MISMATCH`."""
+    page_unavailable: bool = False
+    """L2-N02: lượt có trang nhưng không đọc được raster (trang/`walls.png` vắng, quá trần, hỏng) nên dựng ở chế độ suy
+    giảm (không đọc cánh cửa, không bỏ tường ký hiệu cửa); quality báo `PAGE_RASTER_UNAVAILABLE`."""
 
     def to_json(self) -> bytes:
         """`layer.json` UTF-8 gọn, khoá theo thứ tự cố định; `scaleMmPerPx` là chuỗi Decimal."""
@@ -194,6 +197,8 @@ class BuiltLayer:
             payload["labelOrientation"] = dict(self.label_orientation)
         if self.area_notes:
             payload["areaNotes"] = list(self.area_notes)
+        if self.page_unavailable:
+            payload["pageUnavailable"] = True
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
 
     @classmethod
@@ -239,7 +244,16 @@ class BuiltLayer:
             scale_checks={key: {k: float(v) for k, v in value.items()} for key, value in checks.items()},
             label_orientation={key: int(value) for key, value in orientation.items()},
             area_notes=tuple(float(x) for x in notes),
+            page_unavailable=_optional_flag(payload, "pageUnavailable"),
         )
+
+
+def _optional_flag(payload: Mapping[str, object], key: str) -> bool:
+    """Khoá bool tuỳ chọn của `layer.json` (vắng = `False`); giá trị không phải bool → `ValueError`."""
+    value = payload.get(key, False)
+    if not isinstance(value, bool):
+        raise ValueError(f"layer.json {key} lạ: {value!r}")
+    return value
 
 
 def _checked(raw: np.ndarray, what: str) -> None:

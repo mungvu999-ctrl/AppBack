@@ -367,3 +367,76 @@ def test_area_text_mismatch__room_label_is_not_a_unit_total_and_bound_is_inclusi
     layer = _layer(walls, rooms, (_door(walls[0].id), _door(walls[0].id, 5100)))
     codes = [[c.code for c in geometry_checks(layer, area_notes=notes)] for notes in ((26.0,), (57.5,), (70.0,))]
     assert codes == [[], [], ["AREA_TEXT_MISMATCH"]]
+
+
+def _opening(index: int, wall_id: str, width: int, *, kind: str = "door", swing: str = "left") -> Opening:
+    return Opening.model_validate(
+        {
+            "id": f"D-SIZE{index:012d}",
+            "wallId": wall_id,
+            "kind": kind,
+            "offsetMm": 100 + 1000 * index,
+            "widthMm": width,
+            "heightMm": 2100,
+            "sillHeightMm": 0 if kind == "door" else 900,
+            "swing": swing,
+            **_AI,
+        }
+    )
+
+
+def _odd_doors(width: int, basis: str | None, *, kind: str = "door", swing: str = "left") -> dict[str, object] | None:
+    """Chi tiết `OPENING_SIZE_IMPLAUSIBLE` của một tầng hộp 12 x 4 m có đúng một ô mở; không bật → `None`."""
+    walls = _walls(*_box(0, 0, 12000, 4000))
+    layer = _layer(walls, openings=(_opening(0, walls[0].id, width, kind=kind, swing=swing),))
+    found = [c for c in geometry_checks(layer, scale_basis=basis) if c.code == "OPENING_SIZE_IMPLAUSIBLE"]
+    assert all(not c.critical for c in found)
+    return dict(found[0].detail) if found else None
+
+
+@pytest.mark.parametrize(
+    ("width", "basis", "swing", "flagged"),
+    [
+        (900, "chain", "left", False),  # cửa phòng thường
+        (550, "chain", "left", False),  # đúng sàn: không báo
+        (549, "chain", "left", True),
+        (400, "chain", "left", True),  # ch-14: cửa 400 mm trên tỉ lệ chuỗi kích thước
+        (2500, "chain", "sliding", False),  # cửa lùa ban công rộng hợp lệ (K-13a)
+        (3600, "paired", "double", False),  # đúng trần
+        (3601, "paired", "double", True),
+        (500, "door", "left", False),  # 500·1,17 = 585: tỉ lệ ước từ cửa có thể đọc hẹp đi 17 %
+        (450, "door", "left", True),  # 450·1,17 = 527
+        (4300, "door", "sliding", False),  # 4300·0,83 = 3569
+        (4400, "door", "sliding", True),  # 4400·0,83 = 3652
+        (380, None, "left", True),  # nguồn không rõ: e = 0,42, 380·1,42 = 540
+        (400, "wallThickness", "left", False),  # 400·1,42 = 568
+        (300, "default", "left", False),  # tỉ lệ mặc định của dự án: mm vô nghĩa, đã có scaleUnresolved
+        (10000, "default", "sliding", False),
+    ],
+)
+def test_door_width_outside_plausible_band__info_only(width: int, basis: str | None, swing: str, flagged: bool) -> None:
+    """K-15 `OPENING_SIZE_IMPLAUSIBLE`: cửa đi rộng ngoài [550; 3600] mm sau khi nới theo sai số tỉ lệ → chỉ báo."""
+    assert (_odd_doors(width, basis, swing=swing) is not None) is flagged
+
+
+def test_window_width_is_never_flagged() -> None:
+    """Dải kính dài tới hết tường chủ có thật (O3, cn-11 8,35 m ĐẠT): cửa sổ không qua kiểm kích thước."""
+    assert _odd_doors(11000, "chain", kind="window", swing="sliding") is None
+    assert _odd_doors(300, "chain", kind="window", swing="sliding") is None
+
+
+def test_odd_door_detail_lists_every_flagged_door() -> None:
+    walls = _walls(*_box(0, 0, 12000, 4000))
+    doors = (
+        _opening(0, walls[0].id, 400),
+        _opening(1, walls[0].id, 900),
+        _opening(2, walls[1].id, 3800, swing="sliding"),
+    )
+    found = [c for c in geometry_checks(_layer(walls, openings=doors), scale_basis="chain")]
+    assert [(c.code, c.critical, dict(c.detail)) for c in found if c.code == "OPENING_SIZE_IMPLAUSIBLE"] == [
+        (
+            "OPENING_SIZE_IMPLAUSIBLE",
+            False,
+            {"doors": 2, "minWidthMm": 400, "maxWidthMm": 3800, "openingIds": (doors[0].id, doors[2].id)},
+        )
+    ]

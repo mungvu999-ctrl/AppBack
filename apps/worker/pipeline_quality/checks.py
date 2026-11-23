@@ -79,6 +79,13 @@ tường ngoài, lô gia/hộp kỹ thuật ghi gộp; lệch hơn là thiếu p
 UNKNOWN_USAGE_SHARE: Final = 0.8
 UNKNOWN_USAGE_CRITICAL_ROOMS: Final = 3
 """`ROOM_USAGE_UNKNOWN` chỉ chặn khi tầng có ít nhất 3 phòng (1-2 phòng "khác" là bản vẽ lạ, không phải lỗi)."""
+DOOR_MIN_WIDTH_MM: Final = 550
+DOOR_MAX_WIDTH_MM: Final = 3600
+"""K-15 `OPENING_SIZE_IMPLAUSIBLE` (chỉ báo): cửa đi rộng ngoài [550; 3600] mm sau khi nới theo sai số tỉ lệ
+(`SCALE_ERROR`, như `MULTIPLE_PLANS`): báo khi `rộng·(1+e) < 550` hoặc `rộng·(1-e) > 3600`. Sàn: cửa thật hẹp nhất
+là cánh WC ~600 mm (bench O3 đòi ≥ 600); 550 chừa sai số đo hộp, bench r4b + F: không ca ĐẠT nào bật (600 bật 3).
+Trần: cửa lùa/hai cánh hợp lệ tới 3600 (K-13a; cửa rộng nhất bench 3117). Cửa sổ không kiểm: dải kính dài có thật
+tới hết tường chủ (O3, cn-11 8,35 m ĐẠT) và hộp hẹp hơn 300 mm đã bị bước dựng thay rộng mặc định."""
 
 
 @dataclass(frozen=True)
@@ -282,6 +289,30 @@ def _within(note: float, low: float, high: float) -> bool:
     return round(low * (1 - AREA_TEXT_TOLERANCE), 2) <= note <= round(high * (1 + AREA_TEXT_TOLERANCE), 2)
 
 
+def _opening_size_implausible(layer: SpatialLayer, scale_basis: str | None) -> GeometryCheck | None:
+    """Cửa đi rộng phi lý (K-15): hộp dò sai hay tỉ lệ lệch; chỉ báo, không chặn. Tỉ lệ `default` (máy không đo
+    được, đã có `scaleUnresolved`) thì mm vô nghĩa nên bỏ qua; nguồn tỉ lệ khác nới dải theo `SCALE_ERROR`."""
+    if scale_basis == "default":
+        return None
+    error = SCALE_ERROR.get(scale_basis or "", UNKNOWN_SCALE_ERROR)
+    odd = [
+        door
+        for door in layer.openings
+        if door.kind == "door"
+        and (door.width_mm * (1 + error) < DOOR_MIN_WIDTH_MM or door.width_mm * (1 - error) > DOOR_MAX_WIDTH_MM)
+    ]
+    if not odd:
+        return None
+    widths = [door.width_mm for door in odd]
+    detail: dict[str, float | tuple[str, ...]] = {
+        "doors": len(odd),
+        "minWidthMm": min(widths),
+        "maxWidthMm": max(widths),
+        "openingIds": tuple(door.id for door in odd),
+    }
+    return GeometryCheck("OPENING_SIZE_IMPLAUSIBLE", False, detail)
+
+
 def _room_usage_unknown(rooms: Sequence[Room]) -> GeometryCheck | None:
     """Phần lớn phòng là `other`: bước gán công năng hỏng; chặn từ `UNKNOWN_USAGE_CRITICAL_ROOMS` phòng."""
     if not rooms:
@@ -353,8 +384,8 @@ def geometry_checks(
     area_notes: Sequence[float] = (),
 ) -> tuple[GeometryCheck, ...]:
     """Mọi kiểm hình học đã bật, thứ tự cố định; `scale_basis` (của `layer.json`, vắng = không rõ) đặt dải sai số
-    tỉ lệ cho `MULTIPLE_PLANS`, `label_orientation` (cũng của `layer.json`) cho `ROTATED_PLAN`, `area_notes` (cũng
-    của `layer.json`) cho `AREA_TEXT_MISMATCH`."""
+    tỉ lệ cho `MULTIPLE_PLANS` và `OPENING_SIZE_IMPLAUSIBLE`, `label_orientation` (cũng của `layer.json`) cho
+    `ROTATED_PLAN`, `area_notes` (cũng của `layer.json`) cho `AREA_TEXT_MISMATCH`."""
     walls = layer.walls
     lines = [_line(wall) for wall in walls]
     found = (
@@ -365,5 +396,6 @@ def geometry_checks(
         _room_usage_unknown(layer.rooms),
         _rotated_plan(label_orientation or {}),
         _area_text_mismatch(layer, area_notes),
+        _opening_size_implausible(layer, scale_basis),
     )
     return tuple(check for check in found if check is not None)

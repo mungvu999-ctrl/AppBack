@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import pytest
 
-from packages.vision.preprocess.views import VIEW_SCORE, WHOLE_SCORE, ViewBox, split_views
+from packages.vision.preprocess.views import INK_SPLIT_SCORE, VIEW_SCORE, WHOLE_SCORE, ViewBox, split_views
 
 TOL: Final = 4
 
@@ -51,7 +51,7 @@ def test_touching_panels_cut_at_grey_step() -> None:
 
 
 def test_frame_cells_replace_one_panel() -> None:
-    """Một tấm giấy chứa hai ô khung kín (đường kẻ dài) lát kín nó → thay bằng hai ô khung."""
+    """Một tấm giấy chứa hai ô khung kín (đường kẻ dài) → hai khung, ranh nằm trong khe giữa hai ô."""
     sheet = np.full((900, 1600), 255, np.uint8)
     sheet[20:880, 20:1580] = 236
     cv2.rectangle(sheet, (40, 40), (780, 860), 0, 3)
@@ -60,7 +60,10 @@ def test_frame_cells_replace_one_panel() -> None:
         cv2.line(sheet, (x, 300), (x + 400, 500), 20, 2)
     got = split_views(sheet)
     assert len(got) == 2
-    assert got[0].x1 <= 800 <= got[1].x0
+    assert got[0].x0 <= 40
+    assert got[1].x1 >= 1560
+    assert got[0].x1 <= 830
+    assert got[1].x0 >= 770
 
 
 def test_white_page_falls_back_to_whole_drawing() -> None:
@@ -72,6 +75,49 @@ def test_white_page_falls_back_to_whole_drawing() -> None:
     (box,) = split_views(sheet)
     assert box.score == WHOLE_SCORE
     assert _near(box, (100, 120, 1091, 881), tol=8)
+
+
+def _framed_sheet(frame: int) -> np.ndarray:
+    """Hai tờ có khung xám `frame` dán sát nhau trên cùng một tấm giấy (cùng mức xám, không bậc xám để cắt)."""
+    sheet = np.full((1000, 1600), 255, np.uint8)
+    sheet[20:980, 20:1580] = 236
+    for x0, x1 in ((40, 800), (800, 1560)):
+        cv2.rectangle(sheet, (x0, 40), (x1, 960), frame, 3)
+        cv2.line(sheet, (x0 + 60, 300), (x1 - 300, 700), 20, 2)
+        cv2.line(sheet, (x0 + 100, 500), (x1 - 200, 500), 20, 2)
+    return sheet
+
+
+def test_light_frames_touching_cut_at_shared_frame_line() -> None:
+    """Khung xám nhạt (180 > ngưỡng mực 160) chung một cạnh dọc chạy suốt tấm → cắt ở cạnh chung, ra hai khung."""
+    got = split_views(_framed_sheet(180))
+    assert len(got) == 2
+    assert abs(got[0].x1 - 800) <= 2 * TOL
+    assert abs(got[1].x0 - 800) <= 2 * TOL
+    assert {box.score for box in got} == {VIEW_SCORE}
+
+
+def test_long_line_without_side_frames_is_not_a_cut() -> None:
+    """Một hình có đường nền dài suốt hộp nhưng hai cạnh hộp không có khung → không cắt ở đường đó."""
+    sheet = np.full((900, 1400), 255, np.uint8)
+    sheet[50:850, 50:1350] = 236
+    cv2.line(sheet, (60, 450), (1340, 450), 0, 3)
+    for x in range(200, 1300, 150):
+        cv2.line(sheet, (x, 200), (x + 60, 420), 0, 2)
+    (box,) = split_views(sheet)
+    assert _near(box, (50, 50, 1350, 850))
+
+
+def test_white_page_two_drawings_split_at_white_gap() -> None:
+    """Nền trắng tinh (PDF vector), hai hình cách nhau một khe trắng rộng → hai khung, độ chắc `INK_SPLIT_SCORE`."""
+    sheet = np.full((1000, 1600), 255, np.uint8)
+    for x0 in (100, 900):
+        cv2.rectangle(sheet, (x0, 150), (x0 + 600, 850), 0, 1)
+        cv2.line(sheet, (x0, 150), (x0 + 600, 850), 0, 1)
+    got = split_views(sheet)
+    assert [box.score for box in got] == [INK_SPLIT_SCORE, INK_SPLIT_SCORE]
+    assert _near(got[0], (100, 150, 701, 851), tol=8)
+    assert _near(got[1], (900, 150, 1501, 851), tol=8)
 
 
 def test_small_and_inkless_panels_are_kept() -> None:

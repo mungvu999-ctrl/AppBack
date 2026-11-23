@@ -43,6 +43,7 @@ from packages.db.models.projects import Project
 from packages.messaging.celery_app import send_task
 from packages.messaging.payloads.drawings import PipelineStartPayload
 from packages.messaging.redis import streams_redis_sync
+from packages.messaging.run_cancel import mark_runs_cancelled
 from packages.messaging.streams import SyncEventBus, upload_stream
 
 START_TASK: Final = "pipeline.orchestrate.start"
@@ -61,8 +62,10 @@ _STEP_INDEX: Final = {step: index for index, step in enumerate(_STEPS)}
 _WEIGHT_BEFORE: Final = tuple(sum(w for _, w in PIPELINE_STEPS[:index]) for index in range(len(PIPELINE_STEPS)))
 _WEIGHT_THROUGH: Final = tuple(sum(w for _, w in PIPELINE_STEPS[: index + 1]) for index in range(len(PIPELINE_STEPS)))
 _UPPER_SNAKE: Final = re.compile(r"[A-Z][A-Z0-9_]{2,63}")
-_SILENT_FAILURES: Final = frozenset({PipelineCode.PIPELINE_SUPERSEDED.value, FLOOR_DELETED})
-"""Lượt hỏng vì lượt mới thay hay tầng/dự án đã xoá: người tải tự gây ra, không báo (FIX-P0-12)."""
+_SILENT_FAILURES: Final = frozenset(
+    {PipelineCode.PIPELINE_SUPERSEDED.value, PipelineCode.PIPELINE_CANCELLED.value, FLOOR_DELETED}
+)
+"""Lượt hỏng vì lượt mới thay, người dùng huỷ (K-24) hay tầng/dự án đã xoá: tự gây ra, không báo (FIX-P0-12)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -289,6 +292,67 @@ async def _supersede_live_runs(db: AsyncSession, *, floor_pk: int, run_id: str, 
 
 
 # ---------------------------------------------------------------------------
+# Huỷ (K-24)
+# ---------------------------------------------------------------------------
+
+
+async def _floor_has_completed_run(db: AsyncSession, floor_pk: int) -> bool:
+    """Tầng còn một lượt `completed` nào (của bất kỳ lượt tải) — tức vẫn có mô hình dùng được."""
+    stmt = (
+        select(PipelineRunRow.id)
+        .where(PipelineRunRow.floor_pk == floor_pk, PipelineRunRow.status == "completed")
+        .limit(1)
+    )
+    return (await db.execute(stmt)).first() is not None
+
+
+async def cancel_upload_runs(db: AsyncSession, *, upload_id: str, clock: Clock) -> tuple[str, ...]:
+    """Huỷ mọi lượt `pending|running` của **một** lượt tải; trả id các lượt đã huỷ (rỗng = không có gì để huỷ).
+
+    Cùng khoá với `start_run`/`record_step` (`floors` → `pipeline_runs`, id tăng dần), nên một
+    `record_step` đang ghi dở xong trước rồi mới tới lượt huỷ, và mọi kết quả tới sau thấy lượt
+    `failed` → `_usable` từ chối (bất biến "kết quả muộn bị bỏ"). Không đặt `superseded_by`: không
+    có lượt nào thay. Dòng đếm của tầng về `completed` nếu tầng còn lượt xong trước đó (mô hình cũ
+    vẫn dùng được), ngược lại `none` — tầng không bao giờ kẹt "đang xử lý" (`PIPELINE_STATES` không có
+    "cancelled"). Sau commit: cắm cờ huỷ cho worker `ml` (`packages.messaging.run_cancel`) và phát
+    `Progress` `failed` `PIPELINE_CANCELLED` (đóng stream). Không báo người tải (`_SILENT_FAILURES`).
+    """
+    floor_pk = (await db.execute(select(UploadRow.floor_pk).where(UploadRow.id == upload_id))).scalar_one_or_none()
+    if floor_pk is None:
+        return ()
+    floor = await _lock_floor(db, floor_pk)
+    if floor is None:
+        return ()
+    stmt = (
+        select(PipelineRunRow.id)
+        .where(PipelineRunRow.upload_id == upload_id, PipelineRunRow.status.in_(LIVE_RUN_STATUSES))
+        .order_by(PipelineRunRow.id)
+        .with_for_update()
+    )
+    run_ids = tuple((await db.execute(stmt)).scalars())
+    if not run_ids:
+        return ()
+    await db.execute(
+        update(PipelineRunRow)
+        .where(PipelineRunRow.id.in_(run_ids))
+        .values(status="failed", error_code=PipelineCode.PIPELINE_CANCELLED.value, updated_at=clock.now())
+    )
+    if not await _floor_was_recreated(db, floor):
+        has_model = await _floor_has_completed_run(db, floor.pk)
+        await set_upload_state(
+            db,
+            project_id=floor.project_id,
+            floor_level_id=floor.level_id,
+            has_upload=has_model,
+            pipeline_state="completed" if has_model else "none",
+        )
+    await touch_project(db, project_id=floor.project_id, clock=clock)
+    on_after_commit(db, lambda: mark_runs_cancelled(run_ids))
+    await publish_progress_after_commit(db, upload_id)
+    return run_ids
+
+
+# ---------------------------------------------------------------------------
 # Ghi một bước
 # ---------------------------------------------------------------------------
 
@@ -484,6 +548,7 @@ __all__ = [
     "START_TASK",
     "STEP_STATUSES",
     "RunRow",
+    "cancel_upload_runs",
     "fail_run",
     "lock_run",
     "publish_progress_after_commit",

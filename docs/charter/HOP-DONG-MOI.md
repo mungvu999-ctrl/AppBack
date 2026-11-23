@@ -250,6 +250,19 @@ F-07: hộp thoại A9 khi gỡ; ánh xạ `MEMBER_*`.
   `PIPELINE_RUNNING` (đang chạy — bấm đôi), `PIPELINE_NOT_FAILED` (đã xong), `UPLOAD_SOURCE_GONE` (tệp gốc không còn
   trong kho → FE giữ nút "Tải lại bản vẽ"). 404 `resource: "upload"` khi lượt tải không thuộc dự án.
 
+### N53 — `POST /api/projects/{project_id}/drawings/uploads/{upload_id}/cancel` → `Progress` *(K-24)*
+
+- Màn Xử lý: "Huỷ xử lý" (xác nhận tại chỗ) huỷ mọi lượt chạy còn `pending|running` của **đúng** lượt tải này. Thân
+  rỗng; quyền `floor.upload` (viewer → 403); 404 `resource: "upload"` khi lượt tải không thuộc dự án hay tầng đã xoá.
+- Luôn 200 với `Progress` sau huỷ: lượt sống → `status: "failed"`, `error: "PIPELINE_CANCELLED"`, không `endedAt`
+  (K33), không `queueAhead`. Không còn lượt sống (bấm đôi, đã huỷ, đã `completed`) → `Progress` hiện tại, không đổi gì
+  (lượt xong trước khi lời huỷ tới **giữ** kết quả). FE ghi thẳng `Progress` trả về; SSE cũng nhận khung cuối rồi đóng.
+- Máy chủ dừng phần AI: lượt thành `failed` dưới khoá tầng nên mọi bước sau và mọi kết quả muộn bị bỏ; worker `ml`
+  đọc cờ huỷ và dừng ở điểm kiểm gần nhất (trước nạp model, giữa từng lát ảnh, trước ghi kết quả). Không gửi thông báo
+  "AI gặp lỗi" cho lượt huỷ. Sau huỷ, N51 "Chạy lại từ bản gốc" nhận lượt tải này.
+- `PIPELINE_CANCELLED` (giá trị `Progress.error`, không phải mã HTTP) — FE: hành động `retry` (màn hỏng mời "Chạy lại
+  từ bản gốc" / "Tải lại bản vẽ"), câu "Lượt xử lý đã được huỷ theo yêu cầu. Bản vẽ gốc vẫn được giữ để chạy lại."
+
 ### N7b — `GET /api/projects/{project_id}/pipeline-runs` → `pipelineRuns.ts` *(UIFIX-B7)*
 
 - Lượt xử lý của dự án, mới nhất trước; `limit` + `cursor` (`CursorPage`); thành viên dự án đọc được, người ngoài/dự án không có → 404. Mỗi mục một lượt của một tầng: trạng thái, bước, %, `createdAt`/`startedAt`/`endedAt`/`updatedAt`, mã lỗi. Màn: tab Nhật ký của màn Xử lý (N5-08).

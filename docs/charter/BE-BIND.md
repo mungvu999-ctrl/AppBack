@@ -15,7 +15,7 @@
 > - S1/S2 chia chủ S-case.
 >
 > **Đường v1** là đường thật sau F-01a (tiền tố `/api`, E1) và F-03 (lồng tạo và liệt kê tầng, T3). Tham số đường viết snake_case (W21).
-> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 53 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
+> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 54 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
 > **Khoá:** `—` = mọi vai đã đăng nhập (miễn C07), `thành viên` = mọi vai là thành viên dự án, `admin` = `require_admin` (route trong dự án: `require_project("admin")` — thành viên **và** vai admin, 404 trước 403).
 
 ## 1. Hợp đồng CŨ — 49 thao tác HTTP + 2 kênh SSE
@@ -135,6 +135,7 @@
 | N50 | `GET /api/projects/{project_id}/lighting-bakes/availability` | `lighting_bake_read_availability` | `lightingBake.ts` (`LightingBakeAvailability`) | Đ | thành viên | — | K-09 | công tắc `LIGHTING_BAKE_ENABLED`: FE ẩn nút "Nướng ánh sáng" khi `false`; N42 tắt → 503 `LIGHTING_BAKE_DISABLED` |
 | N51 | `POST /api/projects/{project_id}/drawings/uploads/{upload_id}/rerun` | `drawings_rerun_upload` | `index.ts` (`Progress`) | G +ngoài | `floor.upload` | — | K-06 | màn hỏng: nút "Chạy lại từ bản gốc"; thân rỗng; 409 `UPLOAD_NOT_COMPLETE` / `UPLOAD_SUPERSEDED` / `PIPELINE_RUNNING` / `PIPELINE_NOT_FAILED` / `UPLOAD_SOURCE_GONE`; xếp hàng pipeline sau commit |
 | N52 | `GET /api/projects/{project_id}/house-proposal` | `drawing_sets_read_house_proposal` | `houseProposal.ts` (`HouseProposal`; cổng: `strict/houseProposal.ts`) | Đ | thành viên | — | HS-02 | màn Quản lý tầng: bảng "Đề xuất cho cả nhà" (tầng, cốt, chiều cao, câu hỏi); chỉ đọc; công tắc `DRAWING_SET_ENABLED` tắt → 200 `{enabled: false, floors: [], runIds: []}` |
+| N53 | `POST /api/projects/{project_id}/drawings/uploads/{upload_id}/cancel` | `drawings_cancel_upload` | `index.ts` (`Progress`) | G +ngoài | `floor.upload` | — | K-24 | màn Xử lý: nút "Huỷ xử lý" (xác nhận tại chỗ); thân rỗng; luôn 200 `Progress` sau huỷ (`failed` + `error: "PIPELINE_CANCELLED"`; lượt đã cuối giữ nguyên — idempotent); sau commit cắm cờ huỷ Redis cho worker `ml` + phát `Progress` cuối |
 
 N24 có version: áp thêm C09, C09b, C14 theo CASE §2.2 A.
 
@@ -155,6 +156,7 @@ N24 có version: áp thêm C09, C09b, C14 theo CASE §2.2 A.
 - `step` luôn là một trong 6 id của `src/lib/realtime/pipeline.ts:48-55`: bước **chưa xong có thứ tự thấp nhất**. `progressPercent` tính theo trọng số 5/30/20/15/20/10 và tăng đơn điệu.
 - `endedAt` **chỉ** có khi `status:"completed"`. Lượt hỏng **không** có `endedAt`.
 - Lượt bị thay thế bởi lần tải lại: `status:"failed"`, `error:"PIPELINE_SUPERSEDED"`.
+- Lượt bị người dùng huỷ (N53): `status:"failed"`, `error:"PIPELINE_CANCELLED"`, không `endedAt`.
 - `error` luôn là **mã UPPER_SNAKE**, không phải câu.
 - Golden H1 bắt buộc cho các nhánh: `pending`, `running`, `completed`, `failed`.
 

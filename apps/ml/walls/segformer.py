@@ -15,6 +15,7 @@ from numpy.typing import NDArray
 
 from apps.ml.runtime.errors import MODEL_FORMAT_UNSUPPORTED, ORT_ERRORS
 from apps.ml.walls.spec import LOGITS_STRIDE, PAD_VALUE, TILE_PX, WALL_CLASS, tile_origins, to_model_input
+from packages.messaging.run_cancel import checkpoint
 from packages.messaging.tasks import PermanentError
 from packages.ml_contracts.ports import RgbImage
 
@@ -45,6 +46,7 @@ def stitch_mask(pixels: RgbImage, run_tile: RunTile) -> NDArray[np.bool_]:
     counts = np.zeros((height, width), dtype=np.float32)
     for y0 in tile_origins(height):
         for x0 in tile_origins(width):
+            checkpoint()  # K-24: lượt bị huỷ thì dừng giữa hai lát, không chạy hết trang
             tile_h = min(TILE_PX, height - y0)
             tile_w = min(TILE_PX, width - x0)
             tile = np.full((TILE_PX, TILE_PX, 3), PAD_VALUE, dtype=np.uint8)

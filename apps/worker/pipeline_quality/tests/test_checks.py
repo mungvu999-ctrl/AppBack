@@ -5,6 +5,7 @@ from decimal import Decimal
 
 import pytest
 
+from apps.worker.pipeline_build.build import AreaLabel
 from apps.worker.pipeline_quality.checks import axis_share, geometry_checks, not_a_floor_plan
 from apps.worker.pipeline_quality.report import build_report
 from packages.domain.spatial.model import Opening, Point, Room, Segment, SpatialLayer, Wall
@@ -367,3 +368,140 @@ def test_area_text_mismatch__room_label_is_not_a_unit_total_and_bound_is_inclusi
     layer = _layer(walls, rooms, (_door(walls[0].id), _door(walls[0].id, 5100)))
     codes = [[c.code for c in geometry_checks(layer, area_notes=notes)] for notes in ((26.0,), (57.5,), (70.0,))]
     assert codes == [[], [], ["AREA_TEXT_MISMATCH"]]
+
+
+def _opening(index: int, wall_id: str, width: int, *, kind: str = "door", swing: str = "left") -> Opening:
+    return Opening.model_validate(
+        {
+            "id": f"D-SIZE{index:012d}",
+            "wallId": wall_id,
+            "kind": kind,
+            "offsetMm": 100 + 1000 * index,
+            "widthMm": width,
+            "heightMm": 2100,
+            "sillHeightMm": 0 if kind == "door" else 900,
+            "swing": swing,
+            **_AI,
+        }
+    )
+
+
+def _odd_doors(width: int, basis: str | None, *, kind: str = "door", swing: str = "left") -> dict[str, object] | None:
+    """Chi tiết `OPENING_SIZE_IMPLAUSIBLE` của một tầng hộp 12 x 4 m có đúng một ô mở; không bật → `None`."""
+    walls = _walls(*_box(0, 0, 12000, 4000))
+    layer = _layer(walls, openings=(_opening(0, walls[0].id, width, kind=kind, swing=swing),))
+    found = [c for c in geometry_checks(layer, scale_basis=basis) if c.code == "OPENING_SIZE_IMPLAUSIBLE"]
+    assert all(not c.critical for c in found)
+    return dict(found[0].detail) if found else None
+
+
+@pytest.mark.parametrize(
+    ("width", "basis", "swing", "flagged"),
+    [
+        (900, "chain", "left", False),  # cửa phòng thường
+        (550, "chain", "left", False),  # đúng sàn: không báo
+        (549, "chain", "left", True),
+        (400, "chain", "left", True),  # ch-14: cửa 400 mm trên tỉ lệ chuỗi kích thước
+        (2500, "chain", "sliding", False),  # cửa lùa ban công rộng hợp lệ (K-13a)
+        (3600, "paired", "double", False),  # đúng trần
+        (3601, "paired", "double", True),
+        (500, "door", "left", False),  # 500·1,17 = 585: tỉ lệ ước từ cửa có thể đọc hẹp đi 17 %
+        (450, "door", "left", True),  # 450·1,17 = 527
+        (4300, "door", "sliding", False),  # 4300·0,83 = 3569
+        (4400, "door", "sliding", True),  # 4400·0,83 = 3652
+        (380, None, "left", True),  # nguồn không rõ: e = 0,42, 380·1,42 = 540
+        (400, "wallThickness", "left", False),  # 400·1,42 = 568
+        (300, "default", "left", False),  # tỉ lệ mặc định của dự án: mm vô nghĩa, đã có scaleUnresolved
+        (10000, "default", "sliding", False),
+    ],
+)
+def test_door_width_outside_plausible_band__info_only(width: int, basis: str | None, swing: str, flagged: bool) -> None:
+    """K-15 `OPENING_SIZE_IMPLAUSIBLE`: cửa đi rộng ngoài [550; 3600] mm sau khi nới theo sai số tỉ lệ → chỉ báo."""
+    assert (_odd_doors(width, basis, swing=swing) is not None) is flagged
+
+
+def test_window_width_is_never_flagged() -> None:
+    """Dải kính dài tới hết tường chủ có thật (O3, cn-11 8,35 m ĐẠT): cửa sổ không qua kiểm kích thước."""
+    assert _odd_doors(11000, "chain", kind="window", swing="sliding") is None
+    assert _odd_doors(300, "chain", kind="window", swing="sliding") is None
+
+
+def test_odd_door_detail_lists_every_flagged_door() -> None:
+    walls = _walls(*_box(0, 0, 12000, 4000))
+    doors = (
+        _opening(0, walls[0].id, 400),
+        _opening(1, walls[0].id, 900),
+        _opening(2, walls[1].id, 3800, swing="sliding"),
+    )
+    found = [c for c in geometry_checks(_layer(walls, openings=doors), scale_basis="chain")]
+    assert [(c.code, c.critical, dict(c.detail)) for c in found if c.code == "OPENING_SIZE_IMPLAUSIBLE"] == [
+        (
+            "OPENING_SIZE_IMPLAUSIBLE",
+            False,
+            {"doors": 2, "minWidthMm": 400, "maxWidthMm": 3800, "openingIds": (doors[0].id, doors[2].id)},
+        )
+    ]
+
+
+def _two_rooms() -> SpatialLayer:
+    """Hai phòng 4 x 5 m (20 m² tim tường) cạnh nhau, tường 100 mm, mỗi phòng một cửa."""
+    walls = _walls(*_box(0, 0, 8000, 5000), ((4000, 0), (4000, 5000)), thickness=100)
+    rooms = (
+        _room(1, 0, 0, 4000, 5000, wall_ids=(walls[0].id, walls[4].id)),
+        _room(2, 4000, 0, 8000, 5000, wall_ids=(walls[0].id, walls[4].id)),
+    )
+    return _layer(walls, rooms, (_door(walls[4].id, 2000),))
+
+
+def _room_area(layer: SpatialLayer, *labels: AreaLabel, basis: str | None = "chain") -> dict[str, object] | None:
+    """Chi tiết `ROOM_AREA_TEXT_MISMATCH` (luôn chỉ báo); không bật → `None`."""
+    found = [
+        c for c in geometry_checks(layer, scale_basis=basis, area_labels=labels) if c.code == "ROOM_AREA_TEXT_MISMATCH"
+    ]
+    assert all(not c.critical for c in found)
+    return dict(found[0].detail) if found else None
+
+
+@pytest.mark.parametrize(
+    ("labels", "flagged"),
+    [
+        ((), False),
+        ((AreaLabel(2000, 2500, 19.0),), False),  # thông thủy ~19 m²: khớp
+        ((AreaLabel(2000, 2500, 22.9),), False),  # tim tường 20 m² + 15 %: đúng biên
+        ((AreaLabel(2000, 2500, 26.0),), True),  # lệch 30 %
+        ((AreaLabel(2000, 2500, 12.0),), True),
+        ((AreaLabel(2000, 2500, 12.0), AreaLabel(2500, 2500, 19.5)), False),  # một nhãn khớp là đủ (nhãn kia là tủ âm)
+        ((AreaLabel(9000, 2500, 3.0),), False),  # ngoài mọi phòng
+        ((AreaLabel(4000, 2500, 3.0),), False),  # trên tường chung: không thuộc riêng phòng nào
+        ((AreaLabel(2000, 2500, 39.0),), False),  # diện tích cả căn đặt trong phòng: không phải nhãn phòng
+    ],
+)
+def test_room_area_label_against_its_room(labels: tuple[AreaLabel, ...], flagged: bool) -> None:
+    """K-16 `ROOM_AREA_TEXT_MISMATCH`: nhãn "N m²" trong đúng một phòng lệch dải thông thủy-tim tường quá 15 % → báo."""
+    assert (_room_area(_two_rooms(), *labels) is not None) is flagged
+
+
+def test_merged_room_with_two_labels__flagged_with_detail() -> None:
+    """f-19: phòng khách gộp hai phòng thật (nhãn 14 + 10 m²) — tổng vẫn khớp nên `AREA_TEXT_MISMATCH` im lặng."""
+    layer = _two_rooms()
+    labels = (AreaLabel(1500, 2500, 9.0), AreaLabel(2500, 2500, 10.0), AreaLabel(6000, 2500, 19.0))
+    assert _room_area(layer, *labels) == {
+        "rooms": 1,
+        "labelledRooms": 2,
+        "worstRatio": 2.222,
+        "roomIds": (layer.rooms[0].id,),
+    }
+
+
+def test_room_area_label_skipped_without_rooms_or_measured_scale() -> None:
+    """Tỉ lệ `default` (diện tích vô nghĩa, đã có `scaleUnresolved`) hay tầng không phòng → không báo."""
+    assert _room_area(_two_rooms(), AreaLabel(2000, 2500, 40.0), basis="default") is None
+    assert _room_area(_layer(_walls(*_box(0, 0, 4000, 5000))), AreaLabel(2000, 2500, 40.0)) is None
+
+
+def test_single_room_label_matching_unit_total_is_still_compared() -> None:
+    """Tầng một phòng: nhãn là diện tích phòng (không lọc "diện tích căn" như tầng ≥ 2 phòng)."""
+    walls = _walls(*_box(0, 0, 4000, 5000), thickness=100)
+    layer = _layer(walls, (_room(1, 0, 0, 4000, 5000, wall_ids=(walls[0].id,)),), (_door(walls[0].id),))
+    assert _room_area(layer, AreaLabel(2000, 2500, 19.0)) is None
+    assert _room_area(layer, AreaLabel(2000, 2500, 30.0)) is not None

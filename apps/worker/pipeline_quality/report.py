@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
+from apps.worker.pipeline_build.build import AreaLabel
 from apps.worker.pipeline_quality.checks import GeometryCheck, geometry_checks
 from packages.domain.spatial.integrity import IntegrityIssue, check_integrity, has_critical
 from packages.domain.spatial.model import Reviewed, SpatialLayer
@@ -86,13 +87,20 @@ def build_report(
     scale_basis: str | None = None,
     label_orientation: Mapping[str, int] | None = None,
     area_notes: Sequence[float] = (),
+    area_labels: Sequence[AreaLabel] = (),
     page_unavailable: bool = False,
 ) -> RunQualityReport:
     """Dựng báo cáo theo B5-07 [6]: toàn vẹn (`check_integrity`) + đếm tin cậy thấp bốn danh sách + kiểm hình học
-    (`scale_basis`, `label_orientation` của `layer.json`, BENCH3D-14; `area_notes`, BENCH3D-24; `page_unavailable`
-    → `PAGE_RASTER_UNAVAILABLE` đứng cuối, L2-N02)."""
+    (`scale_basis`, `label_orientation` của `layer.json`, BENCH3D-14; `area_notes`, BENCH3D-24; `area_labels`, K-16;
+    `page_unavailable` → `PAGE_RASTER_UNAVAILABLE` đứng cuối, L2-N02)."""
     issues = tuple(check_integrity(layer, level_id=level_id))
-    checks = geometry_checks(layer, scale_basis=scale_basis, label_orientation=label_orientation, area_notes=area_notes)
+    checks = geometry_checks(
+        layer,
+        scale_basis=scale_basis,
+        label_orientation=label_orientation,
+        area_notes=area_notes,
+        area_labels=area_labels,
+    )
     if page_unavailable:
         checks = (*checks, GeometryCheck(code=PAGE_RASTER_UNAVAILABLE, critical=True, detail={}))
     threshold_f = float(threshold)

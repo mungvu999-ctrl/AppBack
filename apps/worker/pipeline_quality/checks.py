@@ -14,6 +14,7 @@ import shapely
 from numpy.typing import NDArray
 from shapely import LineString, Point, Polygon, STRtree
 
+from apps.worker.pipeline_build.build import AreaLabel
 from apps.worker.pipeline_build.clusters import Box, grow_region, wall_clusters
 from apps.worker.pipeline_build.constants import FAR_CLUSTER_LENGTH_SHARE
 from packages.domain.spatial.area import clear_area_m2
@@ -79,6 +80,13 @@ tường ngoài, lô gia/hộp kỹ thuật ghi gộp; lệch hơn là thiếu p
 UNKNOWN_USAGE_SHARE: Final = 0.8
 UNKNOWN_USAGE_CRITICAL_ROOMS: Final = 3
 """`ROOM_USAGE_UNKNOWN` chỉ chặn khi tầng có ít nhất 3 phòng (1-2 phòng "khác" là bản vẽ lạ, không phải lỗi)."""
+DOOR_MIN_WIDTH_MM: Final = 550
+DOOR_MAX_WIDTH_MM: Final = 3600
+"""K-15 `OPENING_SIZE_IMPLAUSIBLE` (chỉ báo): cửa đi rộng ngoài [550; 3600] mm sau khi nới theo sai số tỉ lệ
+(`SCALE_ERROR`, như `MULTIPLE_PLANS`): báo khi `rộng·(1+e) < 550` hoặc `rộng·(1-e) > 3600`. Sàn: cửa thật hẹp nhất
+là cánh WC ~600 mm (bench O3 đòi ≥ 600); 550 chừa sai số đo hộp, bench r4b + F: không ca ĐẠT nào bật (600 bật 3).
+Trần: cửa lùa/hai cánh hợp lệ tới 3600 (K-13a; cửa rộng nhất bench 3117). Cửa sổ không kiểm: dải kính dài có thật
+tới hết tường chủ (O3, cn-11 8,35 m ĐẠT) và hộp hẹp hơn 300 mm đã bị bước dựng thay rộng mặc định."""
 
 
 @dataclass(frozen=True)
@@ -282,6 +290,73 @@ def _within(note: float, low: float, high: float) -> bool:
     return round(low * (1 - AREA_TEXT_TOLERANCE), 2) <= note <= round(high * (1 + AREA_TEXT_TOLERANCE), 2)
 
 
+def _opening_size_implausible(layer: SpatialLayer, scale_basis: str | None) -> GeometryCheck | None:
+    """Cửa đi rộng phi lý (K-15): hộp dò sai hay tỉ lệ lệch; chỉ báo, không chặn. Tỉ lệ `default` (máy không đo
+    được, đã có `scaleUnresolved`) thì mm vô nghĩa nên bỏ qua; nguồn tỉ lệ khác nới dải theo `SCALE_ERROR`."""
+    if scale_basis == "default":
+        return None
+    error = SCALE_ERROR.get(scale_basis or "", UNKNOWN_SCALE_ERROR)
+    odd = [
+        door
+        for door in layer.openings
+        if door.kind == "door"
+        and (door.width_mm * (1 + error) < DOOR_MIN_WIDTH_MM or door.width_mm * (1 - error) > DOOR_MAX_WIDTH_MM)
+    ]
+    if not odd:
+        return None
+    widths = [door.width_mm for door in odd]
+    detail: dict[str, float | tuple[str, ...]] = {
+        "doors": len(odd),
+        "minWidthMm": min(widths),
+        "maxWidthMm": max(widths),
+        "openingIds": tuple(door.id for door in odd),
+    }
+    return GeometryCheck("OPENING_SIZE_IMPLAUSIBLE", False, detail)
+
+
+def _room_area_text_mismatch(
+    layer: SpatialLayer, labels: Sequence[AreaLabel], scale_basis: str | None
+) -> GeometryCheck | None:
+    """K-16 (chỉ báo): phòng chứa nhãn "N m²" mà không nhãn nào trong [thông thủy·(1 - 0,15); tim tường·(1 + 0,15)]
+    của phòng đó → phòng gộp hai phòng thật hay bị chia sai, dù tổng vẫn khớp `AREA_TEXT_MISMATCH`.
+
+    Chỉ xét nhãn nằm hẳn trong đúng một phòng (ngoài mọi phòng hay trên biên/chồng hai phòng: bỏ). Nhãn khớp diện tích
+    cả tầng (tầng ≥ 2 phòng) là diện tích căn đặt trong phòng khách, không phải nhãn phòng → bỏ. Tỉ lệ `default` → bỏ
+    (diện tích vô nghĩa, đã có `scaleUnresolved`). `worstRatio` = diện tích phòng / nhãn lệch nhất (theo log).
+    """
+    rooms = layer.rooms
+    if not labels or not rooms or scale_basis == "default":
+        return None
+    gross = sum(float(room.area_m2) for room in rooms)
+    clear = sum(float(clear_area_m2(room.outline, layer.walls) or room.area_m2) for room in rooms)
+    if len(rooms) >= 2:
+        labels = [label for label in labels if not _within(label.m2, clear, gross)]
+    tree = STRtree([Polygon([(p.x, p.y) for p in room.outline]) for room in rooms])
+    found: dict[int, list[float]] = {}
+    for label in labels:
+        hits = tree.query(Point(label.x_mm, label.y_mm), predicate="within").tolist()
+        if len(hits) == 1:
+            found.setdefault(hits[0], []).append(label.m2)
+    odd = [(rooms[i], values) for i, values in sorted(found.items()) if not _room_matches(layer, rooms[i], values)]
+    if not odd:
+        return None
+    ratios = [float(room.area_m2) / value for room, values in odd for value in values]
+    worst: float = max(ratios, key=lambda ratio: abs(math.log(ratio)))
+    detail: dict[str, float | tuple[str, ...]] = {
+        "rooms": len(odd),
+        "labelledRooms": len(found),
+        "worstRatio": round(worst, 3),
+        "roomIds": tuple(room.id for room, _ in odd),
+    }
+    return GeometryCheck("ROOM_AREA_TEXT_MISMATCH", False, detail)
+
+
+def _room_matches(layer: SpatialLayer, room: Room, values: Sequence[float]) -> bool:
+    """Một nhãn trong phòng nằm trong dải thông thủy-tim tường (dung sai `AREA_TEXT_TOLERANCE`) của phòng đó."""
+    clear = float(clear_area_m2(room.outline, layer.walls) or room.area_m2)
+    return any(_within(value, clear, float(room.area_m2)) for value in values)
+
+
 def _room_usage_unknown(rooms: Sequence[Room]) -> GeometryCheck | None:
     """Phần lớn phòng là `other`: bước gán công năng hỏng; chặn từ `UNKNOWN_USAGE_CRITICAL_ROOMS` phòng."""
     if not rooms:
@@ -351,10 +426,12 @@ def geometry_checks(
     scale_basis: str | None = None,
     label_orientation: Mapping[str, int] | None = None,
     area_notes: Sequence[float] = (),
+    area_labels: Sequence[AreaLabel] = (),
 ) -> tuple[GeometryCheck, ...]:
     """Mọi kiểm hình học đã bật, thứ tự cố định; `scale_basis` (của `layer.json`, vắng = không rõ) đặt dải sai số
-    tỉ lệ cho `MULTIPLE_PLANS`, `label_orientation` (cũng của `layer.json`) cho `ROTATED_PLAN`, `area_notes` (cũng
-    của `layer.json`) cho `AREA_TEXT_MISMATCH`."""
+    tỉ lệ cho `MULTIPLE_PLANS` và `OPENING_SIZE_IMPLAUSIBLE`, `label_orientation` (cũng của `layer.json`) cho
+    `ROTATED_PLAN`, `area_notes` (cũng của `layer.json`) cho `AREA_TEXT_MISMATCH`, `area_labels` (cũng của
+    `layer.json`) cho `ROOM_AREA_TEXT_MISMATCH`."""
     walls = layer.walls
     lines = [_line(wall) for wall in walls]
     found = (
@@ -365,5 +442,7 @@ def geometry_checks(
         _room_usage_unknown(layer.rooms),
         _rotated_plan(label_orientation or {}),
         _area_text_mismatch(layer, area_notes),
+        _opening_size_implausible(layer, scale_basis),
+        _room_area_text_mismatch(layer, area_labels, scale_basis),
     )
     return tuple(check for check in found if check is not None)

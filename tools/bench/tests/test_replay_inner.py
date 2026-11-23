@@ -160,6 +160,7 @@ def test_replay_completed_writes_api_shaped_layer(tmp_path: Path) -> None:
     assert calls["build"]["furniture"] is True
     assert calls["report"]["threshold"] == Decimal("0.4")
     assert calls["report"]["area_notes"] == (3.0,)
+    assert "area_labels" not in calls["report"]  # K-16: lớp dựng (giả) không có `area_labels` thì không truyền
     assert calls["merge_args"][0] == ("LAYER", 3000)
 
 

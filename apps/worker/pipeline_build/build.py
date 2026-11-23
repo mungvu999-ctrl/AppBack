@@ -14,7 +14,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from fractions import Fraction
-from typing import Any, Final, Literal, Self, get_args
+from typing import Any, Final, Literal, NamedTuple, Self, get_args
 
 import numpy as np
 import shapely
@@ -142,7 +142,9 @@ ScaleBasis = Literal["chain", "paired", "note", "door", "wallThickness", "defaul
 ước từ bề dày tường, hay tỉ lệ dự án. Chỉ nằm trong `layer.json`; API chưa trả."""
 
 _SCALE_BASES: Final = frozenset(get_args(ScaleBasis))
-_OPTIONAL_KEYS: Final = frozenset({"scaleBasis", "scaleChecks", "labelOrientation", "areaNotes", "pageUnavailable"})
+_OPTIONAL_KEYS: Final = frozenset(
+    {"scaleBasis", "scaleChecks", "labelOrientation", "areaNotes", "areaLabels", "pageUnavailable"}
+)
 """Khoá gốc tuỳ chọn: `layer.json` dựng trước QT-SCALE không có `scaleBasis` vẫn đọc được."""
 
 ScaleChecks = Mapping[str, Mapping[str, float]]
@@ -150,6 +152,17 @@ ScaleChecks = Mapping[str, Mapping[str, float]]
 `estimateSpread` {door, wallThickness} mm/px của hai ước. Chỉ ghi khi có; `anisotropic` đổi tỉ lệ chuỗi thành
 trung bình nhân hai trục khi hai cụm trục cùng sát khung tường chính (`_anisotropy`), `estimateSpread` không đổi
 tỉ lệ."""
+
+
+class AreaLabel(NamedTuple):
+    """K-16: một chữ "N m²" kèm tâm hộp chữ (mm, cùng hệ toạ độ lớp ở tỉ lệ ghi ra `scale_mm_per_px`)."""
+
+    x_mm: int
+    y_mm: int
+    m2: float
+
+
+_AREA_LABEL_KEYS: Final = frozenset({"x", "y", "m2"})
 _SCALE_CHECK_KEYS: Final = {
     "anisotropic": frozenset({"x", "y"}),
     "estimateSpread": frozenset({"door", "wallThickness"}),
@@ -175,6 +188,8 @@ class BuiltLayer:
     """BENCH3D-14: số nhãn chữ đọc dọc/ngang (`label_orientation`) cho kiểm `ROTATED_PLAN`; rỗng khi không nhãn nào."""
     area_notes: tuple[float, ...] = ()
     """BENCH3D-24: các số "N m²" (≥ `AREA_NOTE_MIN_M2`) OCR đọc trên bản vẽ (`area_notes`) cho `AREA_TEXT_MISMATCH`."""
+    area_labels: tuple[AreaLabel, ...] = ()
+    """K-16: mọi chữ "N m²" kèm vị trí (`area_labels`) cho `ROOM_AREA_TEXT_MISMATCH`; rỗng khi không có."""
     page_unavailable: bool = False
     """L2-N02: lượt có trang nhưng không đọc được raster (trang/`walls.png` vắng, quá trần, hỏng) nên dựng ở chế độ suy
     giảm (không đọc cánh cửa, không bỏ tường ký hiệu cửa); quality báo `PAGE_RASTER_UNAVAILABLE`."""
@@ -197,6 +212,8 @@ class BuiltLayer:
             payload["labelOrientation"] = dict(self.label_orientation)
         if self.area_notes:
             payload["areaNotes"] = list(self.area_notes)
+        if self.area_labels:
+            payload["areaLabels"] = [{"x": a.x_mm, "y": a.y_mm, "m2": a.m2} for a in self.area_labels]
         if self.page_unavailable:
             payload["pageUnavailable"] = True
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
@@ -244,6 +261,7 @@ class BuiltLayer:
             scale_checks={key: {k: float(v) for k, v in value.items()} for key, value in checks.items()},
             label_orientation={key: int(value) for key, value in orientation.items()},
             area_notes=tuple(float(x) for x in notes),
+            area_labels=_area_labels_of(payload.get("areaLabels", [])),
             page_unavailable=_optional_flag(payload, "pageUnavailable"),
         )
 
@@ -254,6 +272,22 @@ def _optional_flag(payload: Mapping[str, object], key: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"layer.json {key} lạ: {value!r}")
     return value
+
+
+def _area_labels_of(raw: object) -> tuple[AreaLabel, ...]:
+    """`areaLabels` của `layer.json`: danh sách `{x, y, m2}` (mm nguyên, m² dương hữu hạn); sai → `ValueError`."""
+    if not isinstance(raw, list) or not all(
+        isinstance(item, dict)
+        and set(item) == _AREA_LABEL_KEYS
+        and all(isinstance(item[key], int) and not isinstance(item[key], bool) for key in ("x", "y"))
+        and isinstance(item["m2"], int | float)
+        and not isinstance(item["m2"], bool)
+        and math.isfinite(item["m2"])
+        and item["m2"] > 0
+        for item in raw
+    ):
+        raise ValueError(f"layer.json areaLabels lạ: {raw!r}")
+    return tuple(AreaLabel(item["x"], item["y"], float(item["m2"])) for item in raw)
 
 
 def _checked(raw: np.ndarray, what: str) -> None:
@@ -970,6 +1004,7 @@ def build_layer(
         scale_checks=checks,
         label_orientation=label_orientation(texts),
         area_notes=area_notes(texts),
+        area_labels=area_labels(texts, float(scale)),
     )
 
 
@@ -1009,3 +1044,20 @@ def area_notes(texts: Sequence[TextPx]) -> tuple[float, ...]:
     """
     values = {float(match.replace(",", ".")) for text in texts for match in _AREA_NOTE.findall(text.text)}
     return tuple(sorted(value for value in values if value >= AREA_NOTE_MIN_M2))
+
+
+def area_labels(texts: Sequence[TextPx], mm_per_px: float) -> tuple[AreaLabel, ...]:
+    """Mỗi hộp chữ có đúng một số "N m²" (N > 0) → nhãn diện tích tại tâm hộp, đổi sang mm ở tỉ lệ ghi ra.
+
+    K-16 `ROOM_AREA_TEXT_MISMATCH` so nhãn với phòng chứa nó, nên giữ cả số nhỏ (diện tích phòng) mà `area_notes` bỏ.
+    Hộp có hai số trở lên ("12 m² / 14 m²") không biết số nào của phòng nào → bỏ. Thứ tự tăng dần, không lặp.
+    """
+    scaling = Scaling(mm_per_px, mm_per_px)
+    found: set[AreaLabel] = set()
+    for text in texts:
+        values = _AREA_NOTE.findall(text.text)
+        value = float(values[0].replace(",", ".")) if len(values) == 1 else 0.0
+        if value > 0:
+            centre = scaling.point((text.box.x_min + text.box.x_max) / 2, (text.box.y_min + text.box.y_max) / 2)
+            found.add(AreaLabel(centre.x, centre.y, value))
+    return tuple(sorted(found))

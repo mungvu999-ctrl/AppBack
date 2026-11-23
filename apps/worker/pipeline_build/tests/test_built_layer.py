@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from apps.worker.pipeline_build.build import BuiltLayer, area_notes, label_orientation
+from apps.worker.pipeline_build.build import AreaLabel, BuiltLayer, area_labels, area_notes, label_orientation
 from apps.worker.pipeline_build.constants import DROPPED_KEYS
 from packages.domain.spatial import Dimension, Point, Segment, SpatialLayer, Wall
 from packages.ml_contracts.artifacts import BoxPx, TextPx
@@ -187,3 +187,50 @@ def test_area_notes_reads_unit_areas_only() -> None:
     ]
     assert area_notes(texts) == (46.0, 67.66)
     assert area_notes([_label("3600", 20, 120)]) == ()
+
+
+def test_built_layer__area_labels_round_trip_and_reject_bad_values() -> None:
+    """K-16: `areaLabels` khứ hồi, vắng khi rỗng; phần tử không phải `{x, y, m2}` mm nguyên / m² dương → lỗi."""
+    built = dataclasses.replace(_built(), area_labels=(AreaLabel(1200, -300, 12.5), AreaLabel(4000, 900, 3.0)))
+    assert json.loads(built.to_json())["areaLabels"][0] == {"x": 1200, "y": -300, "m2": 12.5}
+    assert BuiltLayer.from_json(built.to_json()) == built
+    assert "areaLabels" not in json.loads(_built().to_json())
+    shapes: list[object] = [
+        {"x": 1},
+        [[1, 2, 3.0]],
+        [{"x": 1, "y": 2}],
+        [{"x": 1, "y": 2, "m2": 3.0, "z": 0}],
+        [{"x": 1.5, "y": 2, "m2": 3.0}],
+        [{"x": True, "y": 2, "m2": 3.0}],
+        [{"x": 1, "y": 2, "m2": 0}],
+        [{"x": 1, "y": 2, "m2": "3"}],
+        [{"x": 1, "y": 2, "m2": False}],
+    ]
+    for bad in shapes:
+        payload = json.loads(built.to_json())
+        payload["areaLabels"] = bad
+        with pytest.raises(ValueError, match="areaLabels"):
+            BuiltLayer.from_json(json.dumps(payload).encode())
+
+
+def _at(text: str, x: float, y: float) -> TextPx:
+    return TextPx(text=text, box=BoxPx(x_min=x - 10, y_min=y - 5, x_max=x + 10, y_max=y + 5), confidence=0.9)
+
+
+def test_area_labels_keep_room_areas_with_their_position() -> None:
+    """Mọi số "N m²" (cả diện tích phòng mà `area_notes` bỏ) kèm tâm hộp ở mm; hộp hai số, số 0, không đơn vị → bỏ."""
+    texts = [
+        _at("P.NGỦ 12,5m2", 100, 40),
+        _at("WC 3.2 m²", 20, 30),
+        _at("67.66m2", 300, 200),
+        _at("12 m2 / 14 m2", 50, 50),
+        _at("0 m2", 60, 60),
+        _at("3600", 70, 70),
+        _at("WC 3.2 m²", 20, 30),
+    ]
+    assert area_labels(texts, 20.0) == (
+        AreaLabel(400, 600, 3.2),
+        AreaLabel(2000, 800, 12.5),
+        AreaLabel(6000, 4000, 67.66),
+    )
+    assert area_labels([], 20.0) == ()

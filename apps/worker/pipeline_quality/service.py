@@ -217,6 +217,7 @@ async def run_quality(
         scale_basis=None if built is None else built.scale_basis,
         label_orientation=None if built is None else built.label_orientation,
         area_notes=() if built is None else built.area_notes,
+        area_labels=() if built is None else built.area_labels,
         page_unavailable=built is not None and built.page_unavailable,
     )
     key = run_artifact(ctx.project_id, ctx.level_id, ctx.upload_id, payload.run_id, STEP, QUALITY_ARTIFACT)

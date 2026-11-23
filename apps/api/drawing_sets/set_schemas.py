@@ -97,8 +97,12 @@ class ViewEditIn(WireRequest):
 
 
 class ViewsBodyIn(WireRequest):
-    """`body` của N59: **cả** danh sách hình (thay thế), tối đa `VIEWS_MAX`."""
+    """`body` của N59: **cả** danh sách hình (thay thế), tối đa `VIEWS_MAX`; `name` tuỳ chọn đổi tên bộ (K-65).
 
+    `name` vắng = giữ tên hiện có (không có cách xoá tên); có thì luật như N54 (trim + NFC, 1-120 ký tự).
+    """
+
+    name: FloorName | None = None
     views: list[ViewEditIn] = Field(max_length=VIEWS_MAX)
 
 

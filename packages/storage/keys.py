@@ -138,6 +138,13 @@ def drawing_set_page(project_id: str, set_id: str, file_id: str, index: int) -> 
     return check_key(f"{drawing_set_file_prefix(project_id, set_id, file_id)}pages/{index}.png")
 
 
+def drawing_set_reading(project_id: str, set_id: str, file_id: str, index: int) -> str:
+    """Khoá kết quả đọc một trang (khung gợi ý + chữ OCR, worker `ml` ghi — K-32a PR(3)): `<tệp>readings/{i}.json`."""
+    if index < 0:
+        raise ValueError(f"số trang không âm: {index}")
+    return check_key(f"{drawing_set_file_prefix(project_id, set_id, file_id)}readings/{index}.json")
+
+
 def library_object(item: str, name: str) -> str:
     """Khoá object của một mục thư viện (`.glb`, ảnh xem trước)."""
     if not _ITEM_RE.fullmatch(item) or len(item) > MAX_ITEM_LEN:

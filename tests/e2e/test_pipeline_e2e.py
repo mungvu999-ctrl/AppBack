@@ -486,7 +486,8 @@ async def test_pipeline_e2e_rerun_keeps_reviewed(
 
     doc_two = await on_db(db_url, lambda maker: _read_doc(maker, floor_pk))
     kept = next(w for w in doc_two.layer.walls if w.id == reviewed_wall.id)
-    assert kept == reviewed_wall, (kept, reviewed_wall)
+    # L2-N03 (phương án 2): bản vẽ khác → giữ hình và nguồn `human`, chỉ bỏ dấu duyệt; người dùng duyệt lại.
+    assert kept == reviewed_wall.model_copy(update={"reviewed": False}), (kept, reviewed_wall)
     assert len(doc_two.layer.walls) == len(doc_one.layer.walls)
 
     versions = await e2e_client.get(f"/api/projects/{project_id}/versions?floorId={level_id}", headers=headers)
@@ -573,7 +574,7 @@ async def test_pipeline_e2e_rerun_rescales_page(
     Tỉ lệ gắn với **trang** đang có, không với tầng: sau khi người hiệu chỉnh tỉ lệ ở #35 (nguồn
     `human`), tải một trang pipeline khác (seed `mm_per_px` khác) phải quay lại tỉ lệ pipeline của
     trang mới (`scaleStatus: unresolved`), không giữ tỉ lệ người đặt của trang cũ (HOP-DONG-MOI §4
-    "Tỉ lệ gắn với trang").
+    "Tỉ lệ gắn với trang"). Tường đã duyệt giữ hình nhưng mất dấu duyệt (L2-N03).
     """
     start = time.monotonic()
     project_id, level_id, floor_pk, headers = await _signed_in_scene(db_url, e2e_client)

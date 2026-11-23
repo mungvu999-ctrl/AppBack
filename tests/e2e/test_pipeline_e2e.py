@@ -486,8 +486,7 @@ async def test_pipeline_e2e_rerun_keeps_reviewed(
 
     doc_two = await on_db(db_url, lambda maker: _read_doc(maker, floor_pk))
     kept = next(w for w in doc_two.layer.walls if w.id == reviewed_wall.id)
-    # L2-N03 (phương án 2): bản vẽ khác → giữ hình và nguồn `human`, chỉ bỏ dấu duyệt; người dùng duyệt lại.
-    assert kept == reviewed_wall.model_copy(update={"reviewed": False}), (kept, reviewed_wall)
+    assert kept == reviewed_wall, (kept, reviewed_wall)
     assert len(doc_two.layer.walls) == len(doc_one.layer.walls)
 
     versions = await e2e_client.get(f"/api/projects/{project_id}/versions?floorId={level_id}", headers=headers)
@@ -600,7 +599,8 @@ async def test_pipeline_e2e_rerun_rescales_page(
     doc_two = await on_db(db_url, lambda maker: _read_doc(maker, floor_pk))
     assert doc_two.scale_source == "pipeline"
     kept = next(w for w in doc_two.layer.walls if w.id == reviewed_wall.id)
-    assert kept == reviewed_wall, (kept, reviewed_wall)
+    # L2-N03 (phương án 2): bản vẽ khác → giữ hình và nguồn `human`, chỉ bỏ dấu duyệt; người dùng duyệt lại.
+    assert kept == reviewed_wall.model_copy(update={"reviewed": False}), (kept, reviewed_wall)
 
     _log.info(
         "e2e rerun_rescales_page: mm_per_px seed=%d %.3f -> seed=%d %.3f;"

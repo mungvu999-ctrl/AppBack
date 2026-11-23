@@ -57,6 +57,28 @@ def mark_edited(current: SpatialLayer, sent: SpatialLayer) -> SpatialLayer:
     )
 
 
+def clear_reviewed(layer: SpatialLayer) -> SpatialLayer:
+    """Lớp `layer` với mọi thực thể bỏ dấu `reviewed` (L2-N03: thay bản vẽ khác → duyệt lại toàn tầng).
+
+    Không đổi hình học, `source` hay `edited`: mục đã duyệt luôn là `source="human"` (A5) nên vẫn thuộc `K` của trộn
+    (`merge_pipeline_result`), không bị lượt AI thay. Kích thước/trục không tính vào "tầng đã duyệt" nên giữ nguyên.
+    """
+
+    def plain[E: (Wall, Opening, Room, Furniture, Roof)](entities: Sequence[E]) -> tuple[E, ...]:
+        """Bản không dấu duyệt của một danh sách; mục chưa duyệt trả nguyên."""
+        return tuple(item.model_copy(update={"reviewed": False}) if item.reviewed else item for item in entities)
+
+    return layer.model_copy(
+        update={
+            "walls": plain(layer.walls),
+            "openings": plain(layer.openings),
+            "rooms": plain(layer.rooms),
+            "furniture": plain(layer.furniture),
+            "roofs": plain(layer.roofs),
+        }
+    )
+
+
 def _tracked(item: Dimension) -> tuple[object, ...]:
     """Giá trị các trường theo dõi của một kích thước; `line` không theo dõi (co giãn tỉ lệ đổi nó)."""
     return tuple(getattr(item, name) for name in _DIMENSION_FIELDS)

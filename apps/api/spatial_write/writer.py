@@ -65,6 +65,7 @@ from packages.domain.spatial import (
     ai_reviewed_ids,
     change_entity_type,
     check_integrity,
+    clear_reviewed,
     diff_layers,
     has_critical,
     has_untracked_changes,
@@ -475,9 +476,7 @@ async def _target_scale(db: AsyncSession, request: _Request, current: FloorDocum
     Cờ chấp nhận số máy (K4) đi theo **lần đặt** tỉ lệ: không đặt (thiếu tỉ lệ, bị hạng chặn) → giữ ảnh chụp cũ;
     đặt → ảnh chụp mới khi người gửi `machineAccepted`, còn lại xoá (đo thật, pipeline, `project_default`).
     """
-    other_page = (
-        request.merge is not None and current.scale_page_key is not None and current.scale_page_key != request.page_key
-    )
+    other_page = _merge_on_other_page(request, current)
     rank = 0 if other_page else _RANK[current.scale_source]
     target = request.body.scale_mm_per_px
     provisional = not other_page and (
@@ -501,6 +500,17 @@ async def _target_scale(db: AsyncSession, request: _Request, current: FloorDocum
     accepted = await _acceptance(db, request, current)
     return _Scale(
         target, request.scale_source, page_key, factor=factor, include_reviewed=provisional, accepted=accepted
+    )
+
+
+def _merge_on_other_page(request: _Request, current: FloorDocument) -> bool:
+    """Lượt `merge` của pipeline mang trang khác trang tỉ lệ đang gắn = tầng đã đổi sang **bản vẽ khác**.
+
+    Cùng tệp, cùng trang, cùng vùng cắt thì `upsert_drawing` đã chuyển khoá (BENCH3D-27), tỉ lệ chưa gắn trang thì nó
+    gắn vào trang cũ (L2-N03), nên khác khoá ở đây đúng nghĩa "ảnh khác hẳn"; chạy lại cùng trang không vào nhánh này.
+    """
+    return (
+        request.merge is not None and current.scale_page_key is not None and current.scale_page_key != request.page_key
     )
 
 
@@ -581,6 +591,9 @@ def _next_layer(request: _Request, current: FloorDocument, scale: _Scale) -> _Ne
         else _rescaled_layer(current.layer, scale.factor, include_reviewed=scale.include_reviewed)
     )
     if request.merge is not None:
+        if _merge_on_other_page(request, current):
+            # L2-N03 (chủ dự án chọn phương án 2): bản vẽ khác → mất trạng thái đã duyệt, duyệt lại toàn tầng.
+            base = clear_reviewed(base)
         outcome = request.merge(base, scale.value)
         _check_candidate(outcome.layer, level_id=request.level_id)
         return _Next(_with_areas(outcome.layer), outcome.id_map)

@@ -118,24 +118,43 @@ async def _checked_upload(
     return file_name, updated_at, created_by
 
 
-async def _carry_scale_page(db: AsyncSession, existing: DrawingRow, *, upload_id: str, page_key: str) -> None:
-    """Lượt tải mới đúng là trang cũ → tỉ lệ của tầng theo sang khoá mới, kẻo bị coi là "của trang khác" (BENCH3D-27).
+async def _same_page(db: AsyncSession, existing: DrawingRow, *, upload_id: str) -> bool:
+    """Lượt tải `upload_id` đúng là trang của bản vẽ `existing`: cùng `content_sha256`, `page_index`, vùng cắt.
 
-    `page_key` đổi theo mỗi lượt tải, nên luật theo trang (`write_layer`, `effective_scale_source`) cần được báo khi
-    chỉ khoá đổi còn ảnh thì không. "Cùng trang" là cùng `content_sha256`, `page_index`, vùng cắt; kiểm khổ ảnh ở
-    `upsert_drawing` loại trang cũ đã nắn tay. Không đụng `revision`: lớp và tỉ lệ không đổi. Tỉ lệ gắn trang khác
-    (WHERE không khớp) thì không làm gì.
+    Đây là định nghĩa "cùng bản vẽ" của BE (BENCH3D-27, L2-N03); khác thì là **bản vẽ khác**. Kiểm khổ ảnh nằm ở
+    `upsert_drawing` (trang cũ đã nắn tay ra khổ khác thì cũng là khác). Thiếu `content_sha256` → coi là khác.
     """
     stmt = select(UploadRow.content_sha256, UploadRow.page_index, UploadRow.crop_corners).where(
         UploadRow.id.in_((existing.upload_id, upload_id))
     )
     rows = [tuple(row) for row in (await db.execute(stmt)).all()]
-    if len(rows) != 2 or rows[0][0] is None or rows[0] != rows[1]:
-        return
+    return len(rows) == 2 and rows[0][0] is not None and rows[0] == rows[1]
+
+
+async def _carry_scale_page(db: AsyncSession, existing: DrawingRow, *, page_key: str) -> None:
+    """Lượt tải mới đúng là trang cũ → tỉ lệ của tầng theo sang khoá mới, kẻo bị coi là "của trang khác" (BENCH3D-27).
+
+    `page_key` đổi theo mỗi lượt tải, nên luật theo trang (`write_layer`, `effective_scale_source`) cần được báo khi
+    chỉ khoá đổi còn ảnh thì không. Không đụng `revision`: lớp và tỉ lệ không đổi. Tỉ lệ gắn trang khác (WHERE không
+    khớp) thì không làm gì.
+    """
     await db.execute(
         update(FloorDocumentRow)
         .where(FloorDocumentRow.floor_pk == existing.floor_pk, FloorDocumentRow.scale_page_key == existing.page_key)
         .values(scale_page_key=page_key)
+    )
+
+
+async def _bind_scale_page(db: AsyncSession, existing: DrawingRow) -> None:
+    """Bản vẽ khác thay bản vẽ `existing` → tỉ lệ chưa gắn trang (`scale_page_key` vắng) gắn vào trang cũ (L2-N03).
+
+    Nhờ vậy tỉ lệ người đặt hết hiệu lực ngay (`effective_scale_source`), tầng mất trạng thái đã duyệt kể cả khi lượt
+    mới hỏng, và lượt trộn kế tiếp nhận ra trang khác để bỏ dấu duyệt (`write_layer`). Không đụng `revision`.
+    """
+    await db.execute(
+        update(FloorDocumentRow)
+        .where(FloorDocumentRow.floor_pk == existing.floor_pk, FloorDocumentRow.scale_page_key.is_(None))
+        .values(scale_page_key=existing.page_key)
     )
 
 
@@ -157,7 +176,7 @@ async def upsert_drawing(
     khác: kết quả muộn của một lượt cũ không được phép đè ảnh mới hơn (BE-00 §7).
     Cùng lượt tải → cập nhật tại chỗ, **giữ `id`** (QC đang mở màn không mất tham chiếu);
     lượt tải khác → xoá dòng cũ rồi chèn `id` mới, vì ảnh là một bản vẽ khác hẳn; cùng nội dung tệp và trang thì tỉ
-    lệ tầng theo sang khoá mới (`_carry_scale_page`).
+    lệ tầng theo sang khoá mới (`_carry_scale_page`), bản vẽ khác thì tỉ lệ chưa gắn trang gắn vào trang cũ.
     `px_per_paper_mm` luôn ghi đè (kể cả `None`): trang nắn lại thì tỉ số cũ không còn đúng (U01).
     """
     if width_px < 1 or height_px < 1:
@@ -177,8 +196,11 @@ async def upsert_drawing(
         await db.flush()
         return existing
     if existing is not None:
-        if (existing.width_px, existing.height_px) == (width_px, height_px):
-            await _carry_scale_page(db, existing, upload_id=upload_id, page_key=page_key)
+        same_size = (existing.width_px, existing.height_px) == (width_px, height_px)
+        if same_size and await _same_page(db, existing, upload_id=upload_id):
+            await _carry_scale_page(db, existing, page_key=page_key)
+        else:
+            await _bind_scale_page(db, existing)
         await db.delete(existing)
         await db.flush()
     row = DrawingRow(

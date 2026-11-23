@@ -286,6 +286,42 @@ async def test_merge_on_other_page_rescales_only_unreviewed(db_session: AsyncSes
     assert [_wall_length(document.layer, index) for index in range(2)] == [1200, 1000]
 
 
+@pytest.mark.parametrize(("page_key", "kept"), [(PAGE_2, False), (PAGE_1, True)], ids=["other_page", "same_page"])
+async def test_merge_on_other_page_clears_review_marks(
+    db_session: AsyncSession, fake_clock: FakeClock, page_key: str, kept: bool
+) -> None:
+    """L2-N03: lượt trộn trên bản vẽ khác (trang khác trang tỉ lệ) bỏ dấu duyệt mọi mục, giữ hình học và `source`;
+    chạy lại cùng trang giữ dấu duyệt. Lượt trộn không thêm mục nào (`merge` trả nền) vẫn bỏ dấu."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    await _prepared(
+        db_session,
+        floor,
+        fake_clock,
+        scale=Decimal("10"),
+        scale_source="human",
+        scale_page_key=PAGE_1,
+        reviewed_wall=True,
+    )
+    merge = RecordingMerge(lambda base: base)
+
+    await write(
+        db_session,
+        floor=floor,
+        actor=scene.owner,
+        clock=fake_clock,
+        scale=Decimal("10"),
+        scale_source="pipeline",
+        page_key=page_key,
+        merge=merge,
+    )
+
+    document = await reread(db_session, floor.pk)
+    reviewed = document.layer.walls[1]
+    assert (reviewed.id, reviewed.source, reviewed.reviewed) == ("W-TESTWALL02", "human", kept)
+    assert _wall_length(document.layer, 1) == 1000
+
+
 async def test_merge_on_other_page_keeps_base_for_project_default(
     db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:

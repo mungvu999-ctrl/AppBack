@@ -14,13 +14,15 @@ from fastapi import Depends
 
 from apps.api.core.deps import DbSession, Storage
 from apps.api.core.routing import protected_router
+from apps.api.drawing_sets import set_router
 from apps.api.drawing_sets.schemas import DISABLED, HouseProposalOut, house_proposal_out
 from apps.api.drawing_sets.service import read_house_proposal
 from apps.api.drawing_sets.settings import DrawingSetSettings, get_drawing_set_settings
 from apps.api.projects.access import require_project
 
 router = protected_router(tags=["drawing_sets"])
-ROUTERS: Final = (router,)
+ROUTERS: Final = (router, set_router.router)
+"""N54-N61 "Tải cả bộ hồ sơ" (K-32a) ở `set_router.py`; `discover_routers()` chỉ đọc bộ này."""
 
 _member_gate: Final = Depends(require_project())
 DrawingSetConfig = Annotated[DrawingSetSettings, Depends(get_drawing_set_settings)]

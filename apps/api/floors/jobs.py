@@ -156,17 +156,22 @@ async def run_floor_purge(
     return purged
 
 
+_PURGE_SAFE: Final = frozenset({"CASCADE", "SET NULL"})
+"""`ondelete` của FK tới `floors.pk` mà `DELETE` của lịch dọn đi qua được, không để mồ côi."""
+
+
 def check_floor_fk_cascade(metadata: MetaData) -> None:
-    """Mọi FK trỏ `floors.pk` phải `ondelete="CASCADE"`, không thì `RuntimeError` nêu bảng/cột.
+    """Mọi FK trỏ `floors.pk` phải `ondelete="CASCADE"` hay `"SET NULL"`, không thì `RuntimeError` nêu bảng/cột.
 
     Lịch dọn ở trên xoá dòng `floors` bằng một `DELETE` và trông cậy CASCADE để mọi bảng con
     của prompt sau (bản vẽ, lớp không gian, …) tự đi theo — thiếu CASCADE ở một FK nghĩa là
     bảng con ấy mồ côi, không được lịch nào dọn, phải hỏng ngay lúc kiểm chứ không đợi tới
-    khi dữ liệu thật rò rỉ.
+    khi dữ liệu thật rò rỉ. `SET NULL` cũng không chặn `DELETE` và không để mồ côi: dòng ấy thuộc
+    về cha khác, chỉ tham chiếu tầng (đích của hình trong bộ hồ sơ, K-32a `drawing_set_views`).
     """
     for table in metadata.tables.values():
         for fk in table.foreign_keys:
-            if fk.column.table.name == "floors" and fk.column.name == "pk" and fk.ondelete != "CASCADE":
+            if fk.column.table.name == "floors" and fk.column.name == "pk" and fk.ondelete not in _PURGE_SAFE:
                 raise RuntimeError(f"{table.name}.{fk.parent.name} trỏ floors.pk phải ondelete='CASCADE'")
 
 

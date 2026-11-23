@@ -44,6 +44,8 @@ RESOURCES: Final = frozenset(
         "notification",
         "user",
         "shareLink",
+        "drawingSet",
+        "drawingSetFile",
     }
 )
 _STEP_IDS: Final = frozenset(step for step, _ in PIPELINE_STEPS)

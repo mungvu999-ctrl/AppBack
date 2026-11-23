@@ -65,6 +65,8 @@ PATH_VALUES: Final[dict[str, str]] = {
     "token": "token-mau-cua-case-chung",
     "bake_id": f"bak_{ULID}",
     "file_name": "baked.glb",
+    "set_id": f"dws_{ULID}",
+    "file_id": f"dwf_{ULID}",
 }
 
 BAD_TOKENS: Final = (

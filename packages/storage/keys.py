@@ -107,6 +107,37 @@ def lighting_bake_object(project_id: str, bake_id: str, name: str) -> str:
     return check_key(f"{lighting_bake_prefix(project_id, bake_id)}{_name(name)}")
 
 
+def drawing_set_prefix(project_id: str, set_id: str) -> str:
+    """Tiền tố object của một bộ hồ sơ (K-32a): `projects/{prj}/drawing-sets/{dws}/` — dọn rác dự án phủ nó."""
+    return check_prefix(f"{project_prefix(project_id)}drawing-sets/{check_id('dws', set_id)}/")
+
+
+def drawing_set_file_prefix(project_id: str, set_id: str, file_id: str) -> str:
+    """Tiền tố object của một tệp trong bộ: `…/drawing-sets/{dws}/files/{dwf}/`."""
+    return check_prefix(f"{drawing_set_prefix(project_id, set_id)}files/{check_id('dwf', file_id)}/")
+
+
+def drawing_set_chunk(project_id: str, set_id: str, file_id: str, index: int, sha256: str) -> str:
+    """Khoá một khúc của tệp trong bộ: `<tệp>chunks/{i}/{sha256}` — băm trong khoá như `upload_chunk`."""
+    if index < 0:
+        raise ValueError(f"số khúc không âm: {index}")
+    if not _SHA256_RE.fullmatch(sha256):
+        raise ValueError(f"băm khúc phải là 64 ký tự hex thường: {sha256!r}")
+    return check_key(f"{drawing_set_file_prefix(project_id, set_id, file_id)}chunks/{index}/{sha256}")
+
+
+def drawing_set_original(project_id: str, set_id: str, file_id: str, ext: str) -> str:
+    """Khoá tệp gốc đã nối của một tệp trong bộ: `<tệp>original.<đuôi>`."""
+    return check_key(f"{drawing_set_file_prefix(project_id, set_id, file_id)}original.{_extension(ext)}")
+
+
+def drawing_set_page(project_id: str, set_id: str, file_id: str, index: int) -> str:
+    """Khoá ảnh PNG một trang đã dựng của tệp trong bộ (tác vụ phân tích ghi): `<tệp>pages/{i}.png`."""
+    if index < 0:
+        raise ValueError(f"số trang không âm: {index}")
+    return check_key(f"{drawing_set_file_prefix(project_id, set_id, file_id)}pages/{index}.png")
+
+
 def library_object(item: str, name: str) -> str:
     """Khoá object của một mục thư viện (`.glb`, ảnh xem trước)."""
     if not _ITEM_RE.fullmatch(item) or len(item) > MAX_ITEM_LEN:
@@ -139,7 +170,8 @@ def avatar(user: str, ulid: str, ext: str) -> str:
 
 
 def server_chosen_kind(key: str) -> ImageKind | None:
-    """Loại ảnh suy từ đuôi khoá do server đặt tên (ảnh đại diện, trang `{i}.png`/`{i}-{ULID}.png`); khoá khác → `None`.
+    """Loại ảnh suy từ đuôi khoá do server đặt tên (ảnh đại diện, trang `{i}.png`/`{i}-{ULID}.png` của lượt tải hay
+    của tệp trong bộ hồ sơ K-32a); khoá khác → `None`.
 
     Chỉ khoá mà server chọn đuôi sau khi đã kiểm magic bytes mới được ký URL với `kind` truyền
     sẵn (W23, K15); `original.<đuôi>` mang đuôi người dùng khai nên không bao giờ khớp (NO-011).
@@ -164,6 +196,10 @@ def server_chosen_kind(key: str) -> ImageKind | None:
                     )
                     if built == key:
                         return "png"
+            case ["projects", project, "drawing-sets", set_id, "files", file_id, "pages", name]:
+                index = name.removesuffix(".png")
+                if index.isdecimal() and drawing_set_page(project, set_id, file_id, int(index)) == key:
+                    return "png"
     except ValueError:
         return None
     return None

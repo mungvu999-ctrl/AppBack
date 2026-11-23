@@ -13,14 +13,20 @@ import numpy as np
 import pytest
 
 from apps.ml.drawing_set_read import tasks
-from apps.ml.drawing_set_read.tasks import read_drawing_set, read_pages
+from apps.ml.drawing_set_read.tasks import READ_PAGES_PER_TASK, read_chunk, read_drawing_set, read_pages
 from apps.ml.runtime.settings import MlSettings
 from apps.ml.runtime.tasks_util import InferContext
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
 from packages.messaging import PermanentError
 from packages.ml_contracts.artifacts import BoxPx, TextPx
-from packages.ml_contracts.drawing_sets import BOXES_PER_PAGE_MAX, DrawingSetReadPayload, PageRef, reading_from_json
+from packages.ml_contracts.drawing_sets import (
+    BOXES_PER_PAGE_MAX,
+    DRAWING_SET_READ_TASK,
+    DrawingSetReadPayload,
+    PageRef,
+    reading_from_json,
+)
 from packages.ml_contracts.payloads import ModelRef
 from packages.storage.keys import drawing_set_page, drawing_set_reading
 from packages.storage.local import LocalDiskStorage
@@ -156,13 +162,68 @@ def test_read_drawing_set__J05(context: LocalDiskStorage) -> None:
     """Hết `budget_s`: trang sau hạn vẫn có khung nhưng không OCR (`read=False`); bộ đọc không bị gọi lần hai."""
     payload = _payload(pages=2)
     _store_pages(context, payload)
-    ticks = iter([0.0, 0.0, 100.0])
+    ticks = iter([0.0, 0.0, 0.0, 100.0])
     reader = FixedReader()
-    written = asyncio.run(read_pages(context, payload, reader, budget_s=10.0, clock=lambda: next(ticks)))
-    assert written == 2
+    assert asyncio.run(read_chunk(context, payload, reader, budget_s=10.0, clock=lambda: next(ticks))) is None
     assert reader.calls == 1
     late = reading_from_json(_reading(context, payload, 1) or b"")
     assert (late.read, late.texts, len(late.boxes)) == (False, (), len(PANELS))
+
+
+def test_read_chain_hands_rest_and_deadline_to_next_task(
+    context: LocalDiskStorage,
+    sent: list[tuple[str, dict[str, object]]],
+    messaging_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """NO-566: 5 trang → ba task nối nhau (2 + 2 + 1 trang), mỗi task chỉ đọc chặng của nó, chuyền trang còn lại
+    và **cùng** hạn OCR; chặng cuối gửi đúng một `drawing_set.publish`; mọi trang có kết quả đọc."""
+    reader = FixedReader()
+
+    async def opened(model: ModelRef) -> FixedReader:
+        """Bộ đọc giả thay model đang kích hoạt."""
+        return reader
+
+    monkeypatch.setattr(tasks, "open_text_reader", opened)
+    payload = _payload(pages=5)
+    _store_pages(context, payload)
+    body: dict[str, object] = payload.model_dump(mode="json")
+    chunks: list[int] = []
+    deadlines: list[object] = []
+    for _ in range(3):
+        before = reader.calls
+        assert read_drawing_set.apply(args=[body]).state == "SUCCESS"
+        chunks.append(reader.calls - before)
+        _, body = sent[-1]
+        deadlines.append(body.get("deadline_epoch_s"))
+    assert chunks == [READ_PAGES_PER_TASK, READ_PAGES_PER_TASK, 1]
+    assert [name for name, _ in sent] == [DRAWING_SET_READ_TASK, DRAWING_SET_READ_TASK, "drawing_set.publish"]
+    assert [len(b["pages"]) for _, b in sent[:2]] == [3, 1]  # type: ignore[arg-type]
+    assert deadlines[0] is not None
+    assert deadlines[0] == deadlines[1]
+    assert all(_reading(context, payload, i) is not None for i in range(5))
+
+
+def test_read_chain_past_deadline_finishes_rest_in_one_task(context: LocalDiskStorage) -> None:
+    """Chặng sau bắt đầu khi đã quá hạn chuyền tới → mọi trang còn lại làm luôn (khung, không OCR), hết chuỗi."""
+    payload = _payload(pages=5).model_copy(update={"deadline_epoch_s": 50.0})
+    _store_pages(context, payload)
+    reader = FixedReader()
+    assert asyncio.run(read_chunk(context, payload, reader, clock=lambda: 60.0)) is None
+    assert reader.calls == 0
+    docs = [reading_from_json(_reading(context, payload, i) or b"") for i in range(5)]
+    assert [(d.read, len(d.boxes)) for d in docs] == [(False, len(PANELS))] * 5
+
+
+def test_read_chunk_first_task_sets_deadline_from_budget(context: LocalDiskStorage) -> None:
+    """Chặng đầu đặt hạn = bây giờ + `budget_s`; hạn đã có thì giữ nguyên (không gia hạn theo từng chặng)."""
+    payload = _payload(pages=3)
+    _store_pages(context, payload)
+    following = asyncio.run(read_chunk(context, payload, FixedReader(), budget_s=480.0, clock=lambda: 1000.0))
+    assert following is not None
+    assert (following.deadline_epoch_s, len(following.pages)) == (1480.0, 1)
+    assert following.pages == payload.pages[READ_PAGES_PER_TASK:]
+    assert asyncio.run(read_chunk(context, following, FixedReader(), budget_s=480.0, clock=lambda: 1200.0)) is None
 
 
 def test_read_drawing_set__J03(

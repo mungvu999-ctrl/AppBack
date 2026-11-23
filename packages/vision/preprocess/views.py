@@ -5,9 +5,18 @@ không trắng tinh) → thành phần liên thông → cắt đệ quy ở bậ
 khung kín (đường kẻ dài bao quanh) khi >= 2 ô lát kín nó. Không học máy, không đọc chữ. Số đo của nhân (IoU
 >= 0,5): tìm được 66-72 %, chính xác 71-86 % — vì vậy máy chỉ **gợi ý** khung, người duyệt luôn sửa (K-32a §6.3).
 
-Khác nhân có chủ ý: bỏ cắt theo khe trắng (`use_gap`, nhân tắt mặc định), bỏ đường ảnh chụp (`split_photo`,
-nhân đo 15 % — NO-543); thêm chốt "hộp phải phủ phần lớn mực": tờ CAD dựng từ PDF có nền trắng tinh nên mặt nạ
-giấy chỉ còn mảng mực rời, nhân sẽ băm vụn tờ — khi đó trả một hộp bao mực cả tờ. Hàm thuần, tất định.
+Khác nhân có chủ ý: bỏ cắt theo khe trắng trên mặt nạ giấy (`use_gap`, nhân tắt mặc định), bỏ đường ảnh chụp
+(`split_photo`, nhân đo 15 % — NO-543); thêm chốt "hộp phải phủ phần lớn mực": tờ CAD dựng từ PDF có nền trắng
+tinh nên mặt nạ giấy chỉ còn mảng mực rời, nhân sẽ băm vụn tờ.
+
+Nâng độ đúng (NO-543, `changes/K-32a.md` mục "Nâng độ đúng tách hình"):
+- Cắt ở **đường kẻ chạy suốt hộp** trước bậc xám: hai tờ có khung dán sát nhau chung một cạnh khung dài bằng cả
+  hộp, hai cạnh vuông góc của hộp cũng nằm trên đường kẻ (khung). Đường khung lấy ở ngưỡng xám nhạt hơn mực
+  (`FRAME_INK`) vì khung bản quét thường xám nhạt — ngưỡng mực 160 bỏ sót gần hết khung (nguyên nhân chính bản
+  chuyển chỉ tìm được 55 %).
+- Bậc xám so cả hai trục, lấy bậc mạnh hơn (nhân lấy trục x trước, cắt dọc nhầm ở vệt sáng trong một tấm).
+- Tờ nền trắng: thay vì một hộp cả tờ, cắt hộp bao mực theo đường kẻ chạy suốt rồi theo khe trắng
+  (hàng/cột không mực rộng >= `GAP_MIN`); không cắt được mới trả một hộp cả tờ. Hàm thuần, tất định.
 """
 
 import warnings
@@ -26,6 +35,21 @@ PAPER_MAX: Final = 251
 INK_MAX: Final = 160
 INK_SHARE: Final = 40
 """Mực = xám < 160 ở ảnh gốc; sau khi co, điểm còn > 40/255 phần mực vẫn là mực (nét mảnh sống qua phép co)."""
+FRAME_INK: Final = 190
+"""Nét dùng để tìm đường khung: xám < 190 ở ảnh gốc (khung bản quét xám nhạt). Chỉnh trên 10 tờ DS- test + 9 tờ
+dev: 160 → tìm được 57 %, 190 → 75 %, 215 cắt vụn thêm (chính xác 58 %)."""
+SPAN_MIN: Final = 0.9
+"""Đường cắt phải phủ >= 90 % bề ngang (hay bề cao) của hộp."""
+SPAN_EDGE: Final = 0.2
+"""Đường cắt cách mép hộp >= 20 %: dải khung tên, đường đáy khung không thành hình riêng."""
+SIDE_BAND: Final = 0.06
+SIDE_MIN: Final = 0.4
+"""Hai cạnh vuông góc của hộp (dải 6 % sát mép) phải có đường kẻ trên >= 40 % chiều dài mỗi nửa: chỉ cắt giữa các
+tờ có khung, không cắt một hình theo đường nền/đường trục dài của chính nó."""
+GAP_MIN: Final = 0.01
+"""Tờ nền trắng: khe trắng (hàng/cột không mực) rộng >= 1 % cạnh dài bản làm việc ngăn hai hình."""
+GAP_EDGE: Final = 0.1
+"""Khe trắng cách mép hộp >= 10 %."""
 LINE_LEN: Final = 0.06
 """Đường khung = đoạn mực thẳng dài >= 6 % cạnh dài."""
 CELL_MIN: Final = 0.02
@@ -58,6 +82,8 @@ VIEW_SCORE: Final = 0.9
 """Độ chắc của một khung máy gợi ý (nhân: 0,9 cho mọi hộp đủ lớn; khung luôn được người duyệt xem lại)."""
 WHOLE_SCORE: Final = 0.5
 """Độ chắc của hộp bao mực cả tờ khi không tách được."""
+INK_SPLIT_SCORE: Final = 0.7
+"""Độ chắc của khung tách trên tờ nền trắng (đường khung/khe trắng; đo trên tờ giả lập nền trắng, kém tờ quét)."""
 
 type Box = tuple[int, int, int, int]
 type Gray = NDArray[np.uint8]
@@ -77,12 +103,14 @@ class ViewBox:
 
 @dataclass(frozen=True, slots=True)
 class _Work:
-    """Bản làm việc đã co: mặt nạ giấy, mặt nạ mực, ảnh xám và diện tích."""
+    """Bản làm việc đã co: mặt nạ giấy, mặt nạ mực, ảnh xám, diện tích, đường kẻ ngang/dọc (ngưỡng khung)."""
 
     paper: Mask
     ink: Mask
     grey: Gray
     area: int
+    across: Mask
+    down: Mask
 
 
 def _prepare(gray: Gray) -> tuple[float, _Work]:
@@ -91,10 +119,26 @@ def _prepare(gray: Gray) -> tuple[float, _Work]:
     scale = min(1.0, WORK_PX / max(height, width))
     size = (max(1, int(width * scale)), max(1, int(height * scale)))
     small = np.asarray(cv2.resize(gray, size, interpolation=cv2.INTER_AREA), dtype=np.uint8)
-    dark = (gray < INK_MAX).astype(np.uint8) * 255
-    ink = np.asarray(cv2.resize(dark, size, interpolation=cv2.INTER_AREA)) > INK_SHARE
+    ink = _shrunk(gray < INK_MAX, size)
+    across, down = _axis_lines(_shrunk(gray < FRAME_INK, size))
     opened = cv2.morphologyEx((small < PAPER_MAX).astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-    return scale, _Work(np.asarray(opened) > 0, ink, small, small.shape[0] * small.shape[1])
+    return scale, _Work(np.asarray(opened) > 0, ink, small, small.shape[0] * small.shape[1], across, down)
+
+
+def _shrunk(dark: Mask, size: tuple[int, int]) -> Mask:
+    """Mặt nạ nét ở ảnh gốc → bản làm việc khổ `size`: điểm còn > `INK_SHARE`/255 phần nét vẫn là nét."""
+    return np.asarray(cv2.resize(dark.astype(np.uint8) * 255, size, interpolation=cv2.INTER_AREA)) > INK_SHARE
+
+
+def _axis_lines(marks: Mask) -> tuple[Mask, Mask]:
+    """Đường kẻ dài ngang và dọc riêng (mở hình thái theo `LINE_LEN`), mỗi mặt nạ nong 1 px."""
+    height, width = marks.shape
+    length = max(15, min(int(LINE_LEN * max(height, width)), int(0.4 * min(height, width))))
+    mask = marks.astype(np.uint8)
+    grow = np.ones((3, 3), np.uint8)
+    across = cv2.dilate(cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((1, length), np.uint8)), grow)
+    down = cv2.dilate(cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((length, 1), np.uint8)), grow)
+    return np.asarray(across) > 0, np.asarray(down) > 0
 
 
 def _tight(mask: Mask, box: Box) -> Box | None:
@@ -121,18 +165,64 @@ def _profile(work: _Work, box: Box, axis: int) -> NDArray[np.float64]:
     return profile
 
 
-def _step_cut(work: _Work, box: Box, axis: int) -> list[int]:
-    """Vị trí (tương đối) bậc xám giấy lớn nhất >= `STEP_MIN` dọc `axis` — ranh hai tấm hình ghép; rỗng khi không có."""
+def _step_cut(work: _Work, box: Box, axis: int) -> tuple[float, int] | None:
+    """`(bậc, vị trí tương đối)` của bậc xám giấy lớn nhất >= `STEP_MIN` dọc `axis`, cách mép >= `EDGE_FRAC`.
+
+    Đó là ranh hai tấm hình ghép; `None` khi không có.
+    """
     profile = _profile(work, box, axis)
+    size = len(profile)
     best: tuple[float, int] | None = None
-    for index in range(STEP_WINDOW, len(profile) - STEP_WINDOW):
+    low, high = max(STEP_WINDOW, int(EDGE_FRAC * size)), min(size - STEP_WINDOW, int((1 - EDGE_FRAC) * size) + 1)
+    for index in range(low, high):
         before, after = profile[index - STEP_WINDOW : index], profile[index : index + STEP_WINDOW]
         if np.isnan(before).any() or np.isnan(after).any():
             continue
         step = abs(float(np.median(after) - np.median(before)))
         if step >= STEP_MIN and (best is None or (step, index) > best):
             best = (step, index)
-    return [] if best is None else [best[1]]
+    return best
+
+
+def _line_cut(work: _Work, box: Box) -> tuple[int, int] | None:
+    """`(trục, vị trí tương đối)` của đường kẻ chạy suốt hộp ngăn hai tờ có khung (trục như `_pieces`); `None`.
+
+    Đường phải phủ >= `SPAN_MIN` hộp, cách mép >= `SPAN_EDGE`, và hai cạnh vuông góc của hộp có đường kẻ trên
+    >= `SIDE_MIN` mỗi nửa. Nhiều ứng viên → đường phủ nhiều nhất, rồi gần giữa nhất.
+    """
+    x0, y0, x1, y1 = box
+    best: tuple[tuple[float, float], int, int] | None = None
+    for axis, lines, sides in ((0, work.across, work.down), (1, work.down, work.across)):
+        along = lines[y0:y1, x0:x1].mean(axis=1 if axis == 0 else 0)
+        edge = sides[y0:y1, x0:x1] if axis == 0 else sides[y0:y1, x0:x1].T
+        band = max(4, int(SIDE_BAND * edge.shape[1]))
+        start, end = edge[:, :band].any(axis=1), edge[:, -band:].any(axis=1)
+        size = len(along)
+        for index in range(max(1, int(SPAN_EDGE * size)), int((1 - SPAN_EDGE) * size)):
+            if along[index] < SPAN_MIN:
+                continue
+            framed = min(start[:index].mean(), start[index:].mean(), end[:index].mean(), end[index:].mean())
+            key = (round(float(along[index]), 2), -abs(index - size / 2))
+            if framed >= SIDE_MIN and (best is None or key > best[0]):
+                best = (key, axis, index)
+    return None if best is None else (best[1], best[2])
+
+
+def _gap_cut(ink: Mask, box: Box) -> tuple[int, int] | None:
+    """`(trục, vị trí tương đối)` giữa khe trắng rộng nhất (>= `GAP_MIN`, cách mép >= `GAP_EDGE`) của hộp; `None`."""
+    x0, y0, x1, y1 = box
+    sub = ink[y0:y1, x0:x1]
+    need = max(3, int(GAP_MIN * max(ink.shape)))
+    best: tuple[int, int, int] | None = None
+    for axis, empty in ((1, ~sub.any(axis=0)), (0, ~sub.any(axis=1))):
+        size = len(empty)
+        edges = np.flatnonzero(np.diff(np.concatenate(([0], empty.astype(np.int8), [0]))))
+        for start, end in zip(edges[::2], edges[1::2], strict=True):
+            middle, wide = int(start + end) // 2, int(end - start)
+            inner = GAP_EDGE * size <= middle <= (1 - GAP_EDGE) * size
+            if wide >= need and inner and (best is None or wide > best[0]):
+                best = (wide, axis, middle)
+    return None if best is None else (best[1], best[2])
 
 
 def _pieces(box: Box, axis: int, cuts: list[int]) -> list[Box]:
@@ -157,10 +247,27 @@ def _cut(work: _Work, box: Box, depth: int = 0) -> list[Box]:
     width, height = tight[2] - tight[0], tight[3] - tight[1]
     if depth > MAX_DEPTH or width * height < LEAF_MIN * work.area:
         return [tight]
-    for axis in (1, 0):
-        parts = _pieces(tight, axis, _step_cut(work, tight, axis))
-        if len(parts) > 1:
+    framed = _line_cut(work, tight)
+    if framed is not None and len(parts := _pieces(tight, framed[0], [framed[1]])) > 1:
+        return [leaf for part in parts for leaf in _cut(work, part, depth + 1)]
+    steps = [(found[0], axis, found[1]) for axis in (1, 0) if (found := _step_cut(work, tight, axis)) is not None]
+    if steps:
+        _step, axis, at = max(steps)
+        if len(parts := _pieces(tight, axis, [at])) > 1:
             return [leaf for part in parts for leaf in _cut(work, part, depth + 1)]
+    return [tight]
+
+
+def _ink_cut(work: _Work, box: Box, depth: int = 0) -> list[Box]:
+    """Tờ nền trắng: cắt đệ quy hộp bao mực theo đường kẻ chạy suốt (tờ có khung), rồi theo khe trắng."""
+    tight = _tight(work.ink, box)
+    if tight is None:
+        return []
+    if depth > MAX_DEPTH or _area(tight) < LEAF_MIN * work.area:
+        return [tight]
+    for found in (_line_cut(work, tight), _gap_cut(work.ink, tight)):
+        if found is not None and len(parts := _pieces(tight, found[0], [found[1]])) > 1:
+            return [leaf for part in parts for leaf in _ink_cut(work, part, depth + 1)]
     return [tight]
 
 
@@ -257,7 +364,8 @@ def split_views(gray: Gray) -> list[ViewBox]:
     """Khung các hình trên một tờ (ảnh xám), theo thứ tự đọc (trên xuống, trái sang); tờ trống → `[]`.
 
     Hộp < `MIN_AREA` tờ bị bỏ. Hộp giữ lại phủ < `INK_COVER_MIN` mực của tờ (nền trắng tinh, mặt nạ giấy vụn)
-    → một hộp bao mực cả tờ với độ chắc `WHOLE_SCORE`. Không ném lỗi với ảnh hợp lệ bất kỳ (khổ >= 1x1).
+    → cắt hộp bao mực theo đường khung/khe trắng (độ chắc `INK_SPLIT_SCORE`); không cắt được → một hộp bao mực cả
+    tờ với độ chắc `WHOLE_SCORE`. Không ném lỗi với ảnh hợp lệ bất kỳ (khổ >= 1x1).
     """
     scale, work = _prepare(gray)
     boxes = [leaf for comp in _components(work.paper, COMPONENT_MIN * work.area) for leaf in _cut(work, comp)]
@@ -267,4 +375,9 @@ def split_views(gray: Gray) -> list[ViewBox]:
         ordered = sorted(boxes, key=lambda b: (b[1], b[0]))
         return [_to_input(b, scale, VIEW_SCORE, size) for b in ordered]
     whole = _tight(work.ink | work.paper, (0, 0, work.grey.shape[1], work.grey.shape[0]))
-    return [] if whole is None else [_to_input(whole, scale, WHOLE_SCORE, size)]
+    if whole is None:
+        return []
+    parts = [b for b in _ink_cut(work, whole) if _area(b) >= MIN_AREA * work.area]
+    if len(parts) > 1:
+        return [_to_input(b, scale, INK_SPLIT_SCORE, size) for b in sorted(parts, key=lambda b: (b[1], b[0]))]
+    return [_to_input(whole, scale, WHOLE_SCORE, size)]

@@ -1,11 +1,14 @@
 """`readiness` của N16: tầng "chạy xong" khác tầng "dùng được" (FIX-P0-10, thiết kế H5 §2.2).
 
 Tính **lúc đọc**, không lưu: luật nằm một chỗ ở `readiness_of` (hàm thuần), dữ kiện của lượt
-lấy bằng **một** truy vấn ở `latest_run_facts`. Lý do cấp lượt (`criticalIssues`,
+lấy bằng **một** truy vấn ở `latest_run_facts`. Lý do cấp lượt (`criticalIssues`, `geometrySuspect`,
 `fallback*Model`) tắt bằng chính `level_reviewed` của `Level.reviewed` — không thêm định nghĩa
-"đã kiểm" thứ hai. `scaleUnresolved` chỉ tắt khi tỉ lệ thật sự là `human` (đã chấm hạng theo
-trang, cùng nguồn với `scaleStatus`) và là số đo thật — tỉ lệ `human` chấp nhận số máy (ML-ACC-R10 K4) giữ độ tin
-của ảnh chụp căn cứ lúc chấp nhận (`scale_snapshot_of`), thêm mã `userAccepted`.
+"đã kiểm" thứ hai. Cờ ấy suy lúc đọc, không lưu (L2-N03): lượt mới thêm mục AI chưa duyệt, hay thay bản vẽ khác
+(tỉ lệ `human` gắn trang cũ bị hạ hạng) đều làm tầng hết "đã duyệt" và luật bật lại; lượt mới không thêm mục nào trên
+cùng trang thì lớp vẫn là bản đã duyệt nên vẫn tắt (`test_readiness_after_review.py`).
+`scaleUnresolved` chỉ tắt khi tỉ lệ thật sự là `human` (đã chấm hạng theo trang, cùng nguồn với `scaleStatus`)
+và là số đo thật — tỉ lệ `human` chấp nhận số máy (ML-ACC-R10 K4) giữ độ tin của ảnh chụp căn cứ lúc chấp nhận
+(`scale_snapshot_of`), thêm mã `userAccepted`.
 
 Module này nhập được trong ngữ cảnh worker: không `fastapi`, không `starlette`.
 """

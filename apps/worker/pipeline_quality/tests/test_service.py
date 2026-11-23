@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Final, NoReturn, cast
 
 import pytest
+from shapely import Polygon
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -21,6 +22,7 @@ from apps.api.drawings.runs import reset_sync_bus_cache, start_run
 from apps.api.floors.settings import get_floors_settings
 from apps.api.spatial_read.codec import document_to_json
 from apps.api.spatial_read.documents import load_document
+from apps.worker.pipeline_build.build import AreaLabel
 from apps.worker.pipeline_orchestrate.pins import load_pins
 from apps.worker.pipeline_persist.errors import PIPELINE_RESULT_INVALID
 from apps.worker.pipeline_persist.tests.helpers import open_run_at_build, put_layer, sample_built
@@ -433,6 +435,9 @@ async def test_run_quality_records_scale_basis_from_layer_json(
         label_orientation={"vertical": 4, "horizontal": 0},
         area_notes=(900.0,),
     )
+    room = built.layer.rooms[0]
+    centre = Polygon([(p.x, p.y) for p in room.outline]).representative_point()
+    built = replace(built, area_labels=(AreaLabel(round(centre.x), round(centre.y), float(room.area_m2) * 3),))
     await put_layer(local_storage, arranged, built.to_json())
 
     assert await run_quality(arranged.payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock)
@@ -442,6 +447,7 @@ async def test_run_quality_records_scale_basis_from_layer_json(
     assert "ROTATED_PLAN" in cast("list[str]", summary["checks"])  # BENCH3D-14: hướng nhãn của `layer.json` tới kiểm
     assert "ROTATED_PLAN" not in cast("list[str]", summary["criticalChecks"])
     assert "AREA_TEXT_MISMATCH" in cast("list[str]", summary["criticalChecks"])  # BENCH3D-24: số m² của `layer.json`
+    assert "ROOM_AREA_TEXT_MISMATCH" in cast("list[str]", summary["checks"])  # K-16: nhãn m² có vị trí của `layer.json`
 
     broken = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
     await put_layer(local_storage, broken, b"{}")

@@ -15,7 +15,7 @@
 > - S1/S2 chia chủ S-case.
 >
 > **Đường v1** là đường thật sau F-01a (tiền tố `/api`, E1) và F-03 (lồng tạo và liệt kê tầng, T3). Tham số đường viết snake_case (W21).
-> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 54 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
+> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 62 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
 > **Khoá:** `—` = mọi vai đã đăng nhập (miễn C07), `thành viên` = mọi vai là thành viên dự án, `admin` = `require_admin` (route trong dự án: `require_project("admin")` — thành viên **và** vai admin, 404 trước 403).
 
 ## 1. Hợp đồng CŨ — 49 thao tác HTTP + 2 kênh SSE
@@ -136,8 +136,18 @@
 | N51 | `POST /api/projects/{project_id}/drawings/uploads/{upload_id}/rerun` | `drawings_rerun_upload` | `index.ts` (`Progress`) | G +ngoài | `floor.upload` | — | K-06 | màn hỏng: nút "Chạy lại từ bản gốc"; thân rỗng; 409 `UPLOAD_NOT_COMPLETE` / `UPLOAD_SUPERSEDED` / `PIPELINE_RUNNING` / `PIPELINE_NOT_FAILED` / `UPLOAD_SOURCE_GONE`; xếp hàng pipeline sau commit |
 | N52 | `GET /api/projects/{project_id}/house-proposal` | `drawing_sets_read_house_proposal` | `houseProposal.ts` (`HouseProposal`; cổng: `strict/houseProposal.ts`) | Đ | thành viên | — | HS-02 | màn Quản lý tầng: bảng "Đề xuất cho cả nhà" (tầng, cốt, chiều cao, câu hỏi); chỉ đọc; công tắc `DRAWING_SET_ENABLED` tắt → 200 `{enabled: false, floors: [], runIds: []}` |
 | N53 | `POST /api/projects/{project_id}/drawings/uploads/{upload_id}/cancel` | `drawings_cancel_upload` | `index.ts` (`Progress`) | G +ngoài | `floor.upload` | — | K-24 | màn Xử lý: nút "Huỷ xử lý" (xác nhận tại chỗ); thân rỗng; luôn 200 `Progress` sau huỷ (`failed` + `error: "PIPELINE_CANCELLED"`; lượt đã cuối giữ nguyên — idempotent); sau commit cắm cờ huỷ Redis cho worker `ml` + phát `Progress` cuối |
+| N54 | `POST /api/projects/{project_id}/drawing-sets` | `drawing_sets_create_set` | `drawingSet.ts` (`DrawingSet`) | G | `floor.upload` | có | K-32a | "Tải cả bộ hồ sơ": khai 1–20 tệp (PDF/PNG/JPEG); 201; `.dwg` → 422 `CAD_NOT_SUPPORTED`; hạn mức 10/10 phút (C11); 503 `DRAWING_SET_DISABLED` + `Retry-After: 10` khi công tắc tắt |
+| N55 | `POST /api/projects/{project_id}/drawing-sets/{set_id}/files/{file_id}/chunks` | `drawing_sets_upload_chunk` | `drawingSet.ts` (`DrawingSetFile`) | T-chunk | `floor.upload` | — | K-32a | như #6; ghi đè theo (tệp, chunkIndex); 409 `DRAWING_SET_NOT_RECEIVING` |
+| N56 | `POST /api/projects/{project_id}/drawing-sets/{set_id}/complete` | `drawing_sets_complete_set` | `drawingSet.ts` (`DrawingSet`) | T-complete +ngoài | `floor.upload` | có | K-32a | kiểm từng tệp (U07 U10 U11), tệp hỏng → `rejected`; idempotent; xếp `drawing_set.analyze` sau commit; 422 `DRAWING_SET_TOO_MANY_PAGES` (PDF > 20 trang hay bộ > 40 trang) |
+| N57 | `GET /api/projects/{project_id}/drawing-sets/{set_id}` | `drawing_sets_read_set` | `drawingSet.ts` (`DrawingSet`) | Đ | thành viên | — | K-32a | màn "Duyệt bộ hồ sơ"; thăm dò 2 s khi `analyzing` |
+| N58 | `GET /api/projects/{project_id}/drawing-sets` | `drawing_sets_list_sets` | `drawingSet.ts` (`DrawingSetSummary`) | Đ | thành viên | — | K-32a | mới trước, trần 20, `cursor` (W22) |
+| N59 | `PUT /api/projects/{project_id}/drawing-sets/{set_id}/views` | `drawing_sets_replace_views` | `drawingSet.ts` (`DrawingSet`) | GV | `floor.upload` | — | K-32a | lưu bản duyệt (thay cả danh sách hình; hình máy vắng giữ nguyên, hình người vẽ vắng thì xoá); chỉ khi `review`; 409 `DRAWING_SET_NOT_READY` / `DRAWING_SET_CONFIRMED` |
+| N60 | `POST /api/projects/{project_id}/drawing-sets/{set_id}/confirm` | `drawing_sets_confirm_set` | `drawingSet.ts` (`DrawingSet`) | G +ngoài | `floor.upload` | có | K-32a | "Xác nhận và dựng": tạo tầng + lần tải `crop`/`pageIndex`, xếp pipeline sau commit; idempotent; 409 `DRAWING_SET_REVISION_STALE` / `FLOOR_HAS_DRAWING` / `FLOOR_ID_TAKEN`; 422 `DRAWING_SET_NO_PLAN` |
+| N61 | `DELETE /api/projects/{project_id}/drawing-sets/{set_id}` | `drawing_sets_delete_set` | `drawingSet.ts` (`DrawingSet`) | G | `floor.upload` | có | K-32a | "Bỏ bộ này": xoá mềm; gọi lại sau khi xoá → 404 `drawingSet` (thử lại an toàn qua `Idempotency-Key`); tầng đã tạo giữ nguyên |
 
 N24 có version: áp thêm C09, C09b, C14 theo CASE §2.2 A.
+
+N54–N61 (K-32a): Nhật ký `có` ghi `kind` `drawingset.create` (N54), `drawingset.submit` (N56), `drawingset.confirm` (N60), `drawingset.delete` (N61) — miền không có `_` (CHECK `kind_format`). N54 `extra = ["C11","U08","U09","U12"]`; N56, N60 C10 riêng; N60 C14 (CASE §2.2); C16 của N60, N61 miễn (thân không có chuỗi người nhập).
 
 ## 3. Thân dùng chung (F-00a) — schema mới chia file theo `HOP-DONG-MOI.md` §9: F-00a (lõi, không gian, phiên bản, phép đo, khuôn, cờ, mã chất lượng), F-00b (quản trị ML), F-00c (dự án, thành viên, cài đặt, tải lên, xác thực, tài khoản, cấu hình luật)
 

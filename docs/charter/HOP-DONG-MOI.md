@@ -51,7 +51,7 @@
 
 | Id | Kiểm |
 |---|---|
-| Tài nguyên `prj_ usr_ upl_ ver_ tpl_ mdl_ dst_ dsv_ job_` | `^<tiền tố>[0-9A-HJKMNP-TV-Z]{26}$` (ULID) |
+| Tài nguyên `prj_ usr_ upl_ ver_ tpl_ mdl_ dst_ dsv_ job_ dws_ dwf_ dwv_` | `^<tiền tố>[0-9A-HJKMNP-TV-Z]{26}$` (ULID) |
 | `creatorId`, `changedBy` | `usr_` + ULID **hoặc** literal `system:pipeline` |
 | Thực thể không gian, mọi `floorId`, `defaultFloorId`, `referenceIds`, `Note.entityId` | `entityId<T>()` của `S:api/schemas/spatial.ts:133-143` (chuỗi không rỗng, không regex; `S:api/__tests__/spatial.test.ts:190-203`) |
 | Phép đo | `^MS-\d{4,}$` |
@@ -754,3 +754,25 @@ ruleConfig.ts       RULE_OVERRIDE_SEVERITIES · RuleOverrideSchema · ProjectRul
   `tools/contract/strict/houseProposal.ts` (L4-N07): khoá lạ, mã lạ, số ngoài khoảng, `reason` sai chỗ → bước 7 đỏ.
 - `Floor` (#10–#13, #24, #33, #34): thêm `isSection?: true` (K-31), vắng khi không phải mặt cắt; FE `FloorSchema`
   (strict) khai khoá tuỳ chọn này **trước** khi BE lên `main`.
+
+## 14. Bộ hồ sơ nhiều bản vẽ → `drawingSet.ts` (K-32a, lát cắt 2)
+
+- N54–N61 dưới `/api/projects/{project_id}/drawing-sets`. Vòng đời `receiving → analyzing → review → confirmed`,
+  hỏng → `failed` + `errorCode` (`DRAWING_SET_ALL_FILES_REJECTED`, `DRAWING_SET_ANALYSIS_FAILED`; chuỗi, không mã HTTP).
+- Tải: N54 khai tệp → N55 gửi khúc từng tệp (như #6) → N56 chốt; tệp hỏng mang `rejectedCode` (mã U-case), bộ đi tiếp.
+- `DrawingSet`, `DrawingSetFile`, `DrawingSetView`, `ViewTarget`, `ViewEdit`, `DrawingSetSummary` — dạng ở K-32a §3.
+  `kind`, `storeyLabel`, `questions[].code` dùng chung tập giá trị của §13. Tuỳ chọn vắng (W2), độ tin 0–1.
+- Máy chỉ đề xuất: N59 lưu bản duyệt (GV, `revision`); chỉ N60 tạo tầng và lần tải. Mặt cắt (`mode: "section"`)
+  không thành tầng thường; trước K-32c thành dòng `isSection: true` ẩn khỏi 3D.
+- N59 thay cả danh sách: hình máy (`source: "ai"`) vắng khỏi danh sách được giữ nguyên (xếp sau), có mặt thì không đổi
+  được `fileId`/`pageIndex`; hình người vẽ (`"user"`) vắng thì xoá.
+- `field` của 422 theo dạng chấm W7: N54 `files.<i>.sizeBytes` (tệp quá `UPLOAD_MAX_BYTES`) hay `files` (cả bộ quá
+  200 MiB); N59 `body.views.<i>.<khoá>` (`id`, `fileId`, `pageIndex`, `target`), `body.views`; N60 `views.<i>.target`
+  (`i` = vị trí hình theo thứ tự), `views` (quá 20 hình có đích tầng).
+- 404 `resource`: `drawingSet` (bộ không có, khác dự án hay đã xoá mềm — kể cả N61 gọi lại), `drawingSetFile` (tệp
+  không thuộc bộ, N55). N61 thử lại an toàn qua `Idempotency-Key`.
+- Công tắc `DRAWING_SET_ENABLED` tắt: ghi → 503 `DRAWING_SET_DISABLED` + `Retry-After: 10`; đọc và xoá vẫn chạy; FE hiện
+  lối vào theo N52 `enabled`.
+- Giới hạn: 20 tệp, 200 MiB, 20 trang/PDF và 40 trang/bộ (N56 → 422 `DRAWING_SET_TOO_MANY_PAGES`, bộ giữ `receiving`),
+  60 hình/bộ, 20 mặt bằng/lần xác nhận.
+- Nhật ký: `drawingset.create`, `drawingset.submit`, `drawingset.confirm`, `drawingset.delete`.

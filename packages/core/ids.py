@@ -18,8 +18,27 @@ from typing import Final, Literal, get_args
 from packages.core.clock import Clock
 
 IdPrefix = Literal[
-    "prj", "usr", "upl", "drw", "ver", "ntf", "tok", "mdl", "dst", "dsv", "job", "run", "tpl", "shl", "bak", "dcn"
+    "prj",
+    "usr",
+    "upl",
+    "drw",
+    "ver",
+    "ntf",
+    "tok",
+    "mdl",
+    "dst",
+    "dsv",
+    "job",
+    "run",
+    "tpl",
+    "shl",
+    "bak",
+    "dcn",
+    "dws",
+    "dwf",
+    "dwv",
 ]
+"""`dws_ dwf_ dwv_`: bộ hồ sơ, tệp của bộ, hình của bộ (K-32a) — `dst_`/`dsv_` đã thuộc quản trị ML."""
 SpatialKind = Literal["level", "wall", "opening", "furniture", "room", "axis", "dimension", "roof"]
 
 SPATIAL_PREFIX: Final[Mapping[SpatialKind, str]] = {

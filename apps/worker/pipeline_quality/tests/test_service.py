@@ -434,6 +434,7 @@ async def test_run_quality_records_scale_basis_from_layer_json(
         scale_checks={"anisotropic": {"x": 10.0, "y": 11.0}},
         label_orientation={"vertical": 4, "horizontal": 0},
         area_notes=(900.0,),
+        page_unavailable=True,
     )
     room = built.layer.rooms[0]
     centre = Polygon([(p.x, p.y) for p in room.outline]).representative_point()
@@ -448,6 +449,7 @@ async def test_run_quality_records_scale_basis_from_layer_json(
     assert "ROTATED_PLAN" not in cast("list[str]", summary["criticalChecks"])
     assert "AREA_TEXT_MISMATCH" in cast("list[str]", summary["criticalChecks"])  # BENCH3D-24: số m² của `layer.json`
     assert "ROOM_AREA_TEXT_MISMATCH" in cast("list[str]", summary["checks"])  # K-16: nhãn m² có vị trí của `layer.json`
+    assert cast("list[str]", summary["criticalChecks"])[-1] == "PAGE_RASTER_UNAVAILABLE"  # L2-N02: cờ của `layer.json`
 
     broken = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
     await put_layer(local_storage, broken, b"{}")

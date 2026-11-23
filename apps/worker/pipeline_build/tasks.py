@@ -8,7 +8,7 @@ dưới khoá dòng khi nhận `pipeline.orchestrate.step_done`. Idempotent qua 
 import asyncio
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 
 from apps.worker.pipeline_build.artifacts import input_key, layer_key, walls_mask_key
@@ -111,7 +111,8 @@ async def _read_inputs(
 async def _read_page(storage: ObjectStorage, payload: BuildStepPayload, max_bytes: int) -> PageRaster | None:
     """Trang + `walls.png` cho nguồn gợi ý mực dư; vắng, quá trần hay hỏng → `None` (gợi ý là phụ, không làm hỏng bước).
 
-    `DEPENDENCY_UNAVAILABLE` vẫn nổi lên cho `define_task` thử lại như ba artifact chính.
+    `DEPENDENCY_UNAVAILABLE` (lỗi tạm của kho) vẫn nổi lên cho `define_task` thử lại như ba artifact chính; chỉ lỗi vĩnh
+    viễn mới thành `None`, và khi thông điệp có `page_key` thì lớp dựng mang `page_unavailable` (L2-N02).
     """
     if payload.page_key is None:
         return None
@@ -162,6 +163,9 @@ async def _build_and_write(storage: ObjectStorage, payload: BuildStepPayload, ke
         )
     except ValueError as exc:
         raise PermanentError(PIPELINE_BUILD_INVALID) from exc
+    if page is None and payload.page_key is not None:
+        # L2-N02: dựng ở chế độ suy giảm (không đọc cánh cửa, giữ tường ký hiệu cửa) → quality báo, không im lặng.
+        built = replace(built, page_unavailable=True)
     share = not_a_floor_plan(built.layer)
     if share is not None:
         # BENCH3D-19: ảnh phối cảnh → hỏng lượt trước khi ghi, tầng giữ lớp cũ; log tỉ lệ để hiệu chỉnh ngưỡng.

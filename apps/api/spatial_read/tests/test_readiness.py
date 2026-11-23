@@ -224,6 +224,13 @@ GEOMETRY: Mapping[str, object] = {
             id="bad-list-with-integrity",
         ),
         pytest.param({**CLEAN, "criticalChecks": None}, (), None, id="null-is-valid"),
+        # L2-N02: mất raster trang → chế độ suy giảm, báo như kiểm hình học, sau các kiểm đã biết, trước mã lạ.
+        pytest.param(
+            {**CRITICAL, "criticalCount": 3, "criticalChecks": ["X", "PAGE_RASTER_UNAVAILABLE", "OPEN_ENVELOPE"]},
+            ("geometrySuspect",),
+            ("OPEN_ENVELOPE", "PAGE_RASTER_UNAVAILABLE", "X"),
+            id="page-raster-unavailable",
+        ),
     ],
 )
 def test_readiness_of_geometry_checks(

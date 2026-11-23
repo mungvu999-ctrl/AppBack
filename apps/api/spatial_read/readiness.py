@@ -1,11 +1,14 @@
 """`readiness` của N16: tầng "chạy xong" khác tầng "dùng được" (FIX-P0-10, thiết kế H5 §2.2).
 
 Tính **lúc đọc**, không lưu: luật nằm một chỗ ở `readiness_of` (hàm thuần), dữ kiện của lượt
-lấy bằng **một** truy vấn ở `latest_run_facts`. Lý do cấp lượt (`criticalIssues`,
+lấy bằng **một** truy vấn ở `latest_run_facts`. Lý do cấp lượt (`criticalIssues`, `geometrySuspect`,
 `fallback*Model`) tắt bằng chính `level_reviewed` của `Level.reviewed` — không thêm định nghĩa
-"đã kiểm" thứ hai. `scaleUnresolved` chỉ tắt khi tỉ lệ thật sự là `human` (đã chấm hạng theo
-trang, cùng nguồn với `scaleStatus`) và là số đo thật — tỉ lệ `human` chấp nhận số máy (ML-ACC-R10 K4) giữ độ tin
-của ảnh chụp căn cứ lúc chấp nhận (`scale_snapshot_of`), thêm mã `userAccepted`.
+"đã kiểm" thứ hai. Cờ ấy suy lúc đọc, không lưu (L2-N03): lượt mới thêm mục AI chưa duyệt làm tầng hết "đã duyệt";
+thay bản vẽ khác thì tỉ lệ `human` gắn trang cũ hết hiệu lực ngay và lượt trộn bỏ dấu duyệt mọi mục — phải duyệt lại
+toàn tầng; chạy lại cùng trang mà không thêm mục nào thì vẫn tắt (`test_readiness_after_review.py`).
+`scaleUnresolved` chỉ tắt khi tỉ lệ thật sự là `human` (đã chấm hạng theo trang, cùng nguồn với `scaleStatus`)
+và là số đo thật — tỉ lệ `human` chấp nhận số máy (ML-ACC-R10 K4) giữ độ tin của ảnh chụp căn cứ lúc chấp nhận
+(`scale_snapshot_of`), thêm mã `userAccepted`.
 
 Module này nhập được trong ngữ cảnh worker: không `fastapi`, không `starlette`.
 """
@@ -42,6 +45,7 @@ GEOMETRY_CHECK_ORDER: Final = (
     "ROOM_USAGE_UNKNOWN",
     "ROTATED_PLAN",
     "AREA_TEXT_MISMATCH",
+    "PAGE_RASTER_UNAVAILABLE",
 )
 """Thứ tự `readiness.checks` trên dây (BENCH3D-09); mã lạ đứng sau, giữ thứ tự của lượt."""
 

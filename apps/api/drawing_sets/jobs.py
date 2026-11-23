@@ -6,7 +6,9 @@ Worker nhập module này (`discover_jobs`), nên chỉ nhập `packages.*` và 
 1. `drawing_set.analyze`: đọc bộ `analyzing` chưa xoá và các tệp `complete` (vắng → no-op, J06); dựng từng trang
    thành PNG `…/files/{f}/pages/{i}.png` (ghi đè nên chạy lại an toàn); tệp gốc vắng hay một trang không dựng được
    chỉ bỏ trang đó, mọi trang hỏng → `DRAWING_SET_ANALYSIS_FAILED`; xếp `ml.infer.drawing_set.read` sau commit
-   (J09) với model đọc chữ đang kích hoạt, tiến độ 40 %.
+   (J09) với model đọc chữ đang kích hoạt, tiến độ 40 %, kèm một `drawing_set.publish` trễ `PUBLISH_SAFETY_DELAY_S`
+   làm lưới an toàn (NO-565): lượt đọc mất hẳn (thông điệp mất, worker chết không qua `on_failed`) thì bộ vẫn ra
+   màn duyệt không gợi ý thay vì nằm `analyzing` tới chốt treo 15 phút.
 2. `ml.infer.drawing_set.read` (worker `ml`, `apps/ml/drawing_set_read`): tách khung + OCR, ghi kết quả từng trang.
 3. `drawing_set.publish`: phân loại, đề xuất tầng, ghi hình `ai` (`analysis.py`), bộ sang `review`.
 
@@ -35,7 +37,7 @@ from packages.messaging.payloads.drawing_sets import (
     DrawingSetAnalyzePayload,
     DrawingSetPublishPayload,
 )
-from packages.ml_contracts.drawing_sets import DRAWING_SET_READ_TASK, DrawingSetReadPayload, PageRef
+from packages.ml_contracts.drawing_sets import DRAWING_SET_READ_TASK, READ_BUDGET_S, DrawingSetReadPayload, PageRef
 from packages.storage.keys import drawing_set_page
 from packages.storage.port import ObjectStorage, read_all_capped
 from packages.vision.preprocess import RgbImage, VisionError, encode_png, load_raster, render_pdf_page
@@ -52,6 +54,11 @@ PAGE_MAX_PIXELS: Final = 24_000_000
 READ_PROGRESS: Final = 40
 """Tiến độ khi đã dựng xong trang và đang chờ worker `ml` đọc (N57 hiện cho người dùng)."""
 TEXT_FAMILY: Final = "dimensionReading"
+PUBLISH_SAFETY_DELAY_S: Final = READ_BUDGET_S + 120.0
+"""Hạn của `drawing_set.publish` trễ gửi kèm lượt đọc (NO-565): ngân sách OCR + 2 phút cho trang cuối và hàng chờ,
+vẫn dưới mốc treo 15 phút (`drawing_set_analysis_stall_s`). Publish no-op khi bộ không còn `analyzing` (J06), nên
+lượt đọc xong trước hạn thì thông điệp trễ không đổi gì; bộ chỉ vào `analyzing` một lần (N56), nên không có lượt
+sau nào bị nó cắt ngang."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,7 +154,11 @@ async def _write_pages(storage: ObjectStorage, project_id: str, set_id: str, fil
 async def _queue_read(
     sessionmaker: async_sessionmaker[AsyncSession], project_id: str, set_id: str, pages: list[PageRef]
 ) -> bool:
-    """Dưới khoá dòng bộ: còn `analyzing` thì đặt tiến độ `READ_PROGRESS` và xếp lượt đọc sau commit (J09)."""
+    """Dưới khoá dòng bộ: còn `analyzing` thì đặt tiến độ `READ_PROGRESS` và xếp lượt đọc sau commit (J09).
+
+    Publish trễ gửi **trước** lượt đọc: gửi lượt đọc hỏng (broker) thì task thử lại gửi lại cả hai, publish trễ
+    trùng chỉ là no-op; thứ tự ngược lại thì lượt đọc có thể bị gửi hai lần.
+    """
     async with session_scope(sessionmaker) as db:
         drawing_set = (
             await db.execute(select(DrawingSetRow).where(DrawingSetRow.id == set_id).with_for_update())
@@ -157,8 +168,15 @@ async def _queue_read(
         model = (await active_versions(db))[TEXT_FAMILY]
         payload = DrawingSetReadPayload(project_id=project_id, set_id=set_id, pages=tuple(pages), model=model)
         drawing_set.progress_percent = READ_PROGRESS
-        on_after_commit(db, lambda: send_task(DRAWING_SET_READ_TASK, payload))
+        on_after_commit(db, lambda: _send_read_with_safety_net(payload))
     return True
+
+
+def _send_read_with_safety_net(payload: DrawingSetReadPayload) -> None:
+    """Hẹn `drawing_set.publish` trễ (lưới an toàn NO-565) rồi gửi lượt đọc cho worker `ml`."""
+    publish_payload = DrawingSetPublishPayload(set_id=payload.set_id)
+    send_task(DRAWING_SET_PUBLISH_TASK, publish_payload, countdown=PUBLISH_SAFETY_DELAY_S)
+    send_task(DRAWING_SET_READ_TASK, payload)
 
 
 async def analyze_set(

@@ -29,6 +29,10 @@ PAGE_INDEX_MAX: Final = 19
 """Chỉ số trang lớn nhất của một PDF (20 trang/tệp, khớp `PAGE_INDEX_MAX` của #5)."""
 BOXES_PER_PAGE_MAX: Final = 60
 """Trần khung gợi ý một trang (= trần hình một bản duyệt N59)."""
+READ_BUDGET_S: Final = 480.0
+"""Trần OCR một lượt đọc (8 phút), kể từ đầu lượt: cộng dựng trang và hàng chờ vẫn dưới mốc 15 phút mà N57 coi là
+treo (`drawing_set_analysis_stall_s`). Đo trên tờ DS- tới 24 Mpx: 4-32 s/tờ (`changes/K-32a.md`), tức ~15-40 tờ/lượt.
+Ở hợp đồng chung vì worker `default` cũng cần nó để hẹn `drawing_set.publish` trễ làm lưới an toàn (NO-565)."""
 
 DrawingSetId = Annotated[str, AfterValidator(lambda value: check_id("dws", value))]
 ProjectId = Annotated[str, AfterValidator(lambda value: check_id("prj", value))]

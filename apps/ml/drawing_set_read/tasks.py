@@ -28,6 +28,7 @@ from packages.ml_contracts.artifacts import MASK_MAX_PIXELS, TextPx
 from packages.ml_contracts.drawing_sets import (
     BOXES_PER_PAGE_MAX,
     DRAWING_SET_READ_TASK,
+    READ_BUDGET_S,
     DrawingSetReadPayload,
     PageReadingDoc,
     PageRef,
@@ -43,10 +44,6 @@ from packages.vision.preprocess.views import split_views
 __all__ = ["READ_BUDGET_S", "read_drawing_set", "read_pages"]
 
 _log: Final = logging.getLogger(__name__)
-
-READ_BUDGET_S: Final = 480.0
-"""Trần OCR một lượt (8 phút): cộng dựng trang và hàng chờ vẫn dưới mốc 15 phút mà N57 coi là treo
-(`drawing_set_analysis_stall_s`). Đo trên tờ DS- tới 24 Mpx: 4-32 s/tờ (`changes/K-32a.md`), tức ~15-40 tờ/lượt."""
 
 
 class _MissingPageError(PermanentError):

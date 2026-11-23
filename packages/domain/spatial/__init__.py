@@ -34,7 +34,7 @@ from packages.domain.spatial.model import (
     SpatialLayer,
     Wall,
 )
-from packages.domain.spatial.provenance import mark_edited, mark_edited_dimensions
+from packages.domain.spatial.provenance import clear_reviewed, mark_edited, mark_edited_dimensions
 from packages.domain.spatial.samples import sample_building, sample_layer, sample_roof
 
 __all__ = [
@@ -66,6 +66,7 @@ __all__ = [
     "check_integrity",
     "check_level_order",
     "clear_area_m2",
+    "clear_reviewed",
     "diff_layers",
     "document_to_json",
     "entity_ids",

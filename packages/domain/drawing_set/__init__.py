@@ -12,6 +12,7 @@ from packages.domain.drawing_set.heights import (
     to_db_ranges,
 )
 from packages.domain.drawing_set.legacy_text import decode_legacy, detect_encoding
+from packages.domain.drawing_set.page_kind import PageGeometry, PageKind, PageKindResult, classify_page
 from packages.domain.drawing_set.proposal import FloorProposal, HouseProposal, HouseView, SectionView, solve_house
 from packages.domain.drawing_set.storeys import (
     Alternative,
@@ -20,6 +21,7 @@ from packages.domain.drawing_set.storeys import (
     StoreyConflict,
     solve_storeys,
 )
+from packages.domain.drawing_set.title_block import TitleBlock, TitleBlockField, read_title_block
 from packages.domain.drawing_set.titles import (
     KindGuess,
     OcrText,
@@ -40,6 +42,9 @@ __all__ = [
     "HouseView",
     "KindGuess",
     "OcrText",
+    "PageGeometry",
+    "PageKind",
+    "PageKindResult",
     "PickedTitle",
     "PlanView",
     "SectionView",
@@ -47,12 +52,16 @@ __all__ = [
     "StoreyConflict",
     "StoreyHeight",
     "StoreyPlan",
+    "TitleBlock",
+    "TitleBlockField",
     "TitleInfo",
+    "classify_page",
     "decode_legacy",
     "detect_encoding",
     "fold",
     "parse_title",
     "pick_title",
+    "read_title_block",
     "solve_heights",
     "solve_house",
     "solve_storeys",

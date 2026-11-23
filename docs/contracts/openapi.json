@@ -5091,6 +5091,29 @@
         "minLength": 1,
         "type": "string"
       },
+      "NoticeOut": {
+        "additionalProperties": false,
+        "description": "Một kiểm hình học mức nhắc (không critical) của lượt mới nhất (K-15/K-16, NO-488).",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "entityIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entityids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "entityIds"
+        ],
+        "title": "NoticeOut",
+        "type": "object"
+      },
       "NotificationChannels": {
         "additionalProperties": false,
         "description": "Kênh của một loại thông báo: `{inApp, email}` (cả hai luôn có).",
@@ -6604,6 +6627,20 @@
               }
             ],
             "title": "Checks"
+          },
+          "notices": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NoticeOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notices"
           },
           "reasons": {
             "items": {

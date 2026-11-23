@@ -60,6 +60,7 @@ from packages.testing.factories.pipeline_orchestrate import make_run_pins
 from packages.testing.factories.projects import make_project
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.db import drop_after_commit
+from packages.testing.fixtures.messaging import queued_payloads
 from packages.vision.preprocess.tests.synthetic import encode
 
 type Maker = async_sessionmaker[AsyncSession]
@@ -92,8 +93,19 @@ class Arranged:
     height_px: int
 
 
-async def open_run_at_ml(maker: Maker, storage: ObjectStorage, clock: FakeClock, broker_client: SyncRedis) -> Arranged:
+async def open_run_at_ml(
+    maker: Maker,
+    storage: ObjectStorage,
+    clock: FakeClock,
+    broker_client: SyncRedis,
+    *,
+    is_section: bool = False,
+    sent: list[dict[str, object]] | None = None,
+) -> Arranged:
     """Lượt `running` ở `wallSegmentation`, ba họ đã ghim, `used` rỗng, hàng `ml.infer` đã xoá.
+
+    `is_section=True` (K-32c): tầng là mặt cắt nên lượt vào `dimensionReading` với `used` đã có hai họ `skipped`.
+    `sent` (nếu có) nhận các thông điệp `ml.infer` mà `start` vừa gửi, chụp trước khi xoá hàng.
 
     Xoá hàng ở cuối là phần quan trọng: `run_pipeline_start` gửi ba `ml.infer.*`, mà mọi test
     sau đó đếm thông điệp của **mình** bằng `LLEN`/`LRANGE` trên hàng dùng chung cả phiên.
@@ -101,6 +113,7 @@ async def open_run_at_ml(maker: Maker, storage: ObjectStorage, clock: FakeClock,
     plan = render_plan(PLAN_SEED, width_px=800, height_px=600)
     async with maker() as db:
         scene = await make_scene(db)
+        scene.floor.is_section = is_section
         upload = await make_complete_upload(
             db, storage, project=scene.project, floor=scene.floor, data=plan.image_png, file_name="plan.png"
         )
@@ -111,6 +124,8 @@ async def open_run_at_ml(maker: Maker, storage: ObjectStorage, clock: FakeClock,
     await after_commit_idle(db)
     payload = PipelineStartPayload(run_id=run.id, upload_id=run.upload_id)
     await run_pipeline_start(payload, sessionmaker=maker, storage=storage, clock=clock)
+    if sent is not None:
+        sent.extend(queued_payloads(broker_client, ML_QUEUE))
     broker_client.delete(ML_QUEUE, CPU_QUEUE)
     async with maker() as db:
         drawing = (await db.execute(select(DrawingRow).where(DrawingRow.floor_pk == scene.floor.pk))).scalar_one()

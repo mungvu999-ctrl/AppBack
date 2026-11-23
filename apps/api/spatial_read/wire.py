@@ -289,6 +289,16 @@ ScaleState = Literal["determined", "estimated", "unresolved", "userCalibrated"]
 `unresolved` thiếu căn cứ hoặc nguồn mâu thuẫn; `userCalibrated` do người hiệu chỉnh."""
 
 
+class NoticeOut(WireModel):
+    """Một kiểm hình học mức nhắc (không critical) của lượt mới nhất (K-15/K-16, NO-488)."""
+
+    code: str
+    """Mã kiểm (`OPENING_SIZE_IMPLAUSIBLE`, `ROOM_AREA_TEXT_MISMATCH`…), chuỗi tự do: FE gặp mã lạ hiện câu chung."""
+    entity_ids: tuple[str, ...]
+    """Id đối tượng trong lớp tầng hiện tại (cửa hoặc phòng), đã lọc bỏ đối tượng không còn; `[]` khi kiểm không gắn
+    đối tượng nào. Thứ tự do kiểm giữ (phòng: lệch nhiều nhất trước)."""
+
+
 class ReadinessOut(WireModel):
     """Tầng dùng được chưa (FIX-P0-10, thiết kế H5 §2.2): trạng thái kèm lý do, thứ tự cố định."""
 
@@ -297,6 +307,10 @@ class ReadinessOut(WireModel):
     checks: tuple[str, ...] | None = None
     """Mã kiểm hình học critical của lượt mới nhất (BENCH3D-09), chỉ có khi có `geometrySuspect`; FE gặp mã lạ
     thì hiện câu chung, nên không khai `Literal`."""
+    notices: tuple[NoticeOut, ...] | None = None
+    """Kiểm hình học **không critical** của lượt mới nhất (K-15/K-16, NO-488), đã lọc theo lớp hiện tại. Không
+    bao giờ tạo `reasons`, không đổi `state`; vắng khi không có mục nào, khi tầng đã duyệt (`level_reviewed`) hay lượt
+    cũ không ghi `noticeChecks`."""
 
 
 class FloorLayerDocumentOut(WireModel):

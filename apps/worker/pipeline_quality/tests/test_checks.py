@@ -505,3 +505,12 @@ def test_single_room_label_matching_unit_total_is_still_compared() -> None:
     layer = _layer(walls, (_room(1, 0, 0, 4000, 5000, wall_ids=(walls[0].id,)),), (_door(walls[0].id),))
     assert _room_area(layer, AreaLabel(2000, 2500, 19.0)) is None
     assert _room_area(layer, AreaLabel(2000, 2500, 30.0)) is not None
+
+
+def test_room_area_mismatch__room_ids_worst_first() -> None:
+    """NO-488: `roomIds` xếp phòng lệch nhiều nhất trước (FE chọn sẵn phòng đầu), không theo thứ tự phòng."""
+    layer = _two_rooms()
+    labels = (AreaLabel(2000, 2500, 26.0), AreaLabel(6000, 2500, 8.0))  # phòng 1: x0,77; phòng 2: x2,5
+    detail = _room_area(layer, *labels)
+    assert detail is not None
+    assert detail["roomIds"] == (layer.rooms[1].id, layer.rooms[0].id)

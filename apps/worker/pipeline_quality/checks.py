@@ -342,6 +342,8 @@ def _room_area_text_mismatch(
         return None
     ratios = [float(room.area_m2) / value for room, values in odd for value in values]
     worst: float = max(ratios, key=lambda ratio: abs(math.log(ratio)))
+    # NO-488: `roomIds` lệch nhiều nhất trước (FE chọn sẵn phòng đầu); sort ổn định nên hoà giữ thứ tự phòng.
+    odd.sort(key=lambda item: -max(abs(math.log(float(item[0].area_m2) / value)) for value in item[1]))
     detail: dict[str, float | tuple[str, ...]] = {
         "rooms": len(odd),
         "labelledRooms": len(found),

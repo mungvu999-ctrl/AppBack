@@ -29,4 +29,5 @@ class PipelineCode(StrEnum):
     """Mã của pipeline, không đăng ký vào sổ lỗi HTTP (BE-00 §4)."""
 
     PIPELINE_SUPERSEDED = "PIPELINE_SUPERSEDED"  # chuỗi `error` của `Progress`
+    PIPELINE_CANCELLED = "PIPELINE_CANCELLED"  # người dùng huỷ lượt (K-24); `error` của `Progress`
     SCALE_UNRESOLVED = "SCALE_UNRESOLVED"  # chỉ nội bộ; trên dây là `scaleStatus`

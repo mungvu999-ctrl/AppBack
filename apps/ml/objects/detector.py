@@ -21,6 +21,7 @@ from numpy.typing import NDArray
 from apps.ml.objects.labels import COCO_LABELS, check_labels
 from apps.ml.objects.tiles import Window, overlap_for, tile_windows
 from apps.ml.runtime.errors import MODEL_FORMAT_UNSUPPORTED, ORT_ERRORS
+from packages.messaging.run_cancel import checkpoint
 from packages.messaging.tasks import PermanentError
 from packages.ml_contracts.artifacts import MASK_MAX_PIXELS, BoxPx, DetectionPx
 from packages.ml_contracts.labels import DetectionLabel
@@ -674,6 +675,7 @@ class YoloOnnxDetector:
         windows = tile_windows(width, height, tile_px=self.input_px, overlap_px=overlap_for(self.input_px))
         per_tile: list[_Candidates] = []
         for window in windows:
+            checkpoint()  # K-24: lượt bị huỷ thì dừng giữa hai lát, không chạy hết trang
             tile_input = _preprocess_tile(image, window, self.input_px)
             try:
                 output = self._session.run([self._output_name], {self._input_name: tile_input})[0]

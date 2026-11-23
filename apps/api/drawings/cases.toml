@@ -24,3 +24,9 @@ op = "drawings_rerun_upload"
 # N51 (K-06): thân rỗng, không chuỗi người nhập → miễn C16. C10 "+ngoài" (xếp
 # `pipeline.orchestrate.start`): hai test riêng `…__C10_queue_once`, `…__C10_no_key_replay`.
 waive = { C16 = "thân rỗng, không có chuỗi người nhập để chuẩn hoá NFC" }
+
+[[endpoint]]
+op = "drawings_cancel_upload"
+# N53 (K-24): thân rỗng → miễn C16. C10 "+ngoài" (cắm cờ huỷ Redis + phát `Progress` sau commit): hai test riêng
+# `…__C10_same_key_replays`, `…__C10_double_click_without_key`.
+waive = { C16 = "thân rỗng, không có chuỗi người nhập để chuẩn hoá NFC" }

@@ -5,6 +5,7 @@ import os
 import struct
 import subprocess
 import sys
+import time
 import zlib
 from collections.abc import Iterator
 from pathlib import Path
@@ -29,6 +30,7 @@ from apps.ml.runtime.tasks_util import (
 from apps.ml.runtime.tests.helpers import FailingReads, infer_payload, some_id
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
 from packages.core.errors import AppError
+from packages.messaging import run_cancel
 from packages.messaging.tasks import PermanentError
 from packages.ml_contracts._png import PNG_SIGNATURE, _chunk
 from packages.ml_contracts.artifacts import WallsResult, decode_mask, encode_mask, walls_from_json, walls_to_json
@@ -287,6 +289,53 @@ async def test_run_step_transient_errors_propagate(local_storage: LocalDiskStora
             payload, walls_step, storage=local_storage, send=Sent(DEPENDENCY_UNAVAILABLE.error(retry_after=5))
         )
     assert await local_storage.stat(f"{payload.artifact_prefix}walls.png") is not None
+
+
+async def test_run_step_stops_before_loading_anything_when_the_run_is_cancelled(
+    local_storage: LocalDiskStorage, caplog: pytest.LogCaptureFixture
+) -> None:
+    """K-24: task còn xếp hàng của lượt đã huỷ thoát ở điểm kiểm đầu — không nạp model, không gửi `step_done`."""
+    payload = infer_payload()
+    await put_page(local_storage, payload)
+    sent = Sent()
+    prepared: list[str] = []
+
+    async def prepare(p: InferStepPayload) -> None:
+        prepared.append(p.run_id)
+
+    with caplog.at_level(logging.INFO, logger="apps.ml.runtime.tasks_util"):
+        await run_step(
+            payload, walls_step, storage=local_storage, send=sent, prepare=prepare, cancelled=lambda run: True
+        )
+
+    assert (prepared, sent.calls) == ([], [])
+    assert await local_storage.stat(f"{payload.artifact_prefix}walls.png") is None
+    timings = [r.__dict__["status"] for r in caplog.records if r.getMessage() == "pipeline_step_timing"]
+    assert timings == ["cancelled"]
+
+
+async def test_run_step_stops_between_tiles_when_cancelled_mid_inference(local_storage: LocalDiskStorage) -> None:
+    """K-24: cờ cắm giữa lúc `fn` chạy (luồng phụ) → dừng ở `checkpoint()` kế tiếp, không ghi artifact."""
+    payload = infer_payload()
+    await put_page(local_storage, payload)
+    sent = Sent()
+    flag = {"cancelled": False}
+    tiles_done: list[int] = []
+
+    def tiled_step(image: NDArray[np.uint8], p: InferStepPayload, prepared: object) -> StepOutput:
+        for tile in range(10):
+            run_cancel.checkpoint()
+            tiles_done.append(tile)
+            if tile == 2:
+                flag["cancelled"] = True
+                time.sleep(run_cancel.CHECK_INTERVAL_S + 0.05)  # qua nhịp thưa để lần hỏi kế tiếp thật sự hỏi
+        return walls_step(image, p, prepared)
+
+    await run_step(payload, tiled_step, storage=local_storage, send=sent, cancelled=lambda run: flag["cancelled"])
+
+    assert tiles_done == [0, 1, 2]
+    assert sent.calls == []
+    assert await local_storage.stat(f"{payload.artifact_prefix}walls.png") is None
 
 
 def test_step_failed_is_a_define_task_on_failed() -> None:

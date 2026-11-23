@@ -1,4 +1,4 @@
-"""Route của lượt tải bản vẽ: #5 init, #6 khúc, #7 complete, #8 progress (B2-04 [2], [7]), N51 chạy lại (K-06).
+"""Route của lượt tải bản vẽ: #5 init, #6 khúc, #7 complete, #8 progress (B2-04), N51 chạy lại, N53 huỷ (K-06, K-24).
 
 Router **mỏng** như `apps/api/floors/router.py`: quyền và hạn mức nằm ở `dependencies=`
 (quyền **trước** hạn mức, mẫu `apps/api/project_members/router.py`), nghiệp vụ ở
@@ -20,7 +20,7 @@ from starlette.responses import Response
 from apps.api.core.deps import ClockDep, CurrentPrincipal, DbSession, Storage
 from apps.api.core.ratelimit import key_user, rate_limit
 from apps.api.core.routing import protected_router, route_options
-from apps.api.drawings import complete, rerun, thumbnails, uploads
+from apps.api.drawings import cancel, complete, rerun, thumbnails, uploads
 from apps.api.drawings.latest import router as latest_router
 from apps.api.drawings.progress import progress_wire
 from apps.api.drawings.run_history import router as run_history_router
@@ -128,6 +128,17 @@ async def drawings_rerun_upload(
 ) -> ProgressOut:
     """N51 — chạy lại lượt tải hỏng từ tệp gốc trong kho; thân rỗng, trả `Progress` `pending` (K-06)."""
     wire = await rerun.rerun_upload(db, storage, project_id=project_id, upload_id=upload_id, clock=clock)
+    return ProgressOut.model_validate(wire)
+
+
+@router.post("/projects/{project_id}/drawings/uploads/{upload_id}/cancel", dependencies=[_upload_gate])
+@route_options(idempotency="auto")
+async def drawings_cancel_upload(project_id: str, upload_id: str, db: DbSession, clock: ClockDep) -> ProgressOut:
+    """N53 — huỷ lượt chạy đang sống của lượt tải; thân rỗng, trả `Progress` sau huỷ (K-24).
+
+    Cùng khoá `floor.upload` với #5/#7/N51: ai được mở lượt chạy thì được huỷ nó; viewer → 403.
+    """
+    wire = await cancel.cancel_upload(db, project_id=project_id, upload_id=upload_id, clock=clock)
     return ProgressOut.model_validate(wire)
 
 

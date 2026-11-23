@@ -30,6 +30,7 @@ from rapidocr_onnxruntime.ch_ppocr_det import TextDetector  # type: ignore[impor
 from rapidocr_onnxruntime.utils import read_yaml  # type: ignore[import-untyped]  # wheel không có py.typed
 
 from apps.ml.runtime.errors import MODEL_FORMAT_UNSUPPORTED, ORT_ERRORS
+from packages.messaging.run_cancel import checkpoint
 from packages.messaging.tasks import PermanentError
 from packages.ml_contracts.artifacts import BoxPx, TextPx
 from packages.ml_contracts.ports import RgbImage
@@ -226,6 +227,7 @@ def _detect(detector: TextDetector, image: RgbImage) -> list[NDArray[np.float32]
     quads: list[NDArray[np.float32]] = []
     scores: list[float] = []
     for tile in _tiles(width, height):
+        checkpoint()  # K-24: lượt bị huỷ thì dừng giữa hai lát dò chữ
         x0, y0, x1, y1 = tile
         found, found_scores = _detect_tile(detector, np.ascontiguousarray(image[y0:y1, x0:x1]))
         if len(found) == 0:
@@ -372,6 +374,7 @@ class RapidOcrReader:
         height, width = image.shape[:2]
         items: list[TextPx] = []
         for quad in _detect(_detector(), image):
+            checkpoint()  # K-24: thưa theo `CHECK_INTERVAL_S`, rẻ dù trang có hàng trăm dòng chữ
             crop = _crop(image, quad)
             if crop.size == 0:
                 continue

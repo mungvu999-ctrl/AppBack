@@ -1,4 +1,4 @@
-"""Bảng mã `kind` của `activity_log` — 27 hằng, một cho mỗi dòng BE-BIND có Nhật ký `có`.
+"""Bảng mã `kind` của `activity_log` — 31 hằng, một cho mỗi dòng BE-BIND có Nhật ký `có`.
 
 Chủ route **nhập hằng** từ đây khi gọi `record_activity` (E), không viết chuỗi tay:
 sai chính tả một `kind` sẽ vượt qua kiểm `ActivityKind` của `record_activity` mà
@@ -16,7 +16,10 @@ from typing import Final
 
 
 class ActivityKind(StrEnum):
-    """`<miền>.<việc>`, đúng cách FE tách miền (`userManagementGateway.ts:292-296`)."""
+    """`<miền>.<việc>`, đúng cách FE tách miền (`userManagementGateway.ts:292-296`).
+
+    Miền chỉ chữ thường không gạch dưới (CHECK `kind_format` của bảng): bộ hồ sơ là `drawingset.*` (K-32a).
+    """
 
     FLOOR_UPLOAD = "floor.upload"
     FLOOR_UPLOAD_COMPLETE = "floor.upload_complete"
@@ -45,6 +48,10 @@ class ActivityKind(StrEnum):
     DATASET_BUILD = "dataset.build"
     TRAINING_CREATE = "training.create"
     TRAINING_CANCEL = "training.cancel"
+    DRAWING_SET_CREATE = "drawingset.create"
+    DRAWING_SET_SUBMIT = "drawingset.submit"
+    DRAWING_SET_CONFIRM = "drawingset.confirm"
+    DRAWING_SET_DELETE = "drawingset.delete"
 
 
 KIND_OPERATIONS: Final[MappingProxyType[ActivityKind, str]] = MappingProxyType(
@@ -76,6 +83,10 @@ KIND_OPERATIONS: Final[MappingProxyType[ActivityKind, str]] = MappingProxyType(
         ActivityKind.DATASET_BUILD: "ml_build_dataset_version",
         ActivityKind.TRAINING_CREATE: "ml_create_job",
         ActivityKind.TRAINING_CANCEL: "ml_cancel_job",
+        ActivityKind.DRAWING_SET_CREATE: "drawing_sets_create_set",
+        ActivityKind.DRAWING_SET_SUBMIT: "drawing_sets_complete_set",
+        ActivityKind.DRAWING_SET_CONFIRM: "drawing_sets_confirm_set",
+        ActivityKind.DRAWING_SET_DELETE: "drawing_sets_delete_set",
     }
 )
 """hằng `kind` → `operationId` BE-BIND. `USER_INVITE` ghi một dòng mỗi người mời

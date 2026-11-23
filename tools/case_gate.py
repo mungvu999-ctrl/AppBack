@@ -169,6 +169,7 @@ _FIXED_EXTRA: dict[str, set[str]] = {
     "44": {"C11"},
     "37": {"C11"},
     "N8": {"C28"},
+    "N60": {"C14"},
 }
 
 _ONLY_WAIVABLE = "C16"

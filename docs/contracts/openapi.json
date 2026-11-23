@@ -637,6 +637,22 @@
       "CleanStr": {
         "type": "string"
       },
+      "CompleteSetBody": {
+        "additionalProperties": false,
+        "description": "Thân N56; `setId` chỉ để guard W21 so với đường.",
+        "properties": {
+          "setId": {
+            "minLength": 1,
+            "title": "Setid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "setId"
+        ],
+        "title": "CompleteSetBody",
+        "type": "object"
+      },
       "CompleteUploadBody": {
         "additionalProperties": false,
         "description": "Thân #7; `uploadId` chỉ để guard W21 so với đường.",
@@ -665,6 +681,28 @@
         ],
         "ge": 0,
         "le": 1
+      },
+      "ConfirmSetBody": {
+        "additionalProperties": false,
+        "description": "Thân N60: `setId` (W21) và `revision` của bản duyệt người dùng đang nhìn.",
+        "properties": {
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "setId": {
+            "minLength": 1,
+            "title": "Setid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "setId",
+          "revision"
+        ],
+        "title": "ConfirmSetBody",
+        "type": "object"
       },
       "CornerIn": {
         "additionalProperties": false,
@@ -741,6 +779,36 @@
         "title": "CreateDatasetIn",
         "type": "object"
       },
+      "CreateSetBody": {
+        "additionalProperties": false,
+        "description": "Thân N54: tên bộ tuỳ chọn (1-120 ký tự NFC) và 1-`FILES_MAX` tệp.",
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/FileDeclIn"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Files",
+            "type": "array"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FloorName"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "CreateSetBody",
+        "type": "object"
+      },
       "CreateTrainingJobIn": {
         "additionalProperties": false,
         "description": "Thân N33; khoá lạ → 422 `VALIDATION` (C03).\n\n`baseModel` chỉ là `str` ở đây: nó phải ra 422 `TRAINING_BASE_MODEL_MISMATCH`\n(mã riêng của [2]), không phải 422 `VALIDATION` của một `Literal` — nên luật\n\"thuộc `BASE_MODELS[family]`\" nằm ở `service.create_job`.",
@@ -775,6 +843,36 @@
           "family"
         ],
         "title": "CreateTrainingJobIn",
+        "type": "object"
+      },
+      "CropOut": {
+        "additionalProperties": false,
+        "description": "Khung của hình theo tỉ lệ trang gốc, cùng khoá với `CropRect` của #5.",
+        "properties": {
+          "heightRatio": {
+            "title": "Heightratio",
+            "type": "number"
+          },
+          "widthRatio": {
+            "title": "Widthratio",
+            "type": "number"
+          },
+          "xRatio": {
+            "title": "Xratio",
+            "type": "number"
+          },
+          "yRatio": {
+            "title": "Yratio",
+            "type": "number"
+          }
+        },
+        "required": [
+          "xRatio",
+          "yRatio",
+          "widthRatio",
+          "heightRatio"
+        ],
+        "title": "CropOut",
         "type": "object"
       },
       "CropRect": {
@@ -869,6 +967,34 @@
           "items"
         ],
         "title": "CursorPage[DatasetVersionOut]",
+        "type": "object"
+      },
+      "CursorPage_DrawingSetSummaryOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DrawingSetSummaryOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CursorPage[DrawingSetSummaryOut]",
         "type": "object"
       },
       "CursorPage_FloorVersionSummaryOut_": {
@@ -1855,6 +1981,341 @@
         "title": "DrawingOut",
         "type": "object"
       },
+      "DrawingSetFileOut": {
+        "additionalProperties": false,
+        "description": "Một tệp của bộ; `rejectedCode` (mã U-case) chỉ có khi `rejected`, `pageCount` sau N56.",
+        "properties": {
+          "chunkCount": {
+            "title": "Chunkcount",
+            "type": "integer"
+          },
+          "fileName": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "pageCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagecount"
+          },
+          "rejectedCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejectedcode"
+          },
+          "sizeBytes": {
+            "title": "Sizebytes",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/FileStatus"
+          }
+        },
+        "required": [
+          "id",
+          "fileName",
+          "sizeBytes",
+          "chunkCount",
+          "status"
+        ],
+        "title": "DrawingSetFileOut",
+        "type": "object"
+      },
+      "DrawingSetOut": {
+        "additionalProperties": false,
+        "description": "N54-N57, N59-N61: một bộ đầy đủ tệp và hình (hình theo `ord`, tệp theo thứ tự khai).",
+        "properties": {
+          "confirmedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmedat"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/DrawingSetFileOut"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "progressPercent": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Progresspercent",
+            "type": "integer"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SetStatus"
+          },
+          "views": {
+            "items": {
+              "$ref": "#/components/schemas/DrawingSetViewOut"
+            },
+            "title": "Views",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "revision",
+          "progressPercent",
+          "createdAt",
+          "files",
+          "views"
+        ],
+        "title": "DrawingSetOut",
+        "type": "object"
+      },
+      "DrawingSetSummaryOut": {
+        "additionalProperties": false,
+        "description": "Một mục N58: không kèm tệp/hình, chỉ số đếm.",
+        "properties": {
+          "confirmedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmedat"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "fileCount": {
+            "title": "Filecount",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SetStatus"
+          },
+          "viewCount": {
+            "title": "Viewcount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "createdAt",
+          "fileCount",
+          "viewCount"
+        ],
+        "title": "DrawingSetSummaryOut",
+        "type": "object"
+      },
+      "DrawingSetViewOut": {
+        "additionalProperties": false,
+        "description": "Một hình của bộ; `imageUrl` = ảnh trang ký sẵn (W23), `uploadId` chỉ có sau N60.",
+        "properties": {
+          "crop": {
+            "$ref": "#/components/schemas/CropOut"
+          },
+          "excluded": {
+            "title": "Excluded",
+            "type": "boolean"
+          },
+          "fileId": {
+            "title": "Fileid",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "imageUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imageurl"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FloorKind"
+          },
+          "kindConfidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Kindconfidence",
+            "type": "number"
+          },
+          "pageIndex": {
+            "title": "Pageindex",
+            "type": "integer"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/ViewQuestionOut"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ViewSource"
+          },
+          "storeyConfidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storeyconfidence"
+          },
+          "storeyLabel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoreyLabel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "storeyNo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storeyno"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ViewTargetOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "titleText": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Titletext"
+          },
+          "uploadId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uploadid"
+          }
+        },
+        "required": [
+          "id",
+          "fileId",
+          "pageIndex",
+          "crop",
+          "source",
+          "excluded",
+          "kind",
+          "kindConfidence",
+          "questions"
+        ],
+        "title": "DrawingSetViewOut",
+        "type": "object"
+      },
       "ElevationField": {
         "type": "integer"
       },
@@ -2017,6 +2478,41 @@
         },
         "title": "FeatureFlagsOut",
         "type": "object"
+      },
+      "FileDeclIn": {
+        "additionalProperties": false,
+        "description": "Một tệp khai ở N54; đuôi + `mimeType` chỉ để từ chối sớm (`.dwg`, lệch), magic bytes quyết ở N56 (K14).",
+        "properties": {
+          "fileName": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "mimeType": {
+            "maxLength": 255,
+            "title": "Mimetype",
+            "type": "string"
+          },
+          "sizeBytes": {
+            "minimum": 1.0,
+            "title": "Sizebytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fileName",
+          "mimeType",
+          "sizeBytes"
+        ],
+        "title": "FileDeclIn",
+        "type": "object"
+      },
+      "FileStatus": {
+        "enum": [
+          "receiving",
+          "complete",
+          "rejected"
+        ],
+        "type": "string"
       },
       "FindingOut": {
         "additionalProperties": false,
@@ -2814,6 +3310,38 @@
           "revision"
         ],
         "title": "FloorRevisionOut",
+        "type": "object"
+      },
+      "FloorTargetIn": {
+        "additionalProperties": false,
+        "description": "Đích \"tầng có sẵn\"; `replace: true` = người duyệt tick \"Thay bản vẽ cũ\" (chỉ nhận `true`, vắng = không thay).",
+        "properties": {
+          "floorId": {
+            "$ref": "#/components/schemas/FloorIdField"
+          },
+          "mode": {
+            "const": "floor",
+            "title": "Mode",
+            "type": "string"
+          },
+          "replace": {
+            "anyOf": [
+              {
+                "const": true,
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replace"
+          }
+        },
+        "required": [
+          "mode",
+          "floorId"
+        ],
+        "title": "FloorTargetIn",
         "type": "object"
       },
       "FloorVersionSnapshotOut": {
@@ -4464,6 +4992,30 @@
           "weightsFormat"
         ],
         "title": "ModelVersionOut",
+        "type": "object"
+      },
+      "NewFloorTargetIn": {
+        "additionalProperties": false,
+        "description": "Đích \"tầng mới\": id `L-…` client sinh (như #10) và tên tầng.",
+        "properties": {
+          "floorId": {
+            "$ref": "#/components/schemas/FloorIdField"
+          },
+          "mode": {
+            "const": "newFloor",
+            "title": "Mode",
+            "type": "string"
+          },
+          "name": {
+            "$ref": "#/components/schemas/FloorName"
+          }
+        },
+        "required": [
+          "mode",
+          "floorId",
+          "name"
+        ],
+        "title": "NewFloorTargetIn",
         "type": "object"
       },
       "NoteOut": {
@@ -6216,6 +6768,26 @@
         "title": "ReplaceAvatarBody",
         "type": "object"
       },
+      "ReplaceViewsBody": {
+        "additionalProperties": false,
+        "description": "`{baseVersion, body}` của N59 (W20); thiếu `baseVersion` bị khung chặn 428 trước Pydantic.",
+        "properties": {
+          "baseVersion": {
+            "minimum": 0.0,
+            "title": "Baseversion",
+            "type": "integer"
+          },
+          "body": {
+            "$ref": "#/components/schemas/ViewsBodyIn"
+          }
+        },
+        "required": [
+          "baseVersion",
+          "body"
+        ],
+        "title": "ReplaceViewsBody",
+        "type": "object"
+      },
       "RoleChangeBody": {
         "additionalProperties": false,
         "description": "#41: `userId` chỉ để guard W21 so với đường (K09); người thực hiện lấy từ `Principal`.",
@@ -6925,6 +7497,26 @@
         "ge": "0.01",
         "le": 1000
       },
+      "SectionTargetIn": {
+        "additionalProperties": false,
+        "description": "Đích \"mặt cắt\": trước K-32c thành dòng tầng `isSection` ẩn khỏi 3D (HS-03).",
+        "properties": {
+          "mode": {
+            "const": "section",
+            "title": "Mode",
+            "type": "string"
+          },
+          "name": {
+            "$ref": "#/components/schemas/FloorName"
+          }
+        },
+        "required": [
+          "mode",
+          "name"
+        ],
+        "title": "SectionTargetIn",
+        "type": "object"
+      },
       "SeenPatch": {
         "additionalProperties": false,
         "description": "Vá `seen`: `tours` thay cả danh sách (≤ 64 id), không nối thêm.",
@@ -7089,6 +7681,28 @@
         "title": "SetActiveModelVersionIn",
         "type": "object"
       },
+      "SetChunkBody": {
+        "additionalProperties": false,
+        "description": "Thân N55: một khúc base64 và chỉ số của nó (như #6); trần độ dài thật theo `UPLOAD_CHUNK_BYTES` ở service.",
+        "properties": {
+          "chunk": {
+            "minLength": 1,
+            "title": "Chunk",
+            "type": "string"
+          },
+          "chunkIndex": {
+            "minimum": 0.0,
+            "title": "Chunkindex",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chunk",
+          "chunkIndex"
+        ],
+        "title": "SetChunkBody",
+        "type": "object"
+      },
       "SetCornersIn": {
         "additionalProperties": false,
         "description": "Thân #31: đúng bốn góc; thứ tự và hình học do `geometry` kiểm.",
@@ -7108,6 +7722,16 @@
         ],
         "title": "SetCornersIn",
         "type": "object"
+      },
+      "SetStatus": {
+        "enum": [
+          "receiving",
+          "analyzing",
+          "review",
+          "confirmed",
+          "failed"
+        ],
+        "type": "string"
       },
       "ShareLinkCreateIn": {
         "additionalProperties": false,
@@ -7647,6 +8271,14 @@
           "processing",
           "qc",
           "done"
+        ],
+        "type": "string"
+      },
+      "TargetMode": {
+        "enum": [
+          "floor",
+          "newFloor",
+          "section"
         ],
         "type": "string"
       },
@@ -8291,6 +8923,185 @@
           "floorId"
         ],
         "title": "VersionRestoreTargetIn",
+        "type": "object"
+      },
+      "ViewEditIn": {
+        "additionalProperties": false,
+        "description": "Một hình trong bản duyệt N59: `id` vắng = hình người vẽ thêm; `target` vắng = chưa gán đích.",
+        "properties": {
+          "crop": {
+            "$ref": "#/components/schemas/CropRect"
+          },
+          "excluded": {
+            "title": "Excluded",
+            "type": "boolean"
+          },
+          "fileId": {
+            "minLength": 1,
+            "title": "Fileid",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FloorKind"
+          },
+          "pageIndex": {
+            "minimum": 0.0,
+            "title": "Pageindex",
+            "type": "integer"
+          },
+          "storeyNo": {
+            "anyOf": [
+              {
+                "maximum": 199.0,
+                "minimum": -9.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storeyno"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ViewTargetIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "fileId",
+          "pageIndex",
+          "crop",
+          "excluded",
+          "kind"
+        ],
+        "title": "ViewEditIn",
+        "type": "object"
+      },
+      "ViewQuestionOut": {
+        "additionalProperties": false,
+        "description": "Một câu hỏi cho người duyệt: chỉ mã (bộ mã N52), FE viết câu tiếng Việt.",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/QuestionCode"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "ViewQuestionOut",
+        "type": "object"
+      },
+      "ViewSource": {
+        "enum": [
+          "ai",
+          "user"
+        ],
+        "type": "string"
+      },
+      "ViewTargetIn": {
+        "discriminator": {
+          "mapping": {
+            "floor": "#/components/schemas/FloorTargetIn",
+            "newFloor": "#/components/schemas/NewFloorTargetIn",
+            "section": "#/components/schemas/SectionTargetIn"
+          },
+          "propertyName": "mode"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/FloorTargetIn"
+          },
+          {
+            "$ref": "#/components/schemas/NewFloorTargetIn"
+          },
+          {
+            "$ref": "#/components/schemas/SectionTargetIn"
+          }
+        ]
+      },
+      "ViewTargetOut": {
+        "additionalProperties": false,
+        "description": "Đích đã lưu: `floorId` vắng ở `section`, `name` vắng ở `floor`, `replace` chỉ có khi `true`.",
+        "properties": {
+          "floorId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Floorid"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/TargetMode"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "replace": {
+            "anyOf": [
+              {
+                "const": true,
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replace"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "ViewTargetOut",
+        "type": "object"
+      },
+      "ViewsBodyIn": {
+        "additionalProperties": false,
+        "description": "`body` của N59: **cả** danh sách hình (thay thế), tối đa `VIEWS_MAX`.",
+        "properties": {
+          "views": {
+            "items": {
+              "$ref": "#/components/schemas/ViewEditIn"
+            },
+            "maxItems": 60,
+            "title": "Views",
+            "type": "array"
+          }
+        },
+        "required": [
+          "views"
+        ],
+        "title": "ViewsBodyIn",
         "type": "object"
       },
       "Wall": {
@@ -10784,6 +11595,475 @@
         "summary": "Design Director Select Concept",
         "tags": [
           "design_director"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/drawing-sets": {
+      "get": {
+        "description": "N58 — bộ của dự án, mới trước, trần một trang theo cấu hình (W22).",
+        "operationId": "drawing_sets_list_sets_api_projects__project_id__drawing_sets_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_DrawingSetSummaryOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawing Sets List Sets",
+        "tags": [
+          "drawing_sets"
+        ]
+      },
+      "post": {
+        "description": "N54 — khai 1-20 tệp, mở bộ `receiving`; 201.",
+        "operationId": "drawing_sets_create_set_api_projects__project_id__drawing_sets_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSetBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrawingSetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawing Sets Create Set",
+        "tags": [
+          "drawing_sets"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/drawing-sets/{set_id}": {
+      "delete": {
+        "description": "N61 — xoá mềm; tầng đã tạo giữ nguyên.",
+        "operationId": "drawing_sets_delete_set_api_projects__project_id__drawing_sets__set_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "title": "Set Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrawingSetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawing Sets Delete Set",
+        "tags": [
+          "drawing_sets"
+        ]
+      },
+      "get": {
+        "description": "N57 — một bộ đầy đủ tệp và hình (FE thăm dò 2 s khi `analyzing`).",
+        "operationId": "drawing_sets_read_set_api_projects__project_id__drawing_sets__set_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "title": "Set Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrawingSetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawing Sets Read Set",
+        "tags": [
+          "drawing_sets"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/drawing-sets/{set_id}/complete": {
+      "post": {
+        "description": "N56 — chốt bộ: kiểm từng tệp, sang `analyzing`, xếp tác vụ phân tích sau commit; gọi lại → bộ hiện tại.",
+        "operationId": "drawing_sets_complete_set_api_projects__project_id__drawing_sets__set_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "title": "Set Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteSetBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrawingSetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawing Sets Complete Set",
+        "tags": [
+          "drawing_sets"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/drawing-sets/{set_id}/confirm": {
+      "post": {
+        "description": "N60 — \"Xác nhận và dựng\": tạo tầng + lượt tải, xếp pipeline sau commit; gọi lại → bộ hiện tại.",
+        "operationId": "drawing_sets_confirm_set_api_projects__project_id__drawing_sets__set_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "title": "Set Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmSetBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrawingSetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawing Sets Confirm Set",
+        "tags": [
+          "drawing_sets"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/drawing-sets/{set_id}/files/{file_id}/chunks": {
+      "post": {
+        "description": "N55 — nhận một khúc của một tệp; gửi lại cùng chỉ số là ghi đè (U10).",
+        "operationId": "drawing_sets_upload_chunk_api_projects__project_id__drawing_sets__set_id__files__file_id__chunks_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "title": "Set Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetChunkBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrawingSetFileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawing Sets Upload Chunk",
+        "tags": [
+          "drawing_sets"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/drawing-sets/{set_id}/views": {
+      "put": {
+        "description": "N59 — lưu bản duyệt (thay cả danh sách hình); base cũ → 409, lượt lặp của chính mình → 200.",
+        "operationId": "drawing_sets_replace_views_api_projects__project_id__drawing_sets__set_id__views_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "title": "Set Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceViewsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrawingSetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawing Sets Replace Views",
+        "tags": [
+          "drawing_sets"
         ]
       }
     },

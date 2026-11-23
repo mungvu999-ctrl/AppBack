@@ -1,3 +1,24 @@
 # Case thêm của đề xuất cho cả nhà (HS-02, CASE.md §2.3). Route chỉ đọc, Loại Đ: không cần khai gì.
 # Case chung C04 C05 C12 C13 C25 do `apps/api/core/tests/test_common.py` chạy; C01 C06 ở `tests/test_routes.py`.
 # C16 không áp — GET không có thân. Công tắc tắt (200 `enabled: false`) có test riêng `__disabled`.
+
+# "Tải cả bộ hồ sơ" N54-N61 (K-32a, CASE.md §2.3). Case của Loại tính từ metadata + BE-BIND; ở đây chỉ phần thêm/miễn.
+# Công tắc tắt (503 `DRAWING_SET_DISABLED`) có test riêng `__disabled` cho N54, N56 (kèm N55), N59, N60.
+
+[[endpoint]]
+op = "drawing_sets_create_set"
+extra = ["C11", "U08", "U09", "U12"]
+
+[[endpoint]]
+op = "drawing_sets_confirm_set"
+# C14: hai xác nhận song song → đúng một bộ tầng và lượt (K-32a §4, "Case thêm cố định" của CASE §2.2).
+extra = ["C14"]
+waive = { C16 = "thân chỉ có setId và revision, không có chuỗi người nhập" }
+
+[[endpoint]]
+op = "drawing_sets_delete_set"
+waive = { C16 = "DELETE không có thân, không có chuỗi người nhập" }
+
+[[task]]
+fn = "analyze_drawing_set"
+require = ["J03"]

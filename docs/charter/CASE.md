@@ -82,8 +82,8 @@
 | P | logout | C01 C24 |
 | B | beacon telemetry | C01 C12 |
 | T-init | #5 | C01 C02 C03 C06 C07 C11 C21 U05 U08 U09 U12 |
-| T-chunk | #6 | C01 C02 C06 C08 C21 U10 |
-| T-complete | #7 | C01 C06 C08 C14 C21 U07 U10 U11 |
+| T-chunk | #6, N55 | C01 C02 C06 C08 C21 U10 |
+| T-complete | #7, N56 | C01 C06 C08 C14 C21 U07 U10 U11 |
 | T-avatar | N14 | C01 C02 C03 U03 U07 U08 |
 | A | admin | C01 C02 C03 C07 C17² C18 C21⁶ (+C09 C09b C14 nếu có version, +C15 nếu là danh sách, +C08 nếu có id trên đường) |
 | S | luồng SSE | S01–S05 S07 S09 · S06 chỉ luồng gắn dự án · S08 chỉ luồng tiến độ |
@@ -100,7 +100,7 @@ Chú thích:
 9. C08 và C23 của `G*` chỉ áp khi đường có `{` (`/api/me`, `POST /api/projects`, `POST /api/notifications/read` không có id trên đường). #20 bỏ qua id của người khác trong thân bằng test đặt tên theo việc, không phải C23.
 
 **Case thêm cố định** (không áp cả loại):
-- C14 ở #10 (`FLOOR_ID_TAKEN`), #17 (`MEASUREMENT_ID_TAKEN`), #41 (admin cuối), N3 (thêm cùng email song song → cả hai 2xx, đúng một bản ghi), N4 (gỡ song song hai người sửa cuối → đúng một thành công, bên kia `MEMBER_LAST_EDITOR`).
+- C14 ở #10 (`FLOOR_ID_TAKEN`), #17 (`MEASUREMENT_ID_TAKEN`), #41 (admin cuối), N3 (thêm cùng email song song → cả hai 2xx, đúng một bản ghi), N4 (gỡ song song hai người sửa cuối → đúng một thành công, bên kia `MEMBER_LAST_EDITOR`), N60 (hai xác nhận song song → đúng một bộ tầng và lượt).
 - C11 ở N3, N13, N14, #44, #37 (rate limit của BE-00 §11 mà loại không đòi). Test hạn mức luôn đặt tên `test_<operationId>__C11` (vd `test_me_replace_avatar__C11`), không tên theo việc như `…_rate_limited`: `case_gate` chỉ đếm theo hậu tố.
 - C28 ở N8 (cửa sổ chờ của yêu cầu đặt lại mật khẩu).
 

@@ -24,6 +24,7 @@ const INDEX = '@/api/schemas/index';
 const ADMIN_ML = '@/api/schemas/adminMl';
 const USERS = '@/api/schemas/users';
 const VERSIONS = '@/api/schemas/versions';
+const DRAWING_SET = '@/api/schemas/drawingSet';
 
 const EMPTY: SchemaMapEntry = { shape: 'empty' };
 
@@ -152,4 +153,13 @@ export const SCHEMA_MAP: Readonly<Record<string, SchemaMapEntry>> = {
   // N52 (HS-03). Schema FE cố ý không `.strict()` (bảng phụ): giải bằng bản strict riêng của harness (L4-N07, W16).
   drawing_sets_read_house_proposal: object('./strict/houseProposal', 'HouseProposalStrictSchema'),
   projects_cancel_create_project: object(INDEX, 'ProjectSchema'), // N40
+  // N54–N61 (K-32a): schema FE strict (L4-N07), giải thẳng bằng schema của FE.
+  drawing_sets_create_set: object(DRAWING_SET, 'DrawingSetSchema'), // N54 (201)
+  drawing_sets_upload_chunk: object(DRAWING_SET, 'DrawingSetFileSchema'), // N55
+  drawing_sets_complete_set: object(DRAWING_SET, 'DrawingSetSchema'), // N56
+  drawing_sets_read_set: object(DRAWING_SET, 'DrawingSetSchema'), // N57
+  drawing_sets_list_sets: object(DRAWING_SET, 'DrawingSetSummaryPageSchema'), // N58 (W22)
+  drawing_sets_replace_views: object(DRAWING_SET, 'DrawingSetSchema'), // N59
+  drawing_sets_confirm_set: object(DRAWING_SET, 'DrawingSetSchema'), // N60
+  drawing_sets_delete_set: object(DRAWING_SET, 'DrawingSetSchema'), // N61
 };

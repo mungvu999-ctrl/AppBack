@@ -25,12 +25,12 @@ from packages.domain.scale import ScaleSample, classify_scale_range, infer_scale
 from packages.messaging.tasks import PermanentError, define_task
 from packages.ml_contracts.artifacts import BoxPx, TextPx, TextResult, text_to_json
 from packages.ml_contracts.fakes import FakeTextReader
-from packages.ml_contracts.payloads import InferStepPayload
+from packages.ml_contracts.payloads import InferStepPayload, ModelRef
 from packages.ml_contracts.ports import RgbImage, TextReader
 from packages.vision.dimensions.chains import densest_cluster, dimension_spans
 from packages.vision.dimensions.lengths import parse_length_mm
 
-__all__ = ["MODEL_VERSION_FAMILY_MISMATCH", "STEP", "text_read"]
+__all__ = ["MODEL_VERSION_FAMILY_MISMATCH", "STEP", "open_text_reader", "text_read"]
 
 _log: Final = logging.getLogger(__name__)
 
@@ -56,23 +56,31 @@ class _InactiveReader:
         return ()
 
 
-async def _prepare(payload: InferStepPayload) -> TextReader:
-    """Chọn bộ đọc của lượt: bộ giả, bộ rỗng, hay `RapidOcrReader` trên model đã kiểm.
+async def open_text_reader(model: ModelRef) -> TextReader:
+    """Bộ đọc cho một model họ `dimensionReading`: bộ giả, bộ rỗng, hay `RapidOcrReader` trên model đã kiểm.
 
-    Model chỉ tới được `onnxruntime` qua `load_onnx` (checksum, luật ONNX không tin,
-    M02/M03); mọi lỗi của nó đã là `PermanentError` có mã nên không bọc thêm gì.
+    Dùng chung cho bước pipeline và lượt đọc bộ hồ sơ (K-32a, `apps/ml/drawing_set_read`). Model chỉ tới được
+    `onnxruntime` qua `load_onnx` (checksum, luật ONNX không tin, M02/M03); mọi lỗi của nó đã là `PermanentError`
+    có mã nên không bọc thêm gì. Sai họ → `PermanentError(MODEL_VERSION_FAMILY_MISMATCH)`.
     """
-    if payload.step != STEP or payload.model.family != STEP:
+    if model.family != STEP:
         raise PermanentError(MODEL_VERSION_FAMILY_MISMATCH)
     context = infer_context()
     if context.settings.ml_backend == "fake":
         return FakeTextReader()
-    if payload.model.is_classic:
-        _log.info("text_model_inactive", extra={"run_id": payload.run_id})
+    if model.is_classic:
+        _log.info("text_model_inactive")
         return _InactiveReader()
     models_dir = Path(context.settings.ml_models_dir)
-    session = await load_onnx(context.storage, payload.model, models_dir=models_dir)
-    return RapidOcrReader.from_session(session, pinned_name=payload.model.pinned_name)
+    session = await load_onnx(context.storage, model, models_dir=models_dir)
+    return RapidOcrReader.from_session(session, pinned_name=model.pinned_name)
+
+
+async def _prepare(payload: InferStepPayload) -> TextReader:
+    """Bộ đọc của một bước pipeline: bước phải là `dimensionReading` (cùng họ model), rồi `open_text_reader`."""
+    if payload.step != STEP:
+        raise PermanentError(MODEL_VERSION_FAMILY_MISMATCH)
+    return await open_text_reader(payload.model)
 
 
 def _read(image: NDArray[np.uint8], payload: InferStepPayload, reader: TextReader | None) -> StepOutput:

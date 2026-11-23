@@ -12,9 +12,11 @@ from deploy.tests.support import require_path
 _EXPECTED_PAIRS = {
     ("s3:GetObject", "projects/*/floors/*/uploads/*/pages/*"),
     ("s3:GetObject", "projects/*/floors/*/uploads/*/runs/*/preprocess/vectors.json"),  # UX41-B1
+    ("s3:GetObject", "projects/*/drawing-sets/*/files/*/pages/*"),  # K-32a: ảnh trang bộ hồ sơ
     ("s3:GetObject", "ml/models/*"),
     ("s3:GetObject", "ml/datasets/*"),
     ("s3:PutObject", "projects/*/floors/*/uploads/*/runs/*"),
+    ("s3:PutObject", "projects/*/drawing-sets/*/files/*/readings/*"),  # K-32a: kết quả đọc trang
     ("s3:PutObject", "ml/models/*"),
 }
 _MULTIPART_ACTIONS = {"s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"}
@@ -57,7 +59,8 @@ def _statement_pairs(statement: dict) -> list[tuple[str, str]]:
 
 
 def test_minio_ml_policy_exact_read_write_pairs() -> None:
-    """Tập cặp (GetObject/PutObject, tiền tố) đúng **bằng** 6 cặp của hợp đồng §4 (UX41-B1 thêm `vectors.json`)."""
+    """Tập cặp (GetObject/PutObject, tiền tố) đúng **bằng** 8 cặp của hợp đồng §4 (UX41-B1 thêm `vectors.json`,
+    K-32a thêm ảnh trang và kết quả đọc của bộ hồ sơ)."""
     policy = _load_policy("ml-policy.json")
     all_pairs = {
         pair

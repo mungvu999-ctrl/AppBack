@@ -22,3 +22,7 @@ waive = { C16 = "DELETE không có thân, không có chuỗi người nhập" }
 [[task]]
 fn = "analyze_drawing_set"
 require = ["J03"]
+
+[[task]]
+fn = "publish_drawing_set"
+require = ["J03"]

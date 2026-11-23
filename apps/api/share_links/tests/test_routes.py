@@ -4,9 +4,11 @@ from datetime import timedelta
 from typing import Any
 
 import httpx
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.project_settings.tests.support import headers_of, seed_project
+from packages.core.settings import reset_settings_cache
 from packages.db.models.auth import User
 from packages.db.models.projects import Project
 from packages.testing.factories.auth import make_user
@@ -361,3 +363,34 @@ async def test_share_links_open__C01(api_client: httpx.AsyncClient, db_session: 
     assert body["link"] == link
     assert body["projectName"] == project.name
     assert body["graph"]["floorRevisions"] == []
+
+
+# ---------------------------------------------------------------------------
+# L1-N06 — `url` dựng từ PUBLIC_BASE_URL, không từ Host
+# ---------------------------------------------------------------------------
+
+CUSTOM_ORIGIN = "https://app.example.test:8443"
+
+
+async def test_share_link_url_uses_public_base_url_with_port(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`PUBLIC_BASE_URL` có cổng → `url` giữ đúng origin đó ở tạo, liệt kê và mở công khai; `Host` giả không lọt vào."""
+    project, _, engineer, _, _ = await _setup(db_session)
+    monkeypatch.setenv("PUBLIC_BASE_URL", CUSTOM_ORIGIN)
+    reset_settings_cache()
+    forged = {**headers_of(engineer), "Host": "evil.example"}
+
+    created = await api_client.post(_links_path(project), headers=forged, json={})
+    assert created.status_code == 201, created.text
+    link = created.json()
+    assert link["url"].startswith(f"{CUSTOM_ORIGIN}/share/")
+    assert "evil.example" not in link["url"]
+
+    listed = await api_client.get(_links_path(project), headers=forged)
+    assert [item["url"] for item in listed.json()] == [link["url"]]
+
+    token = link["url"].rsplit("/", 1)[1]
+    opened = await api_client.get(f"/api/share/{token}", headers={"Host": "evil.example"})
+    assert opened.status_code == 200, opened.text
+    assert opened.json()["link"]["url"] == link["url"]

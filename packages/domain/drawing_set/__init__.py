@@ -21,6 +21,7 @@ from packages.domain.drawing_set.storeys import (
     StoreyConflict,
     solve_storeys,
 )
+from packages.domain.drawing_set.title_block import TitleBlock, TitleBlockField, read_title_block
 from packages.domain.drawing_set.titles import (
     KindGuess,
     OcrText,
@@ -51,6 +52,8 @@ __all__ = [
     "StoreyConflict",
     "StoreyHeight",
     "StoreyPlan",
+    "TitleBlock",
+    "TitleBlockField",
     "TitleInfo",
     "classify_page",
     "decode_legacy",
@@ -58,6 +61,7 @@ __all__ = [
     "fold",
     "parse_title",
     "pick_title",
+    "read_title_block",
     "solve_heights",
     "solve_house",
     "solve_storeys",

@@ -248,5 +248,5 @@ def test_empty_and_hostile_input() -> None:
     flood = [at(f"CHU DAU TU {i}", 10 + (i % 50), 10 + i, 100) for i in range(10_000)]
     start = time.perf_counter()
     read_title_block(flood)
-    # Trần rộng: chỉ bắt lỗi bậc hai (10k dòng → hàng phút), không đo tốc độ — cổng song song chạy chậm 2–3×.
+    # Trần rộng: chỉ bắt lỗi bậc hai (10k dòng → hàng phút), không đo tốc độ — cổng song song chạy chậm 2-3 lần.
     assert time.perf_counter() - start < 10.0

@@ -46,7 +46,7 @@ def test_pipeline_steps_match_fe() -> None:
 
 
 def test_pipeline_codes_not_http_codes() -> None:
-    assert [c.value for c in PipelineCode] == ["PIPELINE_SUPERSEDED", "SCALE_UNRESOLVED"]
+    assert [c.value for c in PipelineCode] == ["PIPELINE_SUPERSEDED", "PIPELINE_CANCELLED", "SCALE_UNRESOLVED"]
     registered = {c.code for c in ERRORS.all()}
     assert not registered & {c.value for c in PipelineCode}
 

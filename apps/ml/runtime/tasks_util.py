@@ -25,6 +25,7 @@ from apps.ml.runtime.settings import MlSettings, get_ml_settings, reset_ml_setti
 from packages.core.clock import SystemClock
 from packages.messaging.celery_app import send_task
 from packages.messaging.redis import ProcessLocal
+from packages.messaging.run_cancel import CancelProbe, RunCancelledError, cancel_scope, is_run_cancelled
 from packages.messaging.tasks import PermanentError
 from packages.ml_contracts.artifacts import MASK_MAX_PIXELS, STEP_ARTIFACTS, read_png_header
 from packages.ml_contracts.payloads import InferStepPayload, StepResultPayload
@@ -200,6 +201,7 @@ async def run_step[PreparedT](
     storage: ObjectStorage,
     prepare: Callable[[InferStepPayload], Awaitable[PreparedT]] | None = None,
     send: Send = send_task,
+    cancelled: Callable[[str], bool] = is_run_cancelled,
 ) -> None:
     """Chạy một bước suy luận và báo kết quả cho B5-06c.
 
@@ -208,13 +210,26 @@ async def run_step[PreparedT](
     3. ghi artifact **rồi mới** gửi `completed`.
     `PermanentError` ở bất kỳ bước nào → gửi `failed` cùng mã, trả bình thường. Lỗi tạm
     (`TransientError`, kho hay broker 503) nổi lên để `define_task` thử lại.
+
+    Huỷ hợp tác (K-24): cờ huỷ của lượt (`cancelled`, mặc định đọc Redis) được hỏi trước mỗi pha
+    và giữa từng ô ảnh trong `fn` (`run_cancel.checkpoint()`, ngữ cảnh chép sang luồng phụ). Gặp
+    cờ → dừng, không ghi artifact, **không** gửi `step_done` (lượt đã `failed` trong DB), trả bình
+    thường để `define_task` không thử lại.
     """
     started = time.monotonic()
+    probe = CancelProbe(payload.run_id, read=cancelled)
     try:
-        prepared = None if prepare is None else await prepare(payload)
-        image = await _load_page(storage, payload)
-        output = await asyncio.to_thread(fn, image, payload, prepared)
-        keys = await _write(storage, payload, output)
+        with cancel_scope(probe):
+            probe.check(force=True)
+            prepared = None if prepare is None else await prepare(payload)
+            probe.check(force=True)
+            image = await _load_page(storage, payload)
+            output = await asyncio.to_thread(fn, image, payload, prepared)
+            probe.check(force=True)
+            keys = await _write(storage, payload, output)
+    except RunCancelledError:
+        _log_step_timing(payload, "cancelled", int((time.monotonic() - started) * 1000))
+        return
     except PermanentError as exc:
         elapsed = int((time.monotonic() - started) * 1000)
         _log_step_timing(payload, "failed", elapsed)

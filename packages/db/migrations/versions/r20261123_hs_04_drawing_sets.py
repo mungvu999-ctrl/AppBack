@@ -59,6 +59,8 @@ def _create_sets() -> None:
         sa.Column("analysis_started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("confirmed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("confirmed_by", sa.Text(), nullable=True),
+        sa.Column("last_writer_id", sa.Text(), nullable=True),
+        sa.Column("last_body_sha256", sa.Text(), nullable=True),
         sa.Column("created_by", sa.Text(), nullable=False),
         *_timestamps(),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
@@ -66,6 +68,7 @@ def _create_sets() -> None:
         _check(SETS, "progress_percent BETWEEN 0 AND 100", "progress_percent_range"),
         _check(SETS, "revision >= 0", "revision_non_negative"),
         _check(SETS, "name IS NULL OR char_length(name) BETWEEN 1 AND 120", "name_length"),
+        _check(SETS, "last_body_sha256 IS NULL OR last_body_sha256 ~ '^[0-9a-f]{64}$'", "last_body_sha256_format"),
     )
     op.create_index(
         op.f(f"ix_{SETS}_project_id_created_at_id"),

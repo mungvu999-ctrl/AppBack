@@ -47,7 +47,8 @@ _CONFIDENCE: Final = "độ tin của máy trong [0, 1], không phải độ dà
 class DrawingSetRow(Base, TimestampMixin, SoftDeleteMixin):
     """Một bộ hồ sơ của một dự án; `created_by`/`confirmed_by` là `sub` (K05), không FK.
 
-    `revision` tăng mỗi lần N59 ghi bản duyệt (GV, W20) và là điều kiện của N60 (`DRAWING_SET_REVISION_STALE`).
+    `revision` tăng mỗi lần N59 ghi bản duyệt (GV, W20) và là điều kiện của N60 (`DRAWING_SET_REVISION_STALE`);
+    `last_writer_id` + `last_body_sha256` theo mẫu `project_settings` (K07, C09b).
     `progress_percent` chỉ tăng trong một lượt phân tích (FE vẽ thanh tiến độ thẳng từ số này).
     """
 
@@ -63,6 +64,9 @@ class DrawingSetRow(Base, TimestampMixin, SoftDeleteMixin):
     analysis_started_at: Mapped[datetime | None] = mapped_column(default=None)
     confirmed_at: Mapped[datetime | None] = mapped_column(default=None)
     confirmed_by: Mapped[str | None] = mapped_column(Text, default=None)
+    last_writer_id: Mapped[str | None] = mapped_column(Text, default=None)
+    """`sub` của lượt N59 gần nhất; cùng `last_body_sha256` phân biệt lượt gửi lặp (C09b) với xung đột thật."""
+    last_body_sha256: Mapped[str | None] = mapped_column(Text, default=None)
     created_by: Mapped[str] = mapped_column(Text)
 
     __table_args__ = (
@@ -70,6 +74,9 @@ class DrawingSetRow(Base, TimestampMixin, SoftDeleteMixin):
         CheckConstraint("progress_percent BETWEEN 0 AND 100", name="progress_percent_range"),
         CheckConstraint("revision >= 0", name="revision_non_negative"),
         CheckConstraint("name IS NULL OR char_length(name) BETWEEN 1 AND 120", name="name_length"),
+        CheckConstraint(
+            "last_body_sha256 IS NULL OR last_body_sha256 ~ '^[0-9a-f]{64}$'", name="last_body_sha256_format"
+        ),
         # N58: bộ của dự án, mới trước, phân trang theo cursor `(created_at, id)` (W22), bỏ bộ đã xoá mềm.
         Index(
             f"ix_{DRAWING_SETS}_project_id_created_at_id",
@@ -147,7 +154,7 @@ class DrawingSetViewRow(Base, TimestampMixin):
     ord: Mapped[int] = mapped_column(Integer)
     page_index: Mapped[int] = mapped_column(Integer)
     crop: Mapped[Any] = mapped_column(JSONB(none_as_null=True), nullable=True, default=None)
-    """Khung `{x, y, w, h}` theo tỉ lệ trang gốc (như `CropRect` của #5); `NULL` = cả trang."""
+    """Khung theo tỉ lệ trang gốc, khoá như `CropRect` của #5 (`x_ratio y_ratio width_ratio height_ratio`)."""
     source: Mapped[str] = mapped_column(Text)
     excluded: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     kind: Mapped[str] = mapped_column(Text)

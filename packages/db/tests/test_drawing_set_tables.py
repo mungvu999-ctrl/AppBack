@@ -89,6 +89,7 @@ async def _project(db: AsyncSession) -> Project:
         ("revision", -1, "revision_non_negative"),
         ("name", "", "name_length"),
         ("name", "x" * 121, "name_length"),
+        ("last_body_sha256", "a" * 63, "last_body_sha256_format"),
     ],
 )
 async def test_set_checks_reject_out_of_range(

@@ -10901,6 +10901,58 @@
         ]
       }
     },
+    "/api/projects/{project_id}/drawings/uploads/{upload_id}/cancel": {
+      "post": {
+        "description": "N53 — huỷ lượt chạy đang sống của lượt tải; thân rỗng, trả `Progress` sau huỷ (K-24).\n\nCùng khoá `floor.upload` với #5/#7/N51: ai được mở lượt chạy thì được huỷ nó; viewer → 403.",
+        "operationId": "drawings_cancel_upload_api_projects__project_id__drawings_uploads__upload_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawings Cancel Upload",
+        "tags": [
+          "drawings"
+        ]
+      }
+    },
     "/api/projects/{project_id}/drawings/uploads/{upload_id}/chunks": {
       "post": {
         "description": "#6 — nhận một khúc; gửi lại cùng chỉ số là ghi đè (U10).",

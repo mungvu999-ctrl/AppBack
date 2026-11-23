@@ -25,6 +25,7 @@ from apps.api.spatial_read.graph import spatial_graph
 from apps.api.spatial_read.wire import SpatialGraphDocumentOut
 from packages.core.error_codes import NOT_FOUND
 from packages.core.ids import new_id
+from packages.core.settings import get_core_settings
 from packages.db.models.projects import Project
 from packages.db.models.share_links import ShareLinkRow
 
@@ -99,11 +100,11 @@ def _status(row: ShareLinkRow, now: datetime) -> Literal["active", "expired", "r
     return "active"
 
 
-def _out(row: ShareLinkRow, request: Request, now: datetime) -> ShareLinkOut:
-    """Dòng → dây; `url` dựng từ origin của request."""
+def _out(row: ShareLinkRow, now: datetime) -> ShareLinkOut:
+    """Dòng → dây; `url` dựng từ `PUBLIC_BASE_URL`, không từ `Host` (L1-N06)."""
     return ShareLinkOut(
         id=row.id,
-        url=f"{str(request.base_url).rstrip('/')}{SHARE_PATH}{row.token}",
+        url=f"{get_core_settings().public_base_url}{SHARE_PATH}{row.token}",
         permission=row.permission,
         status=_status(row, now),
         created_at=row.created_at,
@@ -125,7 +126,6 @@ async def share_links_export(
 @router.get("/projects/{project_id}/share-links")
 async def share_links_list(
     access: Annotated[ProjectAccess, Depends(require_project("share.create"))],
-    request: Request,
     db: DbSession,
     clock: ClockDep,
 ) -> list[ShareLinkOut]:
@@ -134,14 +134,13 @@ async def share_links_list(
         select(ShareLinkRow).where(ShareLinkRow.project_id == access.project_id).order_by(ShareLinkRow.id.desc())
     )
     now = clock.now()
-    return [_out(row, request, now) for row in rows]
+    return [_out(row, now) for row in rows]
 
 
 @router.post("/projects/{project_id}/share-links", status_code=201)
 async def share_links_create(
     body: ShareLinkCreateIn,
     access: Annotated[ProjectAccess, Depends(require_project("share.create"))],
-    request: Request,
     db: DbSession,
     clock: ClockDep,
 ) -> ShareLinkOut:
@@ -159,14 +158,13 @@ async def share_links_create(
     db.add(row)
     await db.commit()
     await db.refresh(row)
-    return _out(row, request, clock.now())
+    return _out(row, clock.now())
 
 
 @router.delete("/projects/{project_id}/share-links/{link_id}")
 async def share_links_revoke(
     link_id: str,
     access: Annotated[ProjectAccess, Depends(require_project("share.create"))],
-    request: Request,
     db: DbSession,
     clock: ClockDep,
 ) -> ShareLinkOut:
@@ -180,7 +178,7 @@ async def share_links_revoke(
         row.revoked_at = clock.now()
         await db.commit()
         await db.refresh(row)
-    return _out(row, request, clock.now())
+    return _out(row, clock.now())
 
 
 @public.get("/share/{token}", dependencies=[Depends(reject_foreign_origin), Depends(_open_limit)])
@@ -205,5 +203,5 @@ async def share_links_open(token: str, request: Request, db: DbSession, clock: C
         raise NOT_FOUND.error(resource="shareLink", reason=status)  # U59: nói đúng lý do, vẫn 404
     row, name = found
     return SharedModelOut(
-        link=_out(row, request, now), project_name=name, graph=await spatial_graph(db, row.project_id, app=request.app)
+        link=_out(row, now), project_name=name, graph=await spatial_graph(db, row.project_id, app=request.app)
     )

@@ -235,14 +235,15 @@ def test_5b_không_đơn_vị_bị_chạm_bỏ_pytest_perf(repo: Path, monkeypat
 
 
 def test_5b_đơn_vị_bị_chạm_có_perf_thì_chạy(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Đơn vị bị chạm có test perf thì bước 5b chạy pytest perf giới hạn đúng đơn vị đó."""
+    """Đơn vị bị chạm có test perf thì bước 5b chạy pytest perf chỉ trên các tệp perf đã collect."""
     (repo / "packages" / "vision").mkdir(parents=True)
     monkeypatch.setenv("VERIFY_CHANGED", "packages/vision/x.py\ndocs/a.md")
     fake = _fake(monkeypatch, **{"--collect-only": (0, "packages/vision/tests/test_p.py::test_speed\n\n1 test\n")})
     outcome = steps.step_perf()
     assert (outcome.status, outcome.detail) == (steps.STATUS_OK, "perf: 1 test")
     perf_run = [c for c in fake.calls if "--junitxml=/tmp/junit-perf.xml" in c]
-    assert perf_run == [["pytest", "-m", "perf and not gpu", "--junitxml=/tmp/junit-perf.xml", "packages/vision"]]
+    perf_file = "packages/vision/tests/test_p.py"
+    assert perf_run == [["pytest", "-m", "perf and not gpu", "--junitxml=/tmp/junit-perf.xml", perf_file]]
 
 
 def test_5b_đơn_vị_bị_chạm_không_có_perf_thì_bỏ(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1301,4 +1302,5 @@ def test_5b_deploy_bị_chạm_chạy_perf_của_deploy(repo: Path, monkeypatch:
     fake = _fake(monkeypatch, **{"--collect-only": (0, "deploy/scripts/tests/test_p.py::test_speed\n")})
     assert steps.step_perf().status == steps.STATUS_OK
     perf_run = [c for c in fake.calls if "--junitxml=/tmp/junit-perf.xml" in c]
-    assert perf_run == [["pytest", "-m", "perf and not gpu", "--junitxml=/tmp/junit-perf.xml", "deploy"]]
+    perf_file = "deploy/scripts/tests/test_p.py"
+    assert perf_run == [["pytest", "-m", "perf and not gpu", "--junitxml=/tmp/junit-perf.xml", perf_file]]

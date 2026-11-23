@@ -13,7 +13,7 @@ và là số đo thật — tỉ lệ `human` chấp nhận số máy (ML-ACC-R1
 Module này nhập được trong ngữ cảnh worker: không `fastapi`, không `starlette`.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, cast, get_args
 
@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.spatial_read.assemble import level_reviewed
 from apps.api.spatial_read.documents import ScaleSource
-from apps.api.spatial_read.wire import ReadinessOut, ReadinessReason, ScaleBasis, ScaleState
+from apps.api.spatial_read.wire import NoticeOut, ReadinessOut, ReadinessReason, ScaleBasis, ScaleState
 from packages.db.models.drawings import PipelineRunRow
 from packages.db.models.pipeline_orchestrate import PipelineRunModelsRow
 from packages.domain.spatial import ScaleAcceptance, SpatialLayer
@@ -46,6 +46,8 @@ GEOMETRY_CHECK_ORDER: Final = (
     "ROTATED_PLAN",
     "AREA_TEXT_MISMATCH",
     "PAGE_RASTER_UNAVAILABLE",
+    "OPENING_SIZE_IMPLAUSIBLE",
+    "ROOM_AREA_TEXT_MISMATCH",
 )
 """Thứ tự `readiness.checks` trên dây (BENCH3D-09); mã lạ đứng sau, giữ thứ tự của lượt."""
 
@@ -58,6 +60,10 @@ _ESTIMATED_BASES: Final = frozenset({"note", "door", "wallThickness"})
 """Gốc ước lượng (cửa 745 mm, bề dày tường 150 mm, một chữ `TL 1:N`): tối đa `estimated`, không bao giờ `determined`."""
 
 _PIPELINE_BASES: Final = frozenset(get_args(ScaleBasis)) - {"human"}
+
+SECTION_ONLY_KEY: Final = "sectionOnly"
+"""Khoá của `quality_summary` do lượt mặt cắt chỉ đọc chữ ghi (K-32c, `pipeline_orchestrate.section`): tầng đó không
+có tường để kiểm nên `readiness` là `ready`, không chặn dự án bằng kiểm tường, tỉ lệ hay model dự phòng."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +183,43 @@ def _critical_checks(summary: Mapping[str, object]) -> tuple[str, ...] | None:
     return (*known, *(code for code in codes if code not in GEOMETRY_CHECK_ORDER))
 
 
+def _ordered(codes: Sequence[str]) -> list[str]:
+    """Mã theo `GEOMETRY_CHECK_ORDER`, mã lạ đứng sau giữ thứ tự gốc."""
+    known = [code for code in GEOMETRY_CHECK_ORDER if code in codes]
+    return [*known, *(code for code in codes if code not in GEOMETRY_CHECK_ORDER)]
+
+
+def notices_of(summary: Mapping[str, object], layer: SpatialLayer) -> tuple[NoticeOut, ...]:
+    """Nhắc mức nhẹ (`quality_summary.noticeChecks`, NO-488): `[{code, entityIds}]` của kiểm `critical:false`.
+
+    Đọc khoan dung: khoá vắng/`null`/không phải danh sách → `()`; mục hỏng dạng (không phải dict, `code` không phải
+    chuỗi không rỗng, `entityIds` không phải danh sách chuỗi) bị bỏ im, không sinh `geometrySuspect`. Id lọc theo
+    lớp hiện tại (cửa, phòng, tường, đồ đạc còn tồn tại); mục từng có id mà hết id (đối tượng đã xoá) bị bỏ, mục không
+    gắn đối tượng nào (`entityIds` rỗng từ đầu) giữ. Mã trùng: lấy mục đầu. Thứ tự theo `GEOMETRY_CHECK_ORDER`.
+
+    Giới hạn (NO-489): nhãn K-16 tính theo toạ độ lúc dựng; lọc theo id chỉ loại phòng đã xoá, chưa nhận ra phòng bị
+    sửa hình hay lượt chạy lại/đổi tỉ lệ làm lệch phòng — chấp nhận.
+    """
+    raw = summary.get("noticeChecks")
+    if not isinstance(raw, list):
+        return ()
+    alive = {item.id for items in (layer.walls, layer.openings, layer.furniture, layer.rooms) for item in items}
+    found: dict[str, tuple[str, ...]] = {}
+    for item in raw:
+        if not isinstance(item, Mapping):
+            continue
+        code, ids = item.get("code"), item.get("entityIds")
+        if not isinstance(code, str) or not code or code in found:
+            continue
+        if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+            continue
+        kept = tuple(i for i in ids if i in alive)
+        if ids and not kept:
+            continue
+        found[code] = kept
+    return tuple(NoticeOut(code=code, entity_ids=found[code]) for code in _ordered(list(found)))
+
+
 def _integrity_critical(summary: Mapping[str, object], checks: tuple[str, ...], *, trusted: bool) -> bool:
     """Còn lỗi toàn vẹn critical: `criticalCount` đếm cả kiểm hình học, trừ chúng ra; lượt cũ → theo `hasCritical`.
 
@@ -206,15 +249,20 @@ def readiness_of(
     Kiểm hình học critical → `geometrySuspect` kèm `checks`; `criticalIssues` chỉ còn cho lỗi toàn vẹn.
     `scale_accepted` (K4): tỉ lệ `human` chấp nhận số máy vẫn báo `scaleUnresolved` khi ảnh chụp không `determined`.
     `criticalChecks` hỏng dạng → vẫn `geometrySuspect` (không có `checks` để kèm), không bao giờ im lặng "ready".
+    `notices` (NO-488): kiểm `critical:false` kèm id, chỉ thêm vào dây — không đổi `state`/`reasons`/`checks`.
     """
     reasons: list[ReadinessReason] = []
     summary = None if run is None else run.quality_summary
+    if summary is not None and summary.get(SECTION_ONLY_KEY) is True:
+        return ReadinessOut(state="ready", reasons=())
     state, _ = scale_state_of(scale_source, scale_source, scale_basis, summary, scale_accepted)
     if state not in (None, "determined", "userCalibrated"):
         reasons.append("scaleUnresolved")
     checks: tuple[str, ...] = ()
+    notices: tuple[NoticeOut, ...] = ()
     if run is not None and not level_reviewed(layer, scale_source):
         if summary is not None:
+            notices = notices_of(summary, layer)
             read = _critical_checks(summary)
             checks = read or ()
             if _integrity_critical(summary, checks, trusted=read is not None):
@@ -228,7 +276,12 @@ def readiness_of(
         )
     if run is None:
         return ReadinessOut(state="notEvaluated", reasons=tuple(reasons))
-    return ReadinessOut(state="needsReview" if reasons else "ready", reasons=tuple(reasons), checks=checks or None)
+    return ReadinessOut(
+        state="needsReview" if reasons else "ready",
+        reasons=tuple(reasons),
+        checks=checks or None,
+        notices=notices or None,
+    )
 
 
 async def latest_run_facts(db: AsyncSession, floor_pk: int) -> RunFacts | None:

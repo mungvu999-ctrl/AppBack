@@ -14,6 +14,7 @@ from apps.api.spatial_read.assemble import effective_scale_source
 from apps.api.spatial_read.documents import ScaleSource, empty_document
 from apps.api.spatial_read.readiness import (
     RunFacts,
+    notices_of,
     readiness_of,
     scale_basis_of,
     scale_snapshot_of,
@@ -33,6 +34,7 @@ REVIEWED = sample_floor_layer(0, level_id=LEVEL_ID, reviewed=True)
 UNREVIEWED = sample_floor_layer(0, level_id=LEVEL_ID)
 CRITICAL: Mapping[str, object] = {"hasCritical": True, "criticalCount": 1, "lowConfidence": {}}
 CLEAN: Mapping[str, object] = {"hasCritical": False, "criticalCount": 0, "lowConfidence": {}}
+SECTION_ONLY: Mapping[str, object] = {**CLEAN, "sectionOnly": True}
 
 
 def _stored(family: ModelFamily) -> dict[str, object]:
@@ -103,6 +105,19 @@ def _run(*, summary: Mapping[str, object] | None = CLEAN, classic: tuple[ModelFa
             id="reviewed-but-scale-unresolved-keeps-all",
         ),
         pytest.param(RunFacts(pinned={}, quality_summary=None), "human", UNREVIEWED, "ready", (), id="no-pins-row"),
+        pytest.param(
+            _run(summary=SECTION_ONLY, classic=MODEL_FAMILIES), "pipeline", UNREVIEWED, "ready", (), id="section-only"
+        ),
+        pytest.param(
+            _run(
+                summary={**SECTION_ONLY, "criticalChecks": ["OPEN_ENVELOPE"], "hasCritical": True, "criticalCount": 1}
+            ),
+            "project_default",
+            UNREVIEWED,
+            "ready",
+            (),
+            id="section-only-never-blocks",
+        ),
     ],
 )
 def test_readiness_of_table(
@@ -511,3 +526,70 @@ def test_scale_state_accepted_ignored_when_demoted() -> None:
     """Trang đổi (`effective` pipeline, `stored` human): `pageChanged` như cũ, cờ chấp nhận không đổi gì."""
     snapshot = ScaleAcceptance(basis="chain")
     assert scale_state_of("pipeline", "human", None, _LATER_DETERMINED, snapshot) == ("unresolved", ("pageChanged",))
+
+
+_OPENING = UNREVIEWED.openings[0].id
+_ROOM = UNREVIEWED.rooms[0].id
+_NOTICES: Mapping[str, object] = {
+    **CLEAN,
+    "noticeChecks": [
+        {"code": "ROOM_AREA_TEXT_MISMATCH", "entityIds": [_ROOM]},
+        {"code": "OPENING_SIZE_IMPLAUSIBLE", "entityIds": [_OPENING, "O-GONE"]},
+    ],
+}
+
+
+def test_readiness_notices__do_not_change_state_reasons_or_checks() -> None:
+    """NO-488: nhắc mức nhẹ đi kèm `ready`; `state`/`reasons`/`checks` y như lượt không có nhắc; thứ tự cố định."""
+    out = readiness_of(run=_run(summary=_NOTICES), scale_source="human", layer=UNREVIEWED)
+    base = readiness_of(run=_run(), scale_source="human", layer=UNREVIEWED)
+    assert (out.state, out.reasons, out.checks) == (base.state, base.reasons, base.checks) == ("ready", (), None)
+    assert out.notices is not None
+    assert [(n.code, n.entity_ids) for n in out.notices] == [
+        ("OPENING_SIZE_IMPLAUSIBLE", (_OPENING,)),  # id đã xoá bị lọc
+        ("ROOM_AREA_TEXT_MISMATCH", (_ROOM,)),
+    ]
+    assert base.notices is None
+
+
+def test_readiness_notices__alongside_a_blocking_reason() -> None:
+    """NO-488: tầng đang `needsReview` vì lý do khác vẫn mang nhắc."""
+    out = readiness_of(run=_run(summary=_NOTICES), scale_source="pipeline", layer=UNREVIEWED)
+    assert out.state == "needsReview"
+    assert out.reasons == ("scaleUnresolved",)
+    assert out.notices is not None
+    assert len(out.notices) == 2
+
+
+def test_readiness_notices__silenced_when_level_reviewed_or_section_only_or_no_run() -> None:
+    """NO-488: tầng đã duyệt, lượt mặt cắt, chưa có lượt → không `notices` (cùng luật với `geometrySuspect`)."""
+    assert readiness_of(run=_run(summary=_NOTICES), scale_source="human", layer=REVIEWED).notices is None
+    section = {**_NOTICES, "sectionOnly": True}
+    assert readiness_of(run=_run(summary=section), scale_source="human", layer=UNREVIEWED).notices is None
+    assert readiness_of(run=None, scale_source="human", layer=UNREVIEWED).notices is None
+
+
+def test_notices_of__drops_malformed_items_silently_and_never_raises_geometry_suspect() -> None:
+    """NO-488: `noticeChecks` hỏng dạng → bỏ im; mục lành còn lại giữ; mục hết id bị bỏ, mục vốn rỗng id giữ."""
+    summary = {
+        "noticeChecks": [
+            "x",
+            {"code": "", "entityIds": []},
+            {"code": 7, "entityIds": []},
+            {"code": "A", "entityIds": "R-1"},
+            {"code": "B", "entityIds": [1]},
+            {"code": "C", "entityIds": ["GONE"]},
+            {"code": "ROTATED_PLAN", "entityIds": []},
+            {"code": "NEW_CODE", "entityIds": [_ROOM]},
+            {"code": "NEW_CODE", "entityIds": []},
+        ]
+    }
+    assert [(n.code, n.entity_ids) for n in notices_of(summary, UNREVIEWED)] == [
+        ("ROTATED_PLAN", ()),
+        ("NEW_CODE", (_ROOM,)),
+    ]
+    for bad in (None, "x", 3, {"code": "A"}):
+        assert notices_of({"noticeChecks": bad}, UNREVIEWED) == ()
+    assert notices_of({}, UNREVIEWED) == ()
+    out = readiness_of(run=_run(summary={**CLEAN, "noticeChecks": "broken"}), scale_source="human", layer=UNREVIEWED)
+    assert (out.state, out.reasons, out.notices) == ("ready", (), None)

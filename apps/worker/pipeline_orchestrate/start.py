@@ -28,6 +28,7 @@ from apps.worker.pipeline_orchestrate.preprocess import (
     choose_path,
     prepare_page,
 )
+from apps.worker.pipeline_orchestrate.section import skip_section_steps
 from apps.worker.pipeline_orchestrate.settings import OrchestrateSettings, get_orchestrate_settings
 from packages.core.clock import Clock
 from packages.db.engine import session_scope
@@ -54,13 +55,15 @@ class _Phase1:
 
     plan: PagePlan
     floor_pk: int
+    is_section: bool = False
+    """Dòng tầng là mặt cắt/mặt đứng (HS-03): lượt chỉ đọc chữ (K-32c)."""
 
 
-async def _upload_facts(db: AsyncSession, run: RunRow) -> tuple[UploadRow, str]:
-    """Dòng `uploads` của lượt và `level_id` công khai của tầng (khoá storage dùng nó)."""
+async def _upload_facts(db: AsyncSession, run: RunRow) -> tuple[UploadRow, str, bool]:
+    """Dòng `uploads` của lượt, `level_id` công khai của tầng (khoá storage dùng nó) và cờ `is_section` của tầng."""
     upload = (await db.execute(select(UploadRow).where(UploadRow.id == run.upload_id))).scalar_one()
-    level_id = (await db.execute(select(FloorRow.level_id).where(FloorRow.pk == run.floor_pk))).scalar_one()
-    return upload, level_id
+    floor = (await db.execute(select(FloorRow.level_id, FloorRow.is_section).where(FloorRow.pk == run.floor_pk))).one()
+    return upload, floor.level_id, bool(floor.is_section)
 
 
 async def _enter_running(db: AsyncSession, run: RunRow, clock: Clock) -> RunRow | None:
@@ -90,7 +93,7 @@ async def _gd1(db: AsyncSession, payload: PipelineStartPayload, clock: Clock) ->
     if opened is None:
         _ignored(run.id, "run_gone_after_record_step")
         return None
-    upload, level_id = await _upload_facts(db, opened)
+    upload, level_id, is_section = await _upload_facts(db, opened)
     source = PageSource(
         run_id=opened.id,
         project_id=upload.project_id,
@@ -103,7 +106,8 @@ async def _gd1(db: AsyncSession, payload: PipelineStartPayload, clock: Clock) ->
     )
     drawing = await current_drawing(db, opened.floor_pk)
     assessment = await load_assessment(db, opened.floor_pk)
-    return _Phase1(plan=choose_path(source, drawing, assessment), floor_pk=opened.floor_pk)
+    plan = choose_path(source, drawing, assessment)
+    return _Phase1(plan=plan, floor_pk=opened.floor_pk, is_section=is_section)
 
 
 async def _write_page(db: AsyncSession, run: RunRow, page: PreparedPage, clock: Clock) -> bool:
@@ -161,6 +165,15 @@ async def _gd2(
     if pins is None:
         _ignored(run.id, "pins_missing")
         return False
+    if phase1.is_section:
+        # K-32c: mặt cắt chỉ đọc chữ — bỏ tách tường/dò đồ đạc, `queue_infer` sẽ chỉ gửi `dimensionReading`.
+        if not await skip_section_steps(db, run_id=run.id, pins=pins, clock=clock):
+            _ignored(run.id, "section_skip_rejected")
+            return False
+        pins = await load_pins(db, run.id)
+        if pins is None:
+            _ignored(run.id, "pins_missing")
+            return False
     source = phase1.plan.source
     queue_infer(
         db,

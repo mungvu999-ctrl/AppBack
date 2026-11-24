@@ -1,6 +1,7 @@
 """Quyền máy chủ cho xuất mô hình và liên kết chia sẻ: từng vai, 404 trước 403, hết hạn, thu hồi."""
 
-from datetime import timedelta
+import secrets
+from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
@@ -8,9 +9,12 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.project_settings.tests.support import headers_of, seed_project
+from apps.api.share_links.router import CREATE_RATE_LIMIT, MAX_ACTIVE_LINKS
+from packages.core.ids import new_id
 from packages.core.settings import reset_settings_cache
 from packages.db.models.auth import User
 from packages.db.models.projects import Project
+from packages.db.models.share_links import ShareLinkRow
 from packages.testing.factories.auth import make_user
 from packages.testing.fixtures.clock import FakeClock
 
@@ -210,12 +214,13 @@ async def test_share_links_list__C15(
 
 
 async def test_share_links_list__C17(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Liên kết không nhãn, không hạn, chưa thu hồi → vắng các khoá tuỳ chọn."""
+    """Liên kết không nhãn, chưa thu hồi → vắng các khoá tuỳ chọn (`expiresAt` luôn có: mặc định +7 ngày)."""
     project, _, engineer, _, _ = await _setup(db_session)
     await _create_link(api_client, project, engineer)
     item = (await api_client.get(_links_path(project), headers=headers_of(engineer))).json()[0]
-    for key in ("expiresAt", "revokedAt", "viewpointCode", "label"):
+    for key in ("revokedAt", "viewpointCode", "label"):
         assert key not in item
+    assert "expiresAt" in item
     assert None not in item.values()
 
 
@@ -225,13 +230,13 @@ async def test_share_links_create__C01(api_client: httpx.AsyncClient, db_session
     response = await api_client.post(
         _links_path(project),
         headers=headers_of(engineer),
-        json={"permission": "comment", "label": "Khách hàng", "viewpointCode": "vp-1"},
+        json={"permission": "view", "label": "Khách hàng", "viewpointCode": "vp-1"},
     )
     assert response.status_code == 201, response.text
     link = response.json()
     assert (link["status"], link["permission"], link["label"], link["viewpointCode"]) == (
         "active",
-        "comment",
+        "view",
         "Khách hàng",
         "vp-1",
     )
@@ -286,13 +291,14 @@ async def test_share_links_create__C08(
 
 
 async def test_share_links_create__C17(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Thân rỗng → vắng `expiresAt`, `revokedAt`, `viewpointCode`, `label`; không `null`."""
+    """Thân rỗng → vắng `revokedAt`, `viewpointCode`, `label` (có `expiresAt` mặc định); không `null`."""
     project, _, engineer, _, _ = await _setup(db_session)
     response = await api_client.post(_links_path(project), headers=headers_of(engineer), json={})
     assert response.status_code == 201
     link = response.json()
-    for key in ("expiresAt", "revokedAt", "viewpointCode", "label"):
+    for key in ("revokedAt", "viewpointCode", "label"):
         assert key not in link
+    assert "expiresAt" in link
     assert None not in link.values()
 
 
@@ -343,11 +349,11 @@ async def test_share_links_revoke__C08(api_client: httpx.AsyncClient, db_session
 
 
 async def test_share_links_revoke__C17(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Thu hồi liên kết không nhãn, không hạn → vắng `expiresAt`, `viewpointCode`, `label`."""
+    """Thu hồi liên kết không nhãn → vắng `viewpointCode`, `label`."""
     project, admin, engineer, _, _ = await _setup(db_session)
     link = await _create_link(api_client, project, engineer)
     body = (await api_client.delete(f"{_links_path(project)}/{link['id']}", headers=headers_of(admin))).json()
-    for key in ("expiresAt", "viewpointCode", "label"):
+    for key in ("viewpointCode", "label"):
         assert key not in body
     assert None not in body.values()
 
@@ -411,3 +417,112 @@ async def test_share_link_url_uses_public_base_url_with_port(
     opened = await api_client.get(f"/api/share/{token}", headers={"Host": "evil.example"})
     assert opened.status_code == 200, opened.text
     assert opened.json()["link"]["url"] == link["url"]
+
+
+# ---------------------------------------------------------------------------
+# L6-N05 — giới hạn liên kết MỚI: hạn mặc định/trần, 50 liên kết hiệu lực, quyền chỉ `view`, hạn mức tạo
+# ---------------------------------------------------------------------------
+
+
+def _insert_link(
+    db: AsyncSession,
+    clock: FakeClock,
+    project: Project,
+    user: User,
+    *,
+    permission: str = "view",
+    expires_at: datetime | None = None,
+    revoked_at: datetime | None = None,
+) -> ShareLinkRow:
+    """Thêm thẳng một dòng (đường cũ không giới hạn: liên kết cũ không hạn, `comment`, ...)."""
+    row = ShareLinkRow(
+        id=new_id("shl", clock),
+        project_id=project.id,
+        token=secrets.token_urlsafe(32),
+        permission=permission,
+        created_by=user.id,
+        expires_at=expires_at,
+        revoked_at=revoked_at,
+    )
+    db.add(row)
+    return row
+
+
+async def test_share_links_create_default_expiry_is_seven_days__L6N05(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """`expiresAt` vắng -> hạn = bây giờ + 7 ngày, trả ở thân 201 và ở danh sách."""
+    project, _, engineer, _, _ = await _setup(db_session)
+    link = await _create_link(api_client, project, engineer)
+    assert datetime.fromisoformat(link["expiresAt"]) == fake_clock.now() + timedelta(days=7)
+    listed = (await api_client.get(_links_path(project), headers=headers_of(engineer))).json()
+    assert listed[0]["expiresAt"] == link["expiresAt"]
+
+
+async def test_share_links_create_expiry_bounds__L6N05(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """+90 ngày nhận; +91 ngày, hiện tại, quá khứ -> 422 `VALIDATION` `field: "expiresAt"` và không tạo dòng."""
+    project, _, engineer, _, _ = await _setup(db_session)
+    path = _links_path(project)
+    now = fake_clock.now()
+    ok = await _create_link(api_client, project, engineer, expiresAt=(now + timedelta(days=90)).isoformat())
+    assert datetime.fromisoformat(ok["expiresAt"]) == now + timedelta(days=90)
+    for bad in (now + timedelta(days=91), now, now - timedelta(days=1)):
+        response = await api_client.post(path, headers=headers_of(engineer), json={"expiresAt": bad.isoformat()})
+        assert response.status_code == 422, response.text
+        assert (response.json()["code"], response.json()["field"]) == ("VALIDATION", "expiresAt")
+    assert len((await api_client.get(path, headers=headers_of(engineer))).json()) == 1
+
+
+async def test_share_links_create_refuses_comment__L6N05(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """`permission: "comment"` mới -> 422 `field: "permission"`; liên kết `comment` cũ không hạn vẫn mở được (200)."""
+    project, _, engineer, _, _ = await _setup(db_session)
+    response = await api_client.post(_links_path(project), headers=headers_of(engineer), json={"permission": "comment"})
+    assert response.status_code == 422, response.text
+    assert (response.json()["code"], response.json()["field"]) == ("VALIDATION", "permission")
+    legacy = _insert_link(db_session, fake_clock, project, engineer, permission="comment")
+    await db_session.commit()
+    opened = await api_client.get(f"/api/share/{legacy.token}")
+    assert opened.status_code == 200, opened.text
+    link = opened.json()["link"]
+    assert (link["permission"], link["status"]) == ("comment", "active")
+    assert "expiresAt" not in link
+
+
+async def test_share_links_create_active_limit__L6N05(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """Đủ 50 liên kết hiệu lực (kể cả cũ không hạn) -> 422 `SHARE_LINK_LIMIT_REACHED`; thu hồi/hết hạn không tính."""
+    project, _, engineer, _, _ = await _setup(db_session)
+    now = fake_clock.now()
+    _insert_link(db_session, fake_clock, project, engineer)  # liên kết cũ không hạn: vẫn tính
+    for _ in range(MAX_ACTIVE_LINKS - 1):
+        _insert_link(db_session, fake_clock, project, engineer, expires_at=now + timedelta(days=1))
+    _insert_link(db_session, fake_clock, project, engineer, revoked_at=now)
+    _insert_link(db_session, fake_clock, project, engineer, expires_at=now - timedelta(days=1))
+    await db_session.commit()
+    path = _links_path(project)
+    full = await api_client.post(path, headers=headers_of(engineer), json={})
+    assert full.status_code == 422, full.text
+    assert full.json()["code"] == "SHARE_LINK_LIMIT_REACHED"
+    listed = (await api_client.get(path, headers=headers_of(engineer))).json()
+    active = next(item for item in listed if item["status"] == "active")
+    assert (await api_client.delete(f"{path}/{active['id']}", headers=headers_of(engineer))).status_code == 200
+    assert (await api_client.post(path, headers=headers_of(engineer), json={})).status_code == 201
+    other = await seed_project(db_session, owner=engineer)
+    assert (await api_client.post(_links_path(other), headers=headers_of(engineer), json={})).status_code == 201
+
+
+async def test_share_links_create__C11(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+    """Quá `CREATE_RATE_LIMIT` lượt tạo trong một cửa sổ -> 429 `RATE_LIMITED` + `Retry-After`."""
+    project, _, engineer, _, _ = await _setup(db_session)
+    path = _links_path(project)
+    for _ in range(CREATE_RATE_LIMIT):
+        assert (await api_client.post(path, headers=headers_of(engineer), json={})).status_code == 201
+    response = await api_client.post(path, headers=headers_of(engineer), json={})
+    assert response.status_code == 429, response.text
+    assert response.json()["code"] == "RATE_LIMITED"
+    assert "retry-after" in response.headers

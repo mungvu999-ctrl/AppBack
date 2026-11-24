@@ -71,6 +71,9 @@ _MAX_SINGLE_LEAF_MM: Final = 1200
 """Cửa một cánh rộng hơn ngần này không có thật: đọc được cung mở mà rộng hơn → hai cánh (C3)."""
 _SLIDING_MIN_MM: Final = 1500
 """Cửa đi không đọc được cung mở mà rộng ≥ ngần này là cửa lùa (C3)."""
+DOOR_KIND_UNREAD: Final = "doorKindUnread"
+"""Khoá đếm trong `dropped` (K-13a, cho kiểm `DOOR_KIND_UNREAD` của K-11): cửa rộng hơn `_MAX_SINGLE_LEAF_MM` mà
+`read_leaf` không đọc được kiểu. Không thuộc `DROPPED_KEYS` nên không vào `layer.json`/dây; `build_layer` ghi log."""
 _SPLIT_GAP_MM: Final = 60
 _ENVELOPE_DOOR_MIN_MM: Final = 600
 """Khe thẳng hàng trên tường ngoài ≥ ngần này là cửa bộ dò bỏ sót (C5); hẹp hơn thì xây kín."""
@@ -1018,11 +1021,13 @@ def _candidate(
     return _Cand(wall, order, kind, offset, width, target.height_mm, target.sill_mm, target.swing, detection.confidence)
 
 
-def _read_swing(cand: _Cand, seg: _Seg, page: PageRaster | None, scaling: Scaling) -> _Cand:
-    """Cửa một cánh trên tường thẳng: bản lề + phía cánh từ nét vẽ (`swing.read_leaf`); không đọc được → giữ nguyên.
+def _read_swing(cand: _Cand, seg: _Seg, page: PageRaster | None, scaling: Scaling, dropped: Counter[str]) -> _Cand:
+    """Cửa đi trên tường thẳng: kiểu + bản lề + phía cánh từ nét vẽ (`swing.read_leaf`); không đọc được → luật bề rộng.
 
-    C3: không đọc được cung (hay không có trang) mà rộng ≥ `_SLIDING_MIN_MM` → `"sliding"`; đọc được mà rộng hơn
-    `_MAX_SINGLE_LEAF_MM` → `"double"` (vẫn giữ phía cánh cho `settle_reversed`).
+    K-13a: `leaf.kind` `"double"` → `"double"`, `"sliding"` → `"sliding"` (không hướng cánh). C3 cho cửa một cánh và
+    khi không đọc được: không đọc được (hay không có trang) mà rộng ≥ `_SLIDING_MIN_MM` → `"sliding"`; đọc được một
+    cánh mà rộng hơn `_MAX_SINGLE_LEAF_MM` → `"double"` (vẫn giữ phía cánh cho `settle_reversed`). Cửa rộng hơn
+    `_MAX_SINGLE_LEAF_MM` mà không đọc được kiểu đếm `DOOR_KIND_UNREAD` (thống kê trong, không lên dây).
 
     Khe `a → b` = `[offset, offset + rộng]` dọc tim tính từ `seg.start`, đổi về px trang. Bản lề ở `a` (phía đầu
     tường) → `"left"`, ở `b` → `"right"` (Pascal `hingesSide`, `swing.py`); hướng cánh lưu tuyệt đối để
@@ -1040,10 +1045,14 @@ def _read_swing(cand: _Cand, seg: _Seg, page: PageRaster | None, scaling: Scalin
     if page is not None:
         leaf = read_leaf(page, at(cand.offset_mm), at(cand.offset_mm + cand.width_mm), seg.measured_mm / 2 / scale)
     if leaf is None:
+        if cand.width_mm > _MAX_SINGLE_LEAF_MM:
+            dropped[DOOR_KIND_UNREAD] += 1
         # C3: không cung mở mà rộng ≥ 1,5 m → cửa lùa (trước đây giữ "left" theo nhãn).
         return replace(cand, swing="sliding") if cand.width_mm >= _SLIDING_MIN_MM else cand
+    if leaf.kind == "sliding":
+        return replace(cand, swing="sliding")
     swing: SwingDirection = "right" if leaf.hinge_at_b else "left"
-    if cand.width_mm > _MAX_SINGLE_LEAF_MM:
+    if leaf.kind == "double" or cand.width_mm > _MAX_SINGLE_LEAF_MM:
         swing = "double"
     return replace(cand, swing=swing, leaf=(-uy * leaf.side, ux * leaf.side))
 
@@ -1076,7 +1085,9 @@ def _opening_candidates(
         cand = _candidate(order, detection, host, segs[wall], span, dropped, length)
         if cand is not None:
             # Cung (ô mở đo trên cả cung): chưa đọc nét, giữ chiều mở theo nhãn.
-            cands.append(cand if host != wall or wall in chains else _read_swing(cand, segs[wall], page, scaling))
+            cands.append(
+                cand if host != wall or wall in chains else _read_swing(cand, segs[wall], page, scaling, dropped)
+            )
     return cands
 
 
@@ -1267,9 +1278,11 @@ def _gap_door(
     if page is not None:
         a, b = (start.x / scale, start.y / scale), (end.x / scale, end.y / scale)
         leaf = read_leaf(page, a, b, thickness_mm / 2 / scale)
+    if leaf is not None and leaf.kind == "sliding":
+        return "sliding", _INFERRED_DOOR_CONFIDENCE, None
     if leaf is not None:
         swing: SwingDirection = "right" if leaf.hinge_at_b else "left"
-        swing = "double" if span > _MAX_SINGLE_LEAF_MM else swing
+        swing = "double" if leaf.kind == "double" or span > _MAX_SINGLE_LEAF_MM else swing
         return swing, _INFERRED_DOOR_CONFIDENCE, (-uy * leaf.side, ux * leaf.side)
     if span >= _SLIDING_MIN_MM:
         return "sliding", _INFERRED_DOOR_CONFIDENCE, None

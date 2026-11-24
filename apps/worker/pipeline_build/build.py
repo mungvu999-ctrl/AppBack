@@ -24,7 +24,14 @@ from apps.worker.pipeline_build.arcs import explode_arcs, join_arcs
 from apps.worker.pipeline_build.clusters import Box, grow_region, wall_clusters
 from apps.worker.pipeline_build.constants import DROPPED_KEYS
 from apps.worker.pipeline_build.furniture_dedup import dedupe_furniture
-from apps.worker.pipeline_build.geometry import RoomCloser, Scaling, WallSet, build_walls, close_envelope_gaps
+from apps.worker.pipeline_build.geometry import (
+    DOOR_KIND_UNREAD,
+    RoomCloser,
+    Scaling,
+    WallSet,
+    build_walls,
+    close_envelope_gaps,
+)
 from apps.worker.pipeline_build.ids import new_spatial_id
 from apps.worker.pipeline_build.residual import PageRaster, residual_ink_boxes
 from apps.worker.pipeline_build.rooms import build_furniture, build_rooms
@@ -994,6 +1001,8 @@ def build_layer(
             _log.warning("pipeline_build_rescale_fallback", extra={"entity_id": exc.entity_id})
             dropped = base.copy()
             layer, dimensions = _attempt(context, scaling=Scaling(final, final), clock=clock, dropped=dropped)
+    if dropped[DOOR_KIND_UNREAD]:
+        _log.info("pipeline_build_door_kind_unread", extra={"doors": dropped[DOOR_KIND_UNREAD]})
     return BuiltLayer(
         layer=layer,
         dimensions=dimensions,

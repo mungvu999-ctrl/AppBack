@@ -202,6 +202,13 @@ async def share_links_open(token: str, request: Request, db: DbSession, clock: C
     if status != "active":
         raise NOT_FOUND.error(resource="shareLink", reason=status)  # U59: nói đúng lý do, vẫn 404
     row, name = found
+    document = await spatial_graph(db, row.project_id, app=request.app)
+    # L6-N06: người nhận liên kết không thấy địa chỉ công trình (None -> vắng khoá theo W2). Tầng
+    # vẫn trả đủ (lọc theo tầng là phương án A của F2, chưa làm).
+    building = document.graph.building.model_copy(update={"address": None})
+    graph = document.graph.model_copy(update={"building": building})
     return SharedModelOut(
-        link=_out(row, now), project_name=name, graph=await spatial_graph(db, row.project_id, app=request.app)
+        link=_out(row, now),
+        project_name=name,
+        graph=document.model_copy(update={"graph": graph}),
     )

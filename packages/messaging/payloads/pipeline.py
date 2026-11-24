@@ -50,7 +50,11 @@ class BuildStepPayload(TaskPayload):
     px_per_paper_mm: Annotated[float, Field(gt=0, allow_inf_nan=False)] | None = None
     """px mỗi mm giấy (PDF, `drawings.px_per_paper_mm`); vắng → không đọc ghi chú `TL 1:N` (U01)."""
     detect_furniture: bool = True
-    """Cài đặt dự án `detectFurniture` (QT-FURN-TOGGLE); vắng ở thông điệp cũ → dựng đồ như trước."""
+    """Cài đặt dự án `detectFurniture` (QT-FURN-TOGGLE); vắng ở thông điệp cũ → dựng đồ như trước.
+
+    Mặc định `True` này LỆCH mặc định `False` của cài đặt dự án (`project_settings`), chủ ý giữ (L2-N05 B):
+    `step_done` luôn truyền giá trị nên chỉ thông điệp cũ/thiếu trường bị bật. Đổi theo quyết định K-20.
+    """
 
     @model_validator(mode="after")
     def _check_run_prefix(self) -> Self:

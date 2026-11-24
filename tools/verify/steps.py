@@ -398,7 +398,9 @@ def step_perf() -> StepOutcome:
 
     detail = f"perf: {len(perf_ids)} test"
     if perf_ids:
-        r = _run(["pytest", "-m", _PERF_EXPR, f"--junitxml={JUNIT_PERF_FILE}", *paths])
+        # Chỉ các tệp chứa test perf vừa collect: khỏi import/collect lại cả đơn vị (~5 nghìn test bị bỏ chọn).
+        perf_files = sorted({node.split("::", 1)[0] for node in perf_ids})
+        r = _run(["pytest", "-m", _PERF_EXPR, f"--junitxml={JUNIT_PERF_FILE}", *perf_files])
         export_junit(JUNIT_PERF_FILE, ".perf.junit.xml")  # cả khi perf hỏng
         if r.returncode != 0:
             return StepOutcome("5b", name, STATUS_FAIL, "test perf hỏng")

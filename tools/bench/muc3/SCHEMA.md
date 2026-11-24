@@ -1,6 +1,6 @@
 # Prediction format (one JSON per set: `<out_dir>/<set>.json`)
 
-Scored by `score_set.py --pred <out_dir>`. Every key is optional; a missing item counts as wrong
+Scored by `python -m tools.bench.muc3 --pred <out_dir>`. Every key is optional; a missing item counts as wrong
 (and as "no prediction" in the coverage numbers).
 
 Units: lengths in metres (`level_m`, `height_m`), `shift_mm` and `centre_mm` in millimetres,

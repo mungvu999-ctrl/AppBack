@@ -194,15 +194,19 @@ def reset_producer_app() -> None:
     _producer.reset()
 
 
-def send_task(name: str, payload: BaseModel) -> None:
+def send_task(name: str, payload: BaseModel, *, countdown: float | None = None) -> None:
     """Gửi một task theo tên; hàng đợi suy từ tiền tố (BE-00 §7).
 
     Gọi **sau khi commit** (`on_after_commit`, K17): worker có thể nhận thông điệp
     trước khi giao dịch của người gửi kết thúc. Broker không nối được → 503
     `DEPENDENCY_UNAVAILABLE`, task gọi nó thử lại như lỗi tạm (J02).
+
+    `countdown` (giây, tuỳ chọn): task chạy sớm nhất sau ngần ấy giây (ETA của Celery; worker giữ thông điệp
+    chưa ack tới hạn, nên phải nhỏ hơn `celery_visibility_timeout_s` để khỏi bị giao lại). Task nhận nó phải
+    idempotent — giao lặp vẫn có thể xảy ra (NO-565: `drawing_set.publish` trễ làm lưới an toàn).
     """
     body: Mapping[str, object] = payload.model_dump(mode="json")
     try:
-        producer_app().send_task(name, args=[body], queue=queue_for(name), retry=False)
+        producer_app().send_task(name, args=[body], queue=queue_for(name), retry=False, countdown=countdown)
     except BROKER_CONNECTION_ERRORS as exc:
         raise DEPENDENCY_UNAVAILABLE.error(retry_after=DEPENDENCY_RETRY_AFTER) from exc

@@ -1,11 +1,13 @@
 """App Celery: định tuyến theo tiền tố, cấu hình theo hiến chương, và đường gửi task."""
 
+import json
 import logging
 import os
 import socket
 import subprocess
 import sys
 import urllib.request
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -195,6 +197,24 @@ def test_send_task_puts_one_message_on_the_queue_named_by_the_prefix(messaging_e
 
         assert queued_payloads(client, "pipeline.cpu") == [{"schema_version": 1, "run_id": "run_1"}]
         assert client.llen(DEFAULT_QUEUE) == 0
+    finally:
+        client.delete(*QUEUES)
+        client.close()
+
+
+def test_send_task_countdown_sets_an_eta_and_default_sends_none(messaging_env: None) -> None:
+    """NO-565: `countdown` đặt ETA (header `eta`) cách lúc gửi ngần ấy giây; không truyền thì không có ETA."""
+    client = broker_redis_sync(get_messaging_settings())
+    try:
+        client.delete(*QUEUES)
+        before = datetime.now(UTC)
+        send_task("pipeline.drawings.render", Ping(run_id="run_1"), countdown=600)
+        send_task("pipeline.drawings.render", Ping(run_id="run_2"))
+
+        newest, oldest = (json.loads(raw)["headers"] for raw in client.lrange("pipeline.cpu", 0, -1))
+        assert newest["eta"] is None
+        delay = datetime.fromisoformat(oldest["eta"]) - before
+        assert timedelta(seconds=599) <= delay <= timedelta(seconds=660)
     finally:
         client.delete(*QUEUES)
         client.close()

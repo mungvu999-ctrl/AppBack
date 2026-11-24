@@ -5,17 +5,22 @@ Thông điệp gửi sau commit bắt tại chỗ gửi (`DB_AFTER_COMMIT_INLINE
 chạy broker thật. Kết quả đọc của worker `ml` được ghi tay vào kho đúng khoá nó sẽ ghi.
 """
 
+import io
+import math
 from collections.abc import Coroutine
 from typing import Any, Final
 
 import numpy as np
 import pytest
+from PIL import Image
+from pydantic import BaseModel
 from redis import Redis as SyncRedis
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.drawing_sets import analysis, jobs
 from apps.api.drawing_sets.jobs import analyze_set, fail_analysis, publish, send_analyze_after_commit
+from apps.api.drawing_sets.settings import get_drawing_set_settings
 from apps.api.drawing_sets.tests._set_helpers import DEFAULT_QUEUE
 from apps.api.drawing_sets.tests._set_helpers import broker as broker
 from apps.api.drawings.schemas import CROP_MIN_AREA
@@ -26,7 +31,7 @@ from packages.domain.drawing_set.set_analysis import VIEW_MIN_AREA
 from packages.messaging import PermanentError
 from packages.messaging.payloads.drawing_sets import DrawingSetAnalyzePayload, DrawingSetPublishPayload
 from packages.ml_contracts.artifacts import BoxPx, TextPx
-from packages.ml_contracts.drawing_sets import PageReadingDoc, ReadingBox, reading_to_json
+from packages.ml_contracts.drawing_sets import READ_BUDGET_S, PageReadingDoc, ReadingBox, reading_to_json
 from packages.storage.keys import drawing_set_original, drawing_set_page, drawing_set_reading
 from packages.storage.local import LocalDiskStorage
 from packages.testing.factories.auth import make_user
@@ -34,10 +39,11 @@ from packages.testing.factories.drawing_sets import make_drawing_set, make_set_f
 from packages.testing.factories.projects import make_project
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.messaging import queued_payloads
-from packages.vision.preprocess import RgbImage, encode_png
+from packages.vision.preprocess import RgbImage, VisionError, encode_png, load_raster
+from packages.vision.preprocess.tests.synthetic import png_declaring
 
 Maker = async_sessionmaker[AsyncSession]
-Sent = list[tuple[str, dict[str, Any]]]
+Sent = list[tuple[str, dict[str, Any], float | None]]
 PDF_PAGES: Final = 2
 PAGE_W: Final = 2000
 PAGE_H: Final = 1200
@@ -46,11 +52,22 @@ FULL: Final = {"x_ratio": 0.0, "y_ratio": 0.0, "width_ratio": 1.0, "height_ratio
 
 @pytest.fixture
 def sent(monkeypatch: pytest.MonkeyPatch) -> Sent:
-    """Callback sau commit chạy ngay (như worker) và `send_task` của `jobs` ghi lại (tên, payload JSON)."""
+    """Callback sau commit chạy ngay (như worker) và `send_task` của `jobs` ghi lại (tên, payload JSON, countdown)."""
     out: Sent = []
+
+    def record(name: str, body: BaseModel, *, countdown: float | None = None) -> None:
+        """Ghi một lần gửi."""
+        out.append((name, body.model_dump(mode="json"), countdown))
+
     monkeypatch.setenv("DB_AFTER_COMMIT_INLINE", "1")
-    monkeypatch.setattr(jobs, "send_task", lambda name, body: out.append((name, body.model_dump(mode="json"))))
+    monkeypatch.setattr(jobs, "send_task", record)
     return out
+
+
+def _read_pages(sent: Sent) -> list[tuple[str, int]]:
+    """`(file_id, page_index)` của lượt đọc duy nhất đã gửi."""
+    (body,) = [b for name, b, _ in sent if name == "ml.infer.drawing_set.read"]
+    return [(p["file_id"], p["page_index"]) for p in body["pages"]]
 
 
 async def _analyzing_set(
@@ -133,11 +150,15 @@ async def test_analyze_drawing_set__J01(
     assert (status, progress, error, views) == ("analyzing", jobs.READ_PROGRESS, None, [])
     for file_id, page in ((pdf, 0), (pdf, 1), (png, 0)):
         assert await local_storage.stat(drawing_set_page(project_id, set_id, file_id, page)) is not None
-    ((name, body),) = sent
-    assert name == "ml.infer.drawing_set.read"
+    safety, (name, body, countdown) = sent
+    assert (name, countdown) == ("ml.infer.drawing_set.read", None)
     assert (body["project_id"], body["set_id"]) == (project_id, set_id)
-    assert [(p["file_id"], p["page_index"]) for p in body["pages"]] == [(pdf, 0), (pdf, 1), (png, 0)]
+    assert _read_pages(sent) == [(pdf, 0), (pdf, 1), (png, 0)]
     assert body["model"]["family"] == "dimensionReading"
+    # NO-565: publish trễ gửi trước lượt đọc, hạn = ngân sách OCR + 2 phút, dưới mốc treo 15 phút.
+    assert safety == ("drawing_set.publish", {"schema_version": 1, "set_id": set_id}, READ_BUDGET_S + 120)
+    stall_s = get_drawing_set_settings().drawing_set_analysis_stall_s
+    assert stall_s > jobs.PUBLISH_SAFETY_DELAY_S
 
 
 async def test_analyze_drawing_set__J06(
@@ -158,7 +179,7 @@ async def test_analyze_skips_unreadable_file(
     """Tệp gốc vắng (PDF) → bỏ trang của tệp đó, tệp còn lại (PNG) vẫn đi tiếp: lỗi một tệp không hỏng cả bộ."""
     _, set_id, (_, png) = await _analyzing_set(db_sessionmaker, local_storage, store=(False, True))
     assert await analyze_set(db_sessionmaker, local_storage, set_id, fake_clock) is True
-    assert [(p["file_id"], p["page_index"]) for p in sent[0][1]["pages"]] == [(png, 0)]
+    assert _read_pages(sent) == [(png, 0)]
 
 
 async def test_analyze_skips_unrenderable_page(
@@ -169,7 +190,7 @@ async def test_analyze_skips_unrenderable_page(
     key = drawing_set_original(project_id, set_id, pdf, "pdf")
     await local_storage.put(key, b"%PDF-1.4 rac %%EOF", content_type="application/pdf", max_bytes=64)
     assert await analyze_set(db_sessionmaker, local_storage, set_id, fake_clock) is True
-    assert [p["file_id"] for p in sent[0][1]["pages"]] == [png]
+    assert _read_pages(sent) == [(png, 0)]
 
 
 async def test_analyze_stops_when_set_changed_midway(
@@ -194,6 +215,25 @@ async def test_analyze_stops_when_set_changed_midway(
     monkeypatch.setattr(jobs, "_write_pages", delete_then_write)
     assert await analyze_set(db_sessionmaker, local_storage, set_id, fake_clock) is False
     assert sent == []
+
+
+def test_render_page_downsamples_scan_over_decoder_default() -> None:
+    """NO-567: tờ PNG 5832x7027 (~41 Mpx, khổ DS-391, hơn trần 40 Mpx của `load_raster`) được co về dưới
+    `PAGE_MAX_PIXELS` giữ tỉ lệ thay vì `IMAGE_TOO_LARGE`; tờ khai quá `PAGE_DECODE_MAX_PIXELS` vẫn bị từ chối."""
+    scan = Image.new("L", (5832, 7027), 255)
+    scan.paste(0, (0, 3500, 5832, 3520))
+    buffer = io.BytesIO()
+    scan.save(buffer, format="PNG")
+    with pytest.raises(VisionError, match="IMAGE_TOO_LARGE"):
+        load_raster(buffer.getvalue())
+    with Image.open(io.BytesIO(jobs._render_page("png", buffer.getvalue(), 0))) as page:
+        width, height = page.size
+    assert width * height <= jobs.PAGE_MAX_PIXELS
+    assert width * height > 0.99 * jobs.PAGE_MAX_PIXELS
+    assert abs(width / height - 5832 / 7027) < 0.001
+    side = math.isqrt(jobs.PAGE_DECODE_MAX_PIXELS) + 1
+    with pytest.raises(VisionError, match="IMAGE_TOO_LARGE"):
+        jobs._render_page("png", png_declaring(side, side), 0)
 
 
 async def test_analyze_drawing_set__J03(
@@ -265,6 +305,40 @@ async def test_publish_drawing_set__J06(
     _, deleted, _ = await _analyzing_set(db_sessionmaker, local_storage, deleted_at=fake_clock.now())
     assert await publish(db_sessionmaker, local_storage, deleted, fake_clock) is False
     assert await publish(db_sessionmaker, local_storage, "dws_" + "0" * 26, fake_clock) is False
+
+
+async def test_safety_net_publish_after_read_finished_changes_nothing(
+    db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock, sent: Sent
+) -> None:
+    """NO-565: lượt đọc xong gửi publish (bộ sang `review`, hình có gợi ý); publish trễ tới sau → no-op, hình và
+    trạng thái y nguyên (không ghi đè gợi ý, không nhân đôi hình)."""
+    project_id, set_id, (pdf, _) = await _analyzing_set(db_sessionmaker, local_storage)
+    assert await analyze_set(db_sessionmaker, local_storage, set_id, fake_clock) is True
+    body = reading_to_json(_two_views("MẶT BẰNG TẦNG 1", "MẶT BẰNG TẦNG 2"))
+    await _store_reading(local_storage, project_id, set_id, pdf, 0, body)
+    assert await publish(db_sessionmaker, local_storage, set_id, fake_clock) is True
+    status, progress, _, views = await _state(db_sessionmaker, set_id)
+    before = [(v.id, v.kind, v.storey_no, v.crop, v.machine) for v in views]
+    assert (status, progress, len(before)) == ("review", 100, PDF_PAGES + 2)
+    assert await publish(db_sessionmaker, local_storage, set_id, fake_clock) is False
+    status, progress, _, views = await _state(db_sessionmaker, set_id)
+    assert (status, progress) == ("review", 100)
+    assert [(v.id, v.kind, v.storey_no, v.crop, v.machine) for v in views] == before
+
+
+async def test_safety_net_publish_when_read_lost_opens_review_without_suggestions(
+    db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock, sent: Sent
+) -> None:
+    """NO-565/NO-547: lượt đọc mất hẳn (không kết quả đọc nào, không publish nào từ worker `ml`) → publish trễ đưa
+    bộ đang kẹt `analyzing` ra màn duyệt: mỗi trang một hình cả trang `NO_TEXT`, không lỗi, không hình có đích."""
+    _, set_id, _ = await _analyzing_set(db_sessionmaker, local_storage)
+    assert await analyze_set(db_sessionmaker, local_storage, set_id, fake_clock) is True
+    assert (await _state(db_sessionmaker, set_id))[:2] == ("analyzing", jobs.READ_PROGRESS)
+    assert await publish(db_sessionmaker, local_storage, set_id, fake_clock) is True
+    status, progress, error, views = await _state(db_sessionmaker, set_id)
+    assert (status, progress, error, len(views)) == ("review", 100, None, PDF_PAGES + 1)
+    for view in views:
+        assert (view.kind, view.machine["questions"], view.crop, view.target_mode) == ("other", ["NO_TEXT"], FULL, None)
 
 
 async def test_publish_drawing_set__J03(

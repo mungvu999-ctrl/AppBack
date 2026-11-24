@@ -29,6 +29,11 @@ PAGE_INDEX_MAX: Final = 19
 """Chỉ số trang lớn nhất của một PDF (20 trang/tệp, khớp `PAGE_INDEX_MAX` của #5)."""
 BOXES_PER_PAGE_MAX: Final = 60
 """Trần khung gợi ý một trang (= trần hình một bản duyệt N59)."""
+READ_BUDGET_S: Final = 480.0
+"""Trần OCR một lượt đọc (8 phút), kể từ lúc chặng đầu bắt đầu, đo bằng đồng hồ tường qua mọi chặng (NO-566,
+`deadline_epoch_s`): cộng dựng trang và hàng chờ vẫn dưới mốc 15 phút mà N57 coi là
+treo (`drawing_set_analysis_stall_s`). Đo trên tờ DS- tới 24 Mpx: 4-32 s/tờ (`changes/K-32a.md`), tức ~15-40 tờ/lượt.
+Ở hợp đồng chung vì worker `default` cũng cần nó để hẹn `drawing_set.publish` trễ làm lưới an toàn (NO-565)."""
 
 DrawingSetId = Annotated[str, AfterValidator(lambda value: check_id("dws", value))]
 ProjectId = Annotated[str, AfterValidator(lambda value: check_id("prj", value))]
@@ -47,12 +52,17 @@ class DrawingSetReadPayload(MlPayload):
     """`ml.infer.drawing_set.read`: các trang đã có ảnh và model đọc chữ đang kích hoạt (họ `dimensionReading`).
 
     Khoá ảnh trang và khoá kết quả do worker dựng lại từ id (`packages.storage.keys`), payload không mang khoá.
+
+    Lượt đọc chạy thành **chuỗi chặng** (NO-566): mỗi task đọc vài trang đầu của `pages` rồi tự gửi task kế với
+    các trang còn lại, để không task nào giữ một khe `ml.infer` cả lượt. `deadline_epoch_s` là hạn OCR của cả lượt
+    (giây epoch UTC) do chặng đầu đặt (`None` = chặng đầu) và chuyền nguyên qua các chặng sau.
     """
 
     project_id: ProjectId
     set_id: DrawingSetId
     pages: Annotated[tuple[PageRef, ...], Field(min_length=1, max_length=READ_PAGES_MAX)]
     model: ModelRef
+    deadline_epoch_s: Annotated[float, Field(gt=0, allow_inf_nan=False)] | None = None
 
     @model_validator(mode="after")
     def _text_model(self) -> Self:

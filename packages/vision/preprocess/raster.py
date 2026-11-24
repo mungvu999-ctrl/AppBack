@@ -16,6 +16,7 @@ from numpy.typing import NDArray
 from PIL import Image, ImageOps
 
 from packages.vision.preprocess.errors import VisionError
+from packages.vision.preprocess.geometry import fit_size
 from packages.vision.preprocess.sniff import sniff_kind
 from packages.vision.preprocess.types import DEFAULT_MAX_PIXELS, RgbImage
 
@@ -27,6 +28,10 @@ _PIL_FORMATS: Final[dict[str, str]] = {"png": "PNG", "jpeg": "JPEG"}
 _MAX_DRAFT_SCALE: Final = 4
 
 _GRAY16_MODES: Final = frozenset(("I", "I;16", "I;16B", "I;16L"))
+_RESIZE_MODES: Final = frozenset(("L", "RGB", "CMYK"))
+"""Mode `Image.resize` lọc hộp được và `_to_rgb_array` đổi đúng sau đó (không alpha, không bảng màu)."""
+_REDUCING_GAP: Final = 2.0
+"""`reduce()` nguyên trước tới khi còn gấp >= 2 lần khổ đích, rồi lọc hộp phần còn lại (nhanh, ít bộ nhớ)."""
 _WHITE: Final = (255, 255, 255)
 _DARK_PAPER_MEDIAN: Final = 128
 """Trung vị độ sáng (kênh lớn nhất, như V của HSV) dưới số này là bản vẽ nền tối nét sáng
@@ -52,8 +57,14 @@ def _draft_down(image: Image.Image, max_pixels: int) -> None:
     image.draft("RGB", (width // scale, height // scale))
 
 
-def _open_within_limit(buffer: io.BytesIO, pil_format: str, max_pixels: int) -> Image.Image:
+def _open_within_limit(
+    buffer: io.BytesIO, pil_format: str, max_pixels: int, *, fit_pixels: int | None = None
+) -> Image.Image:
     """Mở tệp, hạ cỡ JPEG nếu được, rồi chặn ảnh vượt trần **trước** khi giải mã (U03).
+
+    `fit_pixels` (đường `load_raster_fit`): JPEG xin bộ giải DCT hạ cỡ nhiều nhất có thể mà vẫn không nhỏ hơn
+    khổ vừa `fit_pixels` (Pillow `draft` chọn hệ số 1/2/4/8 giữ ảnh >= khổ xin); `max_pixels` lúc đó là trần giải
+    mã, kiểm sau `draft`.
 
     `DecompressionBombError` của Pillow (ảnh khai lớn hơn hai lần trần mặc định của
     nó) cũng là "ảnh quá lớn". `Image.open` đã đọc phần đầu tệp nên chính nó ném
@@ -66,8 +77,10 @@ def _open_within_limit(buffer: io.BytesIO, pil_format: str, max_pixels: int) -> 
         raise VisionError("IMAGE_TOO_LARGE") from exc
     except OSError as exc:  # `UnidentifiedImageError` là lớp con của `OSError`
         raise VisionError("FILE_CORRUPT") from exc
-    if pil_format == "JPEG":
+    if pil_format == "JPEG" and fit_pixels is None:
         _draft_down(image, max_pixels)
+    elif pil_format == "JPEG" and fit_pixels is not None and image.width * image.height > fit_pixels:
+        image.draft("RGB", fit_size(image.width, image.height, fit_pixels))
     width, height = image.size
     if width * height > max_pixels:
         raise VisionError("IMAGE_TOO_LARGE")
@@ -142,6 +155,35 @@ def load_raster(data: bytes, *, max_pixels: int = DEFAULT_MAX_PIXELS) -> RgbImag
             # JPEG cụt → "Truncated File Read". Pillow ném cả ba dưới dạng `OSError`.
             raise VisionError("FILE_CORRUPT") from exc
         pixels = _to_rgb_array(ImageOps.exif_transpose(image) or image)
+        return RgbImage(np.ascontiguousarray(_light_paper(pixels)))
+
+
+def load_raster_fit(data: bytes, *, max_pixels: int, decode_max_pixels: int) -> RgbImage:
+    """Như `load_raster` nhưng ảnh lớn hơn `max_pixels` được **co** về dưới trần thay vì `IMAGE_TOO_LARGE` (NO-567).
+
+    Bảo vệ bom nén giữ nguyên: `w x h` khai ở đầu tệp (sau `draft` của JPEG) vượt `decode_max_pixels` →
+    `IMAGE_TOO_LARGE` **trước** khi giải mã; `DecompressionBombError` của Pillow, tệp cụt/hỏng như `load_raster`.
+    JPEG hạ cỡ ngay trong bộ giải (`draft`); PNG không có đường đó nên giải mã đủ (tốn tới `decode_max_pixels` x
+    số kênh byte) rồi co bằng `Image.resize` lọc hộp (trung bình vùng như `cv2.INTER_AREA`) với `reducing_gap`
+    (`reduce()` nguyên trước, lọc sau) — co trước khi đổi sang mảng RGB nên các bản chép sau đều ở cỡ đích. Mode
+    `resize` không lọc được (bảng màu, alpha, xám 16-bit, 1-bit) đổi sang RGB trước. Kết quả `w x h <= max_pixels`.
+    """
+    pil_format = _PIL_FORMATS.get(sniff_kind(data))
+    if pil_format is None:
+        raise VisionError("FILE_TYPE_MISMATCH")
+    with io.BytesIO(data) as buffer:
+        image = _open_within_limit(buffer, pil_format, decode_max_pixels, fit_pixels=max_pixels)
+        try:
+            image.load()
+        except OSError as exc:
+            raise VisionError("FILE_CORRUPT") from exc
+        image = ImageOps.exif_transpose(image) or image
+        size = fit_size(image.width, image.height, max_pixels)
+        if size != image.size:
+            if image.mode not in _RESIZE_MODES:
+                image = Image.fromarray(_to_rgb_array(image), mode="RGB")
+            image = image.resize(size, Image.Resampling.BOX, reducing_gap=_REDUCING_GAP)
+        pixels = _to_rgb_array(image)
         return RgbImage(np.ascontiguousarray(_light_paper(pixels)))
 
 

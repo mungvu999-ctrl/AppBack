@@ -6,7 +6,9 @@ Worker nhập module này (`discover_jobs`), nên chỉ nhập `packages.*` và 
 1. `drawing_set.analyze`: đọc bộ `analyzing` chưa xoá và các tệp `complete` (vắng → no-op, J06); dựng từng trang
    thành PNG `…/files/{f}/pages/{i}.png` (ghi đè nên chạy lại an toàn); tệp gốc vắng hay một trang không dựng được
    chỉ bỏ trang đó, mọi trang hỏng → `DRAWING_SET_ANALYSIS_FAILED`; xếp `ml.infer.drawing_set.read` sau commit
-   (J09) với model đọc chữ đang kích hoạt, tiến độ 40 %.
+   (J09) với model đọc chữ đang kích hoạt, tiến độ 40 %, kèm một `drawing_set.publish` trễ `PUBLISH_SAFETY_DELAY_S`
+   làm lưới an toàn (NO-565): lượt đọc mất hẳn (thông điệp mất, worker chết không qua `on_failed`) thì bộ vẫn ra
+   màn duyệt không gợi ý thay vì nằm `analyzing` tới chốt treo 15 phút.
 2. `ml.infer.drawing_set.read` (worker `ml`, `apps/ml/drawing_set_read`): tách khung + OCR, ghi kết quả từng trang.
 3. `drawing_set.publish`: phân loại, đề xuất tầng, ghi hình `ai` (`analysis.py`), bộ sang `review`.
 
@@ -35,11 +37,10 @@ from packages.messaging.payloads.drawing_sets import (
     DrawingSetAnalyzePayload,
     DrawingSetPublishPayload,
 )
-from packages.ml_contracts.drawing_sets import DRAWING_SET_READ_TASK, DrawingSetReadPayload, PageRef
+from packages.ml_contracts.drawing_sets import DRAWING_SET_READ_TASK, READ_BUDGET_S, DrawingSetReadPayload, PageRef
 from packages.storage.keys import drawing_set_page
 from packages.storage.port import ObjectStorage, read_all_capped
-from packages.vision.preprocess import RgbImage, VisionError, encode_png, load_raster, render_pdf_page
-from packages.vision.preprocess.geometry import cap_pixels
+from packages.vision.preprocess import DEFAULT_MAX_PIXELS, VisionError, encode_png, load_raster_fit, render_pdf_page
 
 _log: Final = logging.getLogger(__name__)
 
@@ -49,9 +50,18 @@ PAGE_MAX_PIXELS: Final = 24_000_000
 """Ảnh trang cho màn duyệt **và** OCR: 24 Mpx ≈ A1 ở 170 dpi. Đo trên 10 tờ DS- (khung đáp án): đúng loại 49/104 ở
 16 Mpx, 57/104 ở cả khổ gốc ~25 Mpx; OCR 4-32 s/tờ ở 24 Mpx (`changes/K-32a.md`). Nâng thì ảnh màn duyệt nặng hơn
 (đường nâng cấp: ảnh xem trước riêng cỡ nhỏ, NO-546)."""
+PAGE_DECODE_MAX_PIXELS: Final = 2 * DEFAULT_MAX_PIXELS
+"""Trần giải mã một tờ PNG/JPEG (80 Mpx, kiểm từ `w x h` ở đầu tệp trước khi giải mã — chặn bom nén): đủ A1 ở
+300 dpi (~70 Mpx); lớn hơn vẫn `IMAGE_TOO_LARGE`. PNG giải mã đủ khổ nên đỉnh bộ nhớ ~ trần x số kênh (RGB ~240 MB)
+trước khi co về `PAGE_MAX_PIXELS` (NO-567); dưới trần riêng của Pillow (~89 Mpx) nên không có cảnh báo bom."""
 READ_PROGRESS: Final = 40
 """Tiến độ khi đã dựng xong trang và đang chờ worker `ml` đọc (N57 hiện cho người dùng)."""
 TEXT_FAMILY: Final = "dimensionReading"
+PUBLISH_SAFETY_DELAY_S: Final = READ_BUDGET_S + 120.0
+"""Hạn của `drawing_set.publish` trễ gửi kèm lượt đọc (NO-565): ngân sách OCR + 2 phút cho trang cuối và hàng chờ,
+vẫn dưới mốc treo 15 phút (`drawing_set_analysis_stall_s`). Publish no-op khi bộ không còn `analyzing` (J06), nên
+lượt đọc xong trước hạn thì thông điệp trễ không đổi gì; bộ chỉ vào `analyzing` một lần (N56), nên không có lượt
+sau nào bị nó cắt ngang."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,12 +118,12 @@ async def _snapshot(sessionmaker: async_sessionmaker[AsyncSession], set_id: str)
 def _render_page(kind: str, data: bytes, index: int) -> bytes:
     """PNG một trang ≤ `PAGE_MAX_PIXELS` (đồng bộ, PDFium/PIL — người gọi chạy trên luồng phụ, R-23).
 
-    Ảnh PNG/JPEG là một trang: nạp với trần mặc định của tiền xử lý (40 Mpx, như #7) rồi co về trần trang — nạp
-    thẳng với trần trang thì ảnh quét lớn hơn bị từ chối (`IMAGE_TOO_LARGE`) thay vì được co.
+    Ảnh PNG/JPEG là một trang: nạp có giảm mẫu về trần trang (`load_raster_fit`, NO-567) — tờ quét lớn hơn trần
+    trang, kể cả hơn 40 Mpx của #7 (DS-391 5832x7027), được co thay vì `IMAGE_TOO_LARGE`; chỉ tờ khai quá
+    `PAGE_DECODE_MAX_PIXELS` mới bị từ chối.
     """
     if kind != "pdf":
-        pixels, _sx, _sy = cap_pixels(load_raster(data).pixels, PAGE_MAX_PIXELS)
-        return encode_png(RgbImage(pixels))
+        return encode_png(load_raster_fit(data, max_pixels=PAGE_MAX_PIXELS, decode_max_pixels=PAGE_DECODE_MAX_PIXELS))
     return encode_png(render_pdf_page(data, index, max_pixels=PAGE_MAX_PIXELS))
 
 
@@ -147,7 +157,11 @@ async def _write_pages(storage: ObjectStorage, project_id: str, set_id: str, fil
 async def _queue_read(
     sessionmaker: async_sessionmaker[AsyncSession], project_id: str, set_id: str, pages: list[PageRef]
 ) -> bool:
-    """Dưới khoá dòng bộ: còn `analyzing` thì đặt tiến độ `READ_PROGRESS` và xếp lượt đọc sau commit (J09)."""
+    """Dưới khoá dòng bộ: còn `analyzing` thì đặt tiến độ `READ_PROGRESS` và xếp lượt đọc sau commit (J09).
+
+    Publish trễ gửi **trước** lượt đọc: gửi lượt đọc hỏng (broker) thì task thử lại gửi lại cả hai, publish trễ
+    trùng chỉ là no-op; thứ tự ngược lại thì lượt đọc có thể bị gửi hai lần.
+    """
     async with session_scope(sessionmaker) as db:
         drawing_set = (
             await db.execute(select(DrawingSetRow).where(DrawingSetRow.id == set_id).with_for_update())
@@ -157,8 +171,15 @@ async def _queue_read(
         model = (await active_versions(db))[TEXT_FAMILY]
         payload = DrawingSetReadPayload(project_id=project_id, set_id=set_id, pages=tuple(pages), model=model)
         drawing_set.progress_percent = READ_PROGRESS
-        on_after_commit(db, lambda: send_task(DRAWING_SET_READ_TASK, payload))
+        on_after_commit(db, lambda: _send_read_with_safety_net(payload))
     return True
+
+
+def _send_read_with_safety_net(payload: DrawingSetReadPayload) -> None:
+    """Hẹn `drawing_set.publish` trễ (lưới an toàn NO-565) rồi gửi lượt đọc cho worker `ml`."""
+    publish_payload = DrawingSetPublishPayload(set_id=payload.set_id)
+    send_task(DRAWING_SET_PUBLISH_TASK, publish_payload, countdown=PUBLISH_SAFETY_DELAY_S)
+    send_task(DRAWING_SET_READ_TASK, payload)
 
 
 async def analyze_set(

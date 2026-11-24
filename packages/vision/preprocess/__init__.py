@@ -21,7 +21,7 @@ from packages.vision.preprocess.pdf import (
     render_pdf_page,
     render_pdf_thumbnails,
 )
-from packages.vision.preprocess.raster import encode_png, load_raster
+from packages.vision.preprocess.raster import encode_png, load_raster, load_raster_fit
 from packages.vision.preprocess.sniff import sniff_kind
 from packages.vision.preprocess.types import (
     DEFAULT_DPI,
@@ -47,6 +47,7 @@ __all__ = [
     "encode_png",
     "find_frame",
     "load_raster",
+    "load_raster_fit",
     "order_corners",
     "pdf_page_count",
     "pdf_page_size_pt",

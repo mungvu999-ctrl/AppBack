@@ -65,6 +65,18 @@ def test_payload_rejects(build: Callable[[], object]) -> None:
         build()
 
 
+def test_payload_deadline_round_trips_and_rejects_bad_values() -> None:
+    """NO-566: hạn chuyền giữa các chặng đi qua JSON nguyên giá trị, mặc định `None` (chặng đầu); <= 0, inf, NaN
+    bị từ chối như thông điệp độc."""
+    page = (PageRef(file_id=FILE, page_index=0),)
+    assert _payload(page).deadline_epoch_s is None
+    timed = _payload(page).model_copy(update={"deadline_epoch_s": 1_795_000_000.5})
+    assert DrawingSetReadPayload.model_validate(timed.model_dump(mode="json")) == timed
+    for bad in (0.0, -1.0, float("inf"), float("nan")):
+        with pytest.raises(ValidationError):
+            DrawingSetReadPayload.model_validate(timed.model_dump() | {"deadline_epoch_s": bad})
+
+
 def test_reading_round_trip() -> None:
     """Kết quả đọc ghi rồi đọc lại trùng từng trường."""
     box = ReadingBox(x0=0, y0=0, x1=100, y1=50, score=0.9)

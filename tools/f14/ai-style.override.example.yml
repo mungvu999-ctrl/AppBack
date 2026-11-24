@@ -1,0 +1,6 @@
+# Bật AI chọn phong cách trên f14. Khoá nằm trong $F14_DIR/.ai-style.env (ngoài git, KHÔNG commit).
+# Dùng: F14_AI_STYLE=1 bash tools/f14/chuoi.sh up   (chuoi.sh xuất F14_DIR trước khi gọi compose)
+services:
+  api: { env_file: [ "${F14_DIR:?F14_DIR chưa đặt — chạy qua chuoi.sh}/.ai-style.env" ] }
+  worker: { env_file: [ "${F14_DIR:?F14_DIR chưa đặt — chạy qua chuoi.sh}/.ai-style.env" ] }
+  beat: { env_file: [ "${F14_DIR:?F14_DIR chưa đặt — chạy qua chuoi.sh}/.ai-style.env" ] }

@@ -72,7 +72,7 @@ và `web-context.sh` tự tắt autocrlf khi `git archive` (`run.sh:71`, `web-co
    git clone https://github.com/mungvu999-ctrl/AppFront.git
    ```
    Thư mục `AppBack/backend/` (tài liệu điều phối, `prompts/`, `dieu-phoi/`) bị `.gitignore` (`.gitignore:1-2`):
-   clone mới **không có** nó, kể cả `chuoi.sh` của F-14.
+   clone mới **không có** nó. `chuoi.sh` của F-14 đã chuyển vào git ở `tools/f14/` (mục 5.4); chỉ bí mật và tệp trạng thái của nó nằm lại ngoài git.
 2. **Hook commit của AppBack** (một lần cho mọi worktree) (`.githooks/commit-msg:4-5`, `CLAUDE.md:82-83`):
    ```bash
    git -C /f/App/AppBack config core.hooksPath .githooks
@@ -93,7 +93,7 @@ và `web-context.sh` tự tắt autocrlf khi `git archive` (`run.sh:71`, `web-co
    sao chép cứng thư mục đó (`AppFront/CLAUDE.md:156-159`).
 4. **Biến môi trường compose.** Mẫu ở `deploy/compose/env.example`; sao thành `.env` (bị `.gitignore`, không
    commit) rồi điền giá trị (`env.example:1-3`, `.gitignore:26-28`). Các lệnh trong repo đều truyền tường minh
-   `--env-file deploy/compose/env.example` (`tools/ci/job.sh:407`, `chuoi.sh:9`) và đè cổng bằng biến shell.
+   `--env-file deploy/compose/env.example` (`tools/ci/job.sh:407`, `tools/f14/chuoi.sh`) và đè cổng bằng biến shell.
    Ba khoá MinIO phải khác nhau (`env.example:33-38`). Biến shell thắng `--env-file` (chuỗi F-14 dựa vào đó).
    `env.example` toàn giá trị giữ chỗ `change-me*`: chỉ dùng cho dev/ci trên máy, **không** dùng cho môi trường thật.
 5. **Ảnh Docker.** Không cần kéo tay: `run.sh` tự `build` ảnh `appback-verify:local` và tạo volume
@@ -220,32 +220,38 @@ một lúc (`run-playwright.mjs:9-31`). `E2E_SKIP_PASCAL=1` bỏ lượt dựng 
 ### 5.4 Chuỗi thật F-14 (BE compose + web build + e2e fullstack)
 
 Hướng dẫn gốc: `AppFront/e2e/fullstack/README.md` (bảy điều kiện, biến, cách đọc kết quả). Script điều phối:
-`backend/dieu-phoi/chay/F-14/chuoi.sh` (chỉ có trên máy này, ngoài git).
+`tools/f14/chuoi.sh` (trong git; cạnh nó `qa-limits.override.example.yml`, `ai-style.override.example.yml`). Bí mật và tệp trạng thái
+(`.secrets.env`, `.ai-style.env`, `drawing.png`, `web-ctx-*`) nằm ở `$F14_DIR` — mặc định `<BE>/backend/dieu-phoi/chay/F-14`, ngoài git.
 
 ```bash
 # Git Bash
-bash F:/App/AppBack/backend/dieu-phoi/chay/F-14/chuoi.sh                 # = build up seed run
-BE=<worktree AppBack> FE=<worktree AppFront> WEB_SHA=<sha AppFront> bash …/chuoi.sh build up seed run
-bash …/chuoi.sh down                                                      # docker compose down -v — XOÁ volume của project f14 (DB, MinIO, Redis)
+bash tools/f14/chuoi.sh                                                   # = build up seed run
+BE=<worktree AppBack> FE=<worktree AppFront> WEB_SHA=<sha AppFront> bash tools/f14/chuoi.sh build up seed run
+bash tools/f14/chuoi.sh down --yes                                        # docker compose down -v — XOÁ volume của project f14; thiếu --yes thì từ chối
 ```
 
 | Biến | Mặc định | Nguồn |
 |---|---|---|
-| `BE` | `C:/Users/mxuan/orca/workspaces/AppBack/qa-main` — **đã bị xoá** (kiểm 15/11/2026) | `chuoi.sh:6` |
-| `FE` | `C:/Users/mxuan/orca/workspaces/AppFront/f14-w` — **đã bị xoá** (kiểm 15/11/2026) | `chuoi.sh:7` |
-| `WEB_SHA` | `efbda6bd` — SHA cũ | `chuoi.sh:21-22` |
-| cố định | `POSTGRES_HOST_PORT=15432 WEB_HTTP_PORT=18081 PUBLIC_BASE_URL=http://localhost:18080 IMAGE_TAG=f14 ML_BACKEND=fake`; compose `-p f14 -f deploy/compose/ci.yml -f <D>/qa-limits.override.yml --env-file deploy/compose/env.example --profile ml` | `chuoi.sh:8-9` |
+| `BE` | repo chứa `chuoi.sh` (worktree đang đứng) | `tools/f14/chuoi.sh` |
+| `FE` | `<BE>/../AppFront` | `tools/f14/chuoi.sh` |
+| `WEB_SHA` | `efbda6bd` — SHA cũ, **nên đặt tường minh** | `tools/f14/chuoi.sh` |
+| `F14_DIR` | `<BE>/backend/dieu-phoi/chay/F-14` (ngoài git: secrets, `drawing.png`, `web-ctx-*`) | `tools/f14/chuoi.sh` |
+| `F14_LIMITS` | `tools/f14/qa-limits.override.example.yml` | `tools/f14/chuoi.sh` |
+| `F14_AI_STYLE=1` | tắt; bật thì thêm `ai-style.override.example.yml`, cần `$F14_DIR/.ai-style.env` (khoá AI, không commit) | `tools/f14/chuoi.sh` |
+| `F14_DC` | — thay hẳn lệnh compose, để thử không phá huỷ (`F14_DC=echo`) | `tools/f14/chuoi.sh` |
+| cố định | `POSTGRES_HOST_PORT=15432 WEB_HTTP_PORT=18081 PUBLIC_BASE_URL=http://localhost:18080 IMAGE_TAG=f14 ML_BACKEND=fake`; compose `-p f14 -f deploy/compose/ci.yml -f <F14_LIMITS> --env-file deploy/compose/env.example --profile ml` | `tools/f14/chuoi.sh` |
 
-**Cả ba mặc định đều hỏng** — hai worktree Orca trên `C:` không còn, SHA đã cũ. Chạy `chuoi.sh` trần sẽ chết ngay
-dòng đầu; **luôn đặt tường minh cả ba**, ví dụ:
+Mặc định `BE`/`FE` hết trỏ vào đường Orca cũ trên `C:`. Chạy từ worktree phụ thì secrets nằm ở checkout chính: đặt
+`F14_DIR=/f/App/AppBack/backend/dieu-phoi/chay/F-14` để dùng lại `.secrets.env` (và `web-ctx-*` không phình trong worktree).
+Ví dụ:
 
 ```bash
-BE=/f/App/AppBack FE=/f/App/AppFront \
+FE=/f/App/AppFront F14_DIR=/f/App/AppBack/backend/dieu-phoi/chay/F-14 \
   WEB_SHA=$(git -C /f/App/AppFront rev-parse --short origin/master) \
-  bash /f/App/AppBack/backend/dieu-phoi/chay/F-14/chuoi.sh build up seed run
+  bash tools/f14/chuoi.sh build up seed run
 ```
 
-**Hai cổng khác nhau, đừng lẫn** (`chuoi.sh:8,10`):
+**Hai cổng khác nhau, đừng lẫn** (`tools/f14/chuoi.sh`, đầu tệp):
 
 | Cổng | Là gì | Dùng khi |
 |---|---|---|
@@ -255,14 +261,14 @@ BE=/f/App/AppBack FE=/f/App/AppFront \
 Nghĩa là `WEB_HTTP_PORT=18081` **cố ý** nhường 18080 cho dev server. Mở bằng `127.0.0.1` thay `localhost` thì
 `POST /api/auth/*` trả 403 `ORIGIN_MISMATCH` (mục 7 #9).
 
-Dừng stack mà **giữ** dữ liệu: `docker compose -p f14 stop`. `chuoi.sh down` chạy `down -v`, xoá sạch volume.
+Dừng stack mà **giữ** dữ liệu: `docker compose -p f14 stop`. `chuoi.sh down` chạy `down -v`, xoá sạch volume — nên script đòi `--yes` và từ chối trước khi chạy bất kỳ pha nào nếu thiếu.
 
 | Pha | Làm gì | Nguồn |
 |---|---|---|
-| `build` | dựng `appback-api:f14`, `appback-worker:f14`; tạo `web-ctx-<WEB_SHA>` nếu chưa có rồi dựng `appback-web:f14`. **Không dựng `appback-ml:f14`** — ảnh đó lấy từ `backend/dieu-phoi/chay/F-14/build-images.sh` (ngoài git) | `chuoi.sh:17-23`, `build-images.sh:6` |
-| `up` | `up -d --wait`, in `ML_BACKEND`, `/api/health`, CSP, cache `pascal-mount.js` | `chuoi.sh:24-31` |
-| `seed` | `create-admin` (tài khoản sinh vào `.secrets.env` cạnh script, không in), xuất `drawing.png` = `render_plan(7)`, nạp model thứ hai qua N26, chờ eval `completed` (≤ 5') | `chuoi.sh:11-13,39-68` |
-| `run` | `E2E_FULLSTACK_BASE_URL=$BASE E2E_DRAWING_PNG=… pnpm e2e:fullstack` trong `$FE` | `chuoi.sh:69-72` |
+| `build` | dựng `appback-api:f14`, `appback-worker:f14`; tạo `web-ctx-<WEB_SHA>` nếu chưa có rồi dựng `appback-web:f14`. **Không dựng `appback-ml:f14`** — ảnh đó lấy từ `backend/dieu-phoi/chay/F-14/build-images.sh` (ngoài git, chưa chuyển) | `phase_build`, `build-images.sh:6` |
+| `up` | `up -d --wait`, in `ML_BACKEND`, `/api/health`, CSP, cache `pascal-mount.js` | `phase_up` |
+| `seed` | `create-admin` (tài khoản sinh vào `$F14_DIR/.secrets.env`, không in), xuất `drawing.png` = `render_plan(7)`, nạp model thứ hai qua N26, chờ eval `completed` (≤ 5') | `phase_seed`, `load_secrets` |
+| `run` | `E2E_FULLSTACK_BASE_URL=$BASE E2E_DRAWING_PNG=… pnpm e2e:fullstack` trong `$FE` | `phase_run` |
 
 Chuỗi chạy 1 worker, không retry, báo cáo ở `playwright-report/fullstack` (`AppFront/e2e/fullstack/playwright.config.ts`).
 Trace/báo cáo chứa cookie phiên — không đính vào báo cáo (`e2e/fullstack/README.md:147`). Chạy bằng Git Bash:
@@ -289,7 +295,7 @@ AppFront: commit cũng theo dạng `<type>(<scope>): …` và vào `master` qua 
 |---|---|---|---|
 | 1 | `just: command not found`; `uv` máy báo lỗi lạ | Máy không có `just`; uv máy 0.4.18 quá cũ (`ENV.md:24`) | Luôn `bash tools/verify/run.sh <việc>` trong Git Bash (`CLAUDE.md:16-20`) |
 | 2 | Chạy riêng `--steps 7` ra **0 mẫu golden** / H1 báo thiếu mẫu 2xx | Golden do test bước 5 ghi vào thư mục mới mỗi lượt (`verify.yml:31`) | `bash tools/verify/run.sh verify --steps 5,7` |
-| 3 | Bước chép đầu container treo rất lâu (đã thấy > 25 phút) | `run.sh` mount **cả checkout** và `cp -r /src/. /tmp/w/` (`in_container.sh:13`), kể cả thư mục bị `.gitignore` như `backend/`. Mỗi `backend/dieu-phoi/chay/F-14/web-ctx*` ~81 MB (`chuoi.sh` tự tạo lại khi cần) | Xoá `web-ctx*` trước khi verify. Đường dài quá giới hạn Windows → PowerShell: `Remove-Item -LiteralPath "\\?\F:\App\AppBack\backend\dieu-phoi\chay\F-14\web-ctx-<sha>" -Recurse -Force` |
+| 3 | Bước chép đầu container treo rất lâu (đã thấy > 25 phút) | `run.sh` mount **cả checkout** và `cp -r /src/. /tmp/w/` (`in_container.sh:13`), kể cả thư mục bị `.gitignore` như `backend/`. Mỗi `backend/dieu-phoi/chay/F-14/web-ctx*` ~81 MB (`tools/f14/chuoi.sh` tự tạo lại khi cần) | Xoá `web-ctx*` trước khi verify. Đường dài quá giới hạn Windows → PowerShell: `Remove-Item -LiteralPath "\\?\F:\App\AppBack\backend\dieu-phoi\chay\F-14\web-ctx-<sha>" -Recurse -Force` |
 | 4 | `docker` báo không nối được daemon sau khi máy ngủ | Docker Desktop chết | `docker info --format '{{.ServerVersion}}'` phải in version trước khi chạy gì; không thì khởi động lại Docker Desktop |
 | 5 | Verify chậm bất thường, OOM; e2e trang trắng, `net::ERR_NO_BUFFER_SPACE`, bài đỏ ở hạn first paint | Hai cổng AppBack đầy đủ cùng lúc vượt RAM VM (`ENV.md:69`); e2e chồng vitest/verify của phiên khác làm Windows cạn bộ đệm socket cho request module Vite (nợ NO-408) | Một verify AppBack đầy đủ trên cả máy; tối đa 2 `pnpm verify`, tổng 4 (`ENV.md:65-77`); không chạy e2e chồng vitest/verify. Khoá `e2e.lock` (`mkdir` lấy, `rmdir` trả, kể cả khi hỏng) là **quy ước điều phối**, không có trong mã, và chỉ chặn e2e với e2e (`backend/dieu-phoi/chay/DEBT-03/chung.md:36-39`). Lệnh nền bằng `&` có thể sống sót sau khi shell thoát và chạy trùng — kiểm tiến trình còn sống trước khi chạy lại |
 | 6 | `git worktree remove` / xoá thư mục báo `Filename too long` | Đường > 260 ký tự trên Windows | `git worktree remove <đường>` rồi xoá phần còn lại bằng tiền tố `\\?\` như mục 3; **(chưa kiểm)** `git config core.longpaths true` có tránh được không (máy hiện chưa đặt) |

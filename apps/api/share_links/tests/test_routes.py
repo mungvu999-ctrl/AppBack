@@ -365,6 +365,23 @@ async def test_share_links_open__C01(api_client: httpx.AsyncClient, db_session: 
     assert body["graph"]["floorRevisions"] == []
 
 
+async def test_share_links_open_hides_building_address__L6N06(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """L6-N06: dự án có địa chỉ -> tuyến công khai vắng `address`, còn tuyến có đăng nhập vẫn trả."""
+    admin = await make_user(db_session, role="admin")
+    project = await seed_project(db_session, owner=admin, address="12 Đường Mẫu, Quận 1")
+    exported = await api_client.post(f"/api/projects/{project.id}/exports", headers=headers_of(admin), json={})
+    assert exported.json()["graph"]["building"]["address"] == "12 Đường Mẫu, Quận 1"
+    link = await _create_link(api_client, project, admin, label="khách")
+    response = await api_client.get(f"/api/share/{link['url'].rsplit('/', 1)[1]}")
+    assert response.status_code == 200, response.text
+    building = response.json()["graph"]["graph"]["building"]
+    assert "address" not in building
+    assert "12 Đường Mẫu" not in response.text
+    assert building["name"] == project.name
+
+
 # ---------------------------------------------------------------------------
 # L1-N06 — `url` dựng từ PUBLIC_BASE_URL, không từ Host
 # ---------------------------------------------------------------------------

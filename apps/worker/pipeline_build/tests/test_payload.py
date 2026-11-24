@@ -44,6 +44,13 @@ def test_build_step_payload_accepts_minimum() -> None:
     assert payload.schema_version == 1
 
 
+def test_build_step_payload_detect_furniture_legacy_default_is_true__l2n05() -> None:
+    """L2-N05 (B): thông điệp cũ vắng `detect_furniture` -> `True` (dựng đồ như trước QT-FURN-TOGGLE), còn cài đặt dự
+    án mặc định `False`. Lệch này CÓ CHỦ Ý ghi nhận (nơi tạo payload luôn truyền giá trị); đổi thì làm theo K-20."""
+    assert BuildStepPayload(**_kwargs()).detect_furniture is True
+    assert BuildStepPayload(**_kwargs(detect_furniture=False)).detect_furniture is False
+
+
 @pytest.mark.parametrize("size", [0, -1])
 def test_build_step_payload_rejects_size_below_one(size: int) -> None:
     """`width_px`/`height_px` < 1 → `ValidationError`."""

@@ -57,6 +57,13 @@ bắt tụt ở phần SAU ML (dựng, trộn, quality, readiness); đổi mô h
 `behaviour`) giữ luật riêng: trượt mà không báo đúng lý do. Cột `silent_old` giữ luật cũ (suy từ finding/lý do, bỏ sót
 ca trượt vì ≥ 3 mốc C) để so số với các lượt trước K-11. Layer có số NaN/vô cực: R2 = T, chỉ chấm R1-R3 (`info.nonfinite`).
 
+## Ghi chú đo: mặc định đồ đạc (L2-N05)
+
+Mặc định `detect_furniture` lệch giữa các tầng: cài đặt dự án `False` (`project_settings`, migration `qt_furn_toggle`),
+còn `BuildStepPayload.detect_furniture` mặc định `True` cho thông điệp cũ vắng trường. Luồng thường luôn truyền giá trị
+dự án nên số đo trên `main` theo `False`; thông điệp tồn trong hàng đợi cũ hoặc stack tích hợp (f14) có thể dựng đồ.
+Ghi trong báo cáo đo mặc định nào đang chạy và hàng đợi có trống không (L2-N06). Chốt một mặc định: theo K-20.
+
 ## Test
 
 `bash tools/verify/run.sh shell` rồi `pytest tools/bench/tests`. `test_score_golden.py` chấm bộ dữ liệu tổng hợp và đòi

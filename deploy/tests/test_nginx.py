@@ -315,6 +315,39 @@ def test_nginx_files_location_elevates_error_log_level() -> None:
         assert levels & {"crit", "alert", "emerg"}, f"{path}: /api/files/ error_log phải mức crit/alert/emerg"
 
 
+def test_nginx_share_locations_disable_logs_and_keep_headers__k41() -> None:
+    """K-41: token liên kết chia sẻ không vào log nginx (theo tiền lệ `/api/files/`).
+
+    `/api/share/`: `access_log off`, `error_log … crit`, `proxy_common.conf`, `error_page` sang đích
+    `-files` (cũng `access_log off`). `/share/` (trang SPA): `access_log off`, `error_log … crit`,
+    `security_headers.conf`, và `rewrite … /index.html break` (không `try_files`: nó chuyển nội bộ
+    sang `location /` có ghi log)."""
+    files = _all_nginx_files()
+    api = _locations_matching(files, lambda loc: loc.args[-1:] == ["/api/share/"])
+    page = _locations_matching(files, lambda loc: loc.args[-1:] == ["/share/"])
+    assert api, "không tìm thấy location /api/share/"
+    assert page, "không tìm thấy location /share/"
+    for path, loc in [*api, *page]:
+        name = loc.args[-1]
+        assert any(n.directive == "access_log" and n.args == ["off"] for n in loc.children), (
+            f"{path}: {name} thiếu access_log off"
+        )
+        levels = {n.args[-1] for n in loc.children if n.directive == "error_log" and n.args}
+        assert levels & {"crit", "alert", "emerg"}, f"{path}: {name} error_log phải mức crit/alert/emerg"
+    for path, loc in api:
+        assert "proxy_common.conf" in direct_includes(loc), f"{path}: /api/share/ thiếu proxy_common.conf"
+        targets = {n.args[-1] for n in loc.children if n.directive == "error_page" and n.args}
+        assert targets == {"/__errors/413-files", "/__errors/503-files"}, (
+            f"{path}: /api/share/ phải trỏ error_page sang đích tắt log, đang là {targets}"
+        )
+    for path, loc in page:
+        assert "security_headers.conf" in direct_includes(loc), f"{path}: /share/ thiếu security_headers.conf"
+        assert ["^", "/index.html", "break"] in [n.args for n in loc.children if n.directive == "rewrite"], (
+            f"{path}: /share/ thiếu rewrite ^ /index.html break"
+        )
+        assert not any(n.directive == "try_files" for n in loc.children), f"{path}: /share/ không được dùng try_files"
+
+
 def test_nginx_error_pages_declared() -> None:
     """`error_page 413 /__errors/413;` và `error_page 502 503 504 =503 /__errors/503;`
     xuất hiện ở đâu đó trong cấu hình."""
@@ -627,13 +660,14 @@ def test_nginx_app_server_has_conditional_access_log_backstop__no197() -> None:
 
 
 def test_nginx_access_log_map_logs_by_default_and_drops_files_uris() -> None:
-    """NO-197: `map $request_uri $appback_access_log` ghi log mặc định (`default 1`) và chỉ bỏ URI có `files/` (→ `0`);
+    """NO-197/K-41: `map $request_uri $appback_access_log` ghi log mặc định (`default 1`), chỉ bỏ URI có `files/` hoặc
+    `/share/` (→ `0`);
     xoá `default 1` thì mọi truy cập mất log, và `access_log … if=` ở server phải đọc đúng biến của map."""
     path = require_path("deploy/nginx/snippets/access_log_files_map.conf")
     (map_node,) = find_directive(parse_nginx(path.read_text(encoding="utf-8")), "map")
     assert map_node.args == ["$request_uri", "$appback_access_log"]
     rules = {c.directive: c.args for c in map_node.children}
-    assert rules == {"default": ["1"], "~*files/": ["0"]}
+    assert rules == {"default": ["1"], "~*(files|/share)/": ["0"]}
     for server_path, server in _app_servers():
         logs = [c for c in server.children if c.directive == "access_log"]
         assert any("if=$appback_access_log" in c.args for c in logs), f"{server_path}: if= không đọc biến của map"

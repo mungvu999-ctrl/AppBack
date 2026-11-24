@@ -14,7 +14,15 @@ import cv2
 import numpy as np
 import pytest
 
-from apps.worker.pipeline_build.geometry import Scaling, WallSet, _bridge_hosts, build_walls, close_envelope_gaps
+from apps.worker.pipeline_build.geometry import (
+    DOOR_KIND_UNREAD,
+    Scaling,
+    WallSet,
+    _bridge_hosts,
+    _gap_door,
+    build_walls,
+    close_envelope_gaps,
+)
 from apps.worker.pipeline_build.ids import new_spatial_id
 from apps.worker.pipeline_build.residual import PageRaster
 from apps.worker.pipeline_build.rooms import build_rooms
@@ -848,6 +856,80 @@ def test_build_walls__door_swing_from_width_and_arc(
     )
     (opening,) = result.openings
     assert (opening.width_mm, opening.swing, opening.door_style) == (width_px * 10, swing, None)
+
+
+def _kind_page(width_px: int, kind: str) -> PageRaster:
+    """Trang 10 mm/px như `_door_page`, khe [130, 130 + rộng]: `double` = hai cánh rộng/2 + hai cung về tâm khe;
+    `sliding` = hai tấm mảnh song song tường trong bề dày tường, so le, mỗi tấm 60 % khe từ một đầu."""
+    gray = np.full((300, 400), 255, np.uint8)
+    walls = np.zeros((300, 400), np.uint8)
+    cv2.line(walls, (0, 100), (130, 100), 1, 10)
+    cv2.line(walls, (130 + width_px, 100), (399, 100), 1, 10)
+    gray[walls > 0] = 60
+    half = width_px / 2
+    if kind == "double":
+        for hinge, toward in ((130, 1), (130 + width_px, -1)):
+            cv2.line(gray, (hinge, 105), (hinge, round(105 + half)), 0, 2)
+            pts = [
+                (hinge + toward * half * math.cos(q), 105 + half * math.sin(q)) for q in np.linspace(0, math.pi / 2, 60)
+            ]
+            cv2.polylines(gray, [np.rint(pts).astype(np.int32)], False, 0, 1)
+    else:
+        cv2.line(gray, (130, 98), (round(130 + 0.6 * width_px), 98), 0, 1)
+        cv2.line(gray, (round(130 + 0.4 * width_px), 102), (130 + width_px, 102), 0, 1)
+    return PageRaster(gray=gray, walls=walls.astype(bool))
+
+
+@pytest.mark.parametrize(
+    ("width_px", "kind", "swing"),
+    [
+        pytest.param(120, "double", "double", id="double-1.2m"),
+        pytest.param(180, "double", "double", id="double-1.8m"),
+        pytest.param(120, "sliding", "sliding", id="sliding-1.2m"),
+    ],
+)
+def test_build_walls__door_kind_from_symbol(width_px: int, kind: str, swing: str, fake_clock: FakeClock) -> None:
+    """K-13a: ký hiệu hai cánh → `double` kể cả khi rộng ≤ 1,2 m; ray so le → `sliding` kể cả khi hẹp hơn 1,5 m."""
+    dropped: Counter[str] = Counter()
+    result = build_walls(
+        [wall_px(0, 100, 400, 100, thickness_px=10)],
+        [det("door", 130, 90, 130 + width_px, 110)],
+        level_id=new_spatial_id("level", fake_clock),
+        scaling=Scaling(10.0, 10.0),
+        clock=fake_clock,
+        dropped=dropped,
+        page=_kind_page(width_px, kind),
+    )
+    (opening,) = result.openings
+    assert (opening.width_mm, opening.swing) == (width_px * 10, swing)
+    assert dropped[DOOR_KIND_UNREAD] == 0
+
+
+def test_build_walls__wide_unread_door_counted(fake_clock: FakeClock) -> None:
+    """K-13a: cửa 1,4 m không đọc được kiểu → giữ `left` (C3) và đếm `doorKindUnread`; cửa 0,9 m không đếm."""
+    dropped: Counter[str] = Counter()
+    build_walls(
+        [wall_px(0, 100, 400, 100, thickness_px=10)],
+        [det("door", 130, 90, 270, 110)],
+        level_id=new_spatial_id("level", fake_clock),
+        scaling=Scaling(10.0, 10.0),
+        clock=fake_clock,
+        dropped=dropped,
+        page=_door_page(140, arc=False),
+    )
+    assert dropped[DOOR_KIND_UNREAD] == 1
+    narrow: Counter[str] = Counter()
+    run([wall_px(0, 1000, 4000, 1000)], [det("door", 1000, 950, 1900, 1050)], fake_clock, narrow)
+    assert narrow[DOOR_KIND_UNREAD] == 0
+
+
+@pytest.mark.parametrize(("kind", "swing", "leaf"), [("double", "double", (0.0, 1.0)), ("sliding", "sliding", None)])
+def test_gap_door__reads_kind(kind: str, swing: str, leaf: tuple[float, float] | None) -> None:
+    """K-13a: cửa đoán trên khe (C5) dùng cùng kiểu đọc được: hai cánh → `double` có hướng cánh, ray → `sliding`."""
+    got = _gap_door(Point(x=1300, y=1000), Point(x=2500, y=1000), 100, _kind_page(120, kind), Scaling(10.0, 10.0))
+    assert got[0] == swing
+    assert got[1] == 0.5
+    assert got[2] == leaf
 
 
 def test_build_walls__wide_door_without_page_is_sliding(fake_clock: FakeClock) -> None:

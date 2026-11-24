@@ -263,6 +263,16 @@ F-07: hộp thoại A9 khi gỡ; ánh xạ `MEMBER_*`.
 - `PIPELINE_CANCELLED` (giá trị `Progress.error`, không phải mã HTTP) — FE: hành động `retry` (màn hỏng mời "Chạy lại
   từ bản gốc" / "Tải lại bản vẽ"), câu "Lượt xử lý đã được huỷ theo yêu cầu. Bản vẽ gốc vẫn được giữ để chạy lại."
 
+### N62 — giới hạn liên kết chia sẻ mới, `POST /api/projects/{project_id}/share-links` *(L6-N05)*
+
+- Chỉ áp cho liên kết **tạo mới**; liên kết cũ không hạn hay quyền `comment` vẫn mở và vẫn liệt kê như trước.
+- `permission` chỉ nhận `view` (khác → 422 `VALIDATION` `field: "permission"`). `expiresAt` vắng/`null` → máy chủ đặt
+  bây giờ + 7 ngày; ≤ bây giờ hoặc > bây giờ + 90 ngày → 422 `VALIDATION` `field: "expiresAt"`. `ShareLinkWire.expiresAt`
+  vẫn nullable (liên kết cũ).
+- Dự án đã có 50 liên kết còn hiệu lực → 422 `SHARE_LINK_LIMIT_REACHED` (mã mới, không tham số) — FE: câu "Dự án đã có
+  50 liên kết đang dùng; hãy thu hồi bớt một liên kết rồi tạo lại." Quá 20 lượt tạo / 10 phút / người → 429
+  `RATE_LIMITED` + `Retry-After`.
+
 ### N7b — `GET /api/projects/{project_id}/pipeline-runs` → `pipelineRuns.ts` *(UIFIX-B7)*
 
 - Lượt xử lý của dự án, mới nhất trước; `limit` + `cursor` (`CursorPage`); thành viên dự án đọc được, người ngoài/dự án không có → 404. Mỗi mục một lượt của một tầng: trạng thái, bước, %, `createdAt`/`startedAt`/`endedAt`/`updatedAt`, mã lỗi. Màn: tab Nhật ký của màn Xử lý (N5-08).

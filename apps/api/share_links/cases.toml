@@ -7,3 +7,7 @@ waive = { C16 = "DELETE không có thân" }
 [[endpoint]]
 op = "share_links_open"
 waive = { C16 = "GET công khai không có thân" }
+
+[[endpoint]]
+op = "share_links_create"
+extra = ["C11"]

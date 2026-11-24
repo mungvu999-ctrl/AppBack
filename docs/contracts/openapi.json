@@ -7845,7 +7845,7 @@
       },
       "ShareLinkCreateIn": {
         "additionalProperties": false,
-        "description": "Thân `POST share-links`; mật khẩu chưa hỗ trợ: `password` không rỗng → 422 (không nhận rồi bỏ qua).",
+        "description": "Thân `POST share-links`; mật khẩu chưa hỗ trợ: `password` không rỗng → 422 (không nhận rồi bỏ qua).\n\n`permission` mới chỉ nhận `view` (`comment` -> 422; liên kết cũ mang `comment` vẫn đọc được).\nHạn: xem `_resolve_expiry`.",
         "properties": {
           "embed": {
             "anyOf": [
@@ -7894,11 +7894,8 @@
             "title": "Password"
           },
           "permission": {
+            "const": "view",
             "default": "view",
-            "enum": [
-              "view",
-              "comment"
-            ],
             "title": "Permission",
             "type": "string"
           },
@@ -14234,7 +14231,7 @@
         ]
       },
       "post": {
-        "description": "#48 — tạo liên kết với token ngẫu nhiên 256 bit.",
+        "description": "#48 — tạo liên kết với token ngẫu nhiên 256 bit, hạn <= 90 ngày (mặc định 7), <= 50 liên kết hiệu lực.",
         "operationId": "share_links_create_api_projects__project_id__share_links_post",
         "parameters": [
           {

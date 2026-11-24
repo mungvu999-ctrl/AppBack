@@ -5,6 +5,10 @@ phía, sai bản lề. Ở đây thử 4 giả thuyết (bản lề ở đầu `
 dọc nét cánh và nét cung mỗi giả thuyết trên ảnh mực (trang xám < `INK_GRAY`, trừ mặt nạ tường, nới vài px), chọn
 giả thuyết phủ mực nhiều nhất khi nó đủ chắc; không chắc → `None` để nơi gọi giữ giá trị cũ.
 
+K-13a: thêm giả thuyết hai cánh (cửa đôi: bản lề hai đầu khe, hai cung bán kính rộng/2) dự thi cùng bốn giả thuyết
+trên, và ray cửa lùa (hai tấm song song tường so le trong bề dày tường) khi không cánh nào thắng; công tắc
+`DOOR_KIND_HYPOTHESES`.
+
 Đổi sang ngữ nghĩa FE (`AppFront/src/lib/pascal/toPascal.ts` `doorLeafOf` + `swingDirection.ts`, Pascal
 `nodes/src/door/floorplan.ts`):
 
@@ -19,7 +23,7 @@ giả thuyết phủ mực nhiều nhất khi nó đủ chắc; không chắc �
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Literal
 
 import cv2
 import numpy as np
@@ -47,16 +51,63 @@ _PROBE_MM: Final = 300.0
 """Khoảng dò phòng hai bên mặt tường, như `SWING_PROBE_MM` của FE."""
 
 
+DOOR_KIND_HYPOTHESES: Final = True
+"""K-13a: bật giả thuyết hai cánh (`_double_scores`) và ray cửa lùa (`_track_leaf`); `False` → đúng hành vi cũ."""
+
+MIN_DOUBLE_HIT: Final = 0.85
+"""Giả thuyết hai cánh chỉ dự thi khi cánh và cung của CẢ hai nửa có mực dưới ≥ 85 % điểm mẫu. Bench replay 24/11
+(lần đo đầu, ngưỡng `MIN_*` như cửa một cánh): 3 cửa đôi thật đạt 1,00, còn 6 cửa một cánh 740-770 mm kiểu vẽ Phần
+Lan (cánh nằm trong tường) bị đọc thành hai cánh ở 0,62-0,79 — chỉnh sau khi nhìn số, xem `changes/K-13a.md`."""
+
+MIN_TRACK_HIT: Final = 0.6
+"""Ray cửa lùa: nửa khe mà tấm cửa phủ phải có mực dưới ≥ 60 % điểm mẫu của hàng song song tường."""
+
+MAX_TRACK_OTHER: Final = 0.35
+"""... và nửa khe còn lại ≤ 35 %: tấm lệch về một đầu khe; nét kín cả khe (mép tường, ngưỡng) không phải tấm lùa."""
+
+MAX_TRACK_BUSY: Final = 0.5
+"""Khung khe có > 50 % điểm là mực (nới 1 px) — nền tô màu, hoa văn lát sàn — thì không thử ray: hàng nào cũng "phủ"
+(bench ch-11: lô gia lát gạch 0,86 bị đọc thành cửa lùa ở lần đo đầu)."""
+
+LeafKind = Literal["single", "double", "sliding"]
+
+
 @dataclass(frozen=True, slots=True)
 class Leaf:
-    """Cánh đọc được: `hinge_at_b` = bản lề ở đầu `b` của khe; `side` = +1 cánh về phía `n`, -1 phía `-n`."""
+    """Cánh đọc được: `hinge_at_b` = bản lề ở đầu `b` của khe; `side` = +1 cánh về phía `n`, -1 phía `-n`.
+
+    `kind`: `"single"` một cánh; `"double"` hai cánh (bản lề hai đầu, `hinge_at_b` vô nghĩa); `"sliding"` hai tấm lùa
+    so le trong khe (`side` = 0, không có hướng cánh).
+    """
 
     hinge_at_b: bool
     side: int
+    kind: LeafKind = "single"
 
 
-def _ink(page: PageRaster, x0: int, y0: int, x1: int, y1: int, radius: int) -> NDArray[np.bool_]:
-    """Mực trong khung `[x0, x1) x [y0, y1)` (đã cắt theo trang), trừ tường, nới `radius` px."""
+@dataclass(frozen=True, slots=True)
+class _Gap:
+    """Khung đọc một khe: gốc khung mực, đầu khe `a`, rộng, hướng trục `u`, pháp tuyến `n`, nửa bề dày tường (px)."""
+
+    origin: Vec
+    a: Vec
+    width: float
+    u: Vec
+    n: Vec
+    half: float
+
+    def at(self, along: float, across: float) -> Vec:
+        """Điểm cách `a` một đoạn `along` dọc khe và `across` theo pháp tuyến."""
+        return (self.a[0] + self.u[0] * along + self.n[0] * across, self.a[1] + self.u[1] * along + self.n[1] * across)
+
+
+_Score = tuple[float, float, float, Leaf]
+"""(điểm, tỉ lệ mực trên cánh, trên cung, giả thuyết)."""
+
+
+def _ink(page: PageRaster, box: tuple[int, int, int, int], radius: int) -> NDArray[np.bool_]:
+    """Mực trong khung `box = (x0, y0, x1, y1)` (đã cắt theo trang), trừ tường, nới `radius` px."""
+    x0, y0, x1, y1 = box
     ink = (page.gray[y0:y1, x0:x1] < INK_GRAY) & ~page.walls[y0:y1, x0:x1]
     size = 2 * radius + 1
     return np.asarray(cv2.dilate(ink.astype(np.uint8), np.ones((size, size), np.uint8)) > 0)
@@ -72,22 +123,77 @@ def _hit(ink: NDArray[np.bool_], origin: Vec, points: NDArray[np.float64]) -> fl
     return float(hits.mean())
 
 
-def read_leaf(page: PageRaster, a: Vec, b: Vec, half_thickness: float) -> Leaf | None:
-    """Đọc bản lề + phía cánh của cửa một cánh có khe `a → b` (px, trên tim tường), tường dày `2·half_thickness` px.
+def _swing_hits(ink: NDArray[np.bool_], gap: _Gap, hinge_along: float, side: int, radius: float) -> tuple[float, float]:
+    """Mực của một cánh bản lề tại `hinge_along` (dọc khe, dời ra mặt tường phía `side`) dài `radius`, cung quét về
+    phía tâm khe: (tỉ lệ trên nét cánh bỏ 15 % sát tường, tỉ lệ trên cung 8°-82°)."""
+    toward = 1.0 if hinge_along < gap.width / 2 else -1.0
+    depths = np.linspace(_LEAF_FROM, 1.0, 24) * radius
+    angles = np.radians(np.linspace(8.0, 82.0, 32))
+    leaf = np.array([gap.at(hinge_along, side * (gap.half + d)) for d in depths])
+    arc = np.array(
+        [
+            gap.at(hinge_along + toward * radius * c, side * (gap.half + radius * s))
+            for c, s in zip(np.cos(angles), np.sin(angles), strict=True)
+        ]
+    )
+    return _hit(ink, gap.origin, leaf), _hit(ink, gap.origin, arc)
 
-    Mỗi giả thuyết: bản lề `h` (đầu `a` hay `b`) dời ra mặt tường `h + s·n·t`, cánh là đoạn vuông tường dài `w`
-    (bỏ 15 % sát tường), cung tâm bản lề bán kính `w` từ mép kia tới đầu cánh (mẫu ở 8°-82°). `None` khi khe quá
-    hẹp, trang lệch khổ mặt nạ, hay không giả thuyết nào đủ `MIN_*` và hơn nhì `MIN_MARGIN`.
+
+def _single_scores(ink: NDArray[np.bool_], gap: _Gap) -> list[_Score]:
+    """4 giả thuyết một cánh: bản lề ở `a`/`b` x cánh về `+n`/`-n`, bán kính = rộng khe."""
+    scores: list[_Score] = []
+    for hinge_at_b in (False, True):
+        for side in (1, -1):
+            leaf_hit, arc_hit = _swing_hits(ink, gap, gap.width if hinge_at_b else 0.0, side, gap.width)
+            scores.append(((leaf_hit + arc_hit) / 2, leaf_hit, arc_hit, Leaf(hinge_at_b=hinge_at_b, side=side)))
+    return scores
+
+
+def _double_scores(ink: NDArray[np.bool_], gap: _Gap) -> list[_Score]:
+    """2 giả thuyết hai cánh (K-13a): bản lề ở cả hai đầu khe, hai cánh bán kính rộng/2 cùng phía `+n`/`-n`.
+
+    Cánh và cung lấy tỉ lệ THẤP hơn của hai nửa: cửa một cánh chỉ phủ được một nửa (cung nửa kia trống) nên không đủ
+    `MIN_DOUBLE_HIT` để cạnh tranh với giả thuyết một cánh đúng.
     """
-    if page.gray.shape != page.walls.shape:
+    scores: list[_Score] = []
+    for side in (1, -1):
+        near = _swing_hits(ink, gap, 0.0, side, gap.width / 2)
+        far = _swing_hits(ink, gap, gap.width, side, gap.width / 2)
+        leaf_hit, arc_hit = min(near[0], far[0]), min(near[1], far[1])
+        scores.append(((leaf_hit + arc_hit) / 2, leaf_hit, arc_hit, Leaf(hinge_at_b=False, side=side, kind="double")))
+    return scores
+
+
+def _track_leaf(page: PageRaster, gap: _Gap, box: tuple[int, int, int, int]) -> Leaf | None:
+    """Ray cửa lùa (K-13a): trong bề dày tường có một hàng mực song song tường phủ nửa khe phía `a` (≥
+    `MIN_TRACK_HIT`, nửa kia ≤ `MAX_TRACK_OTHER`) và một hàng phủ nửa phía `b` — hai tấm lùa so le, không cung.
+
+    Mực chỉ nới 1 px để hai nét kề nhau không nhoè thành một; hàng cách nhau 1 px; mẫu dọc khe bỏ 5 % hai đầu.
+    """
+    ink = _ink(page, box, 1)
+    if ink.mean() > MAX_TRACK_BUSY:
         return None
+    lo = np.linspace(0.05, 0.45, 16) * gap.width
+    hi = np.linspace(0.55, 0.95, 16) * gap.width
+    leans: set[int] = set()
+    for across in np.arange(-math.floor(gap.half), math.floor(gap.half) + 1, dtype=float):
+        cover_a = _hit(ink, gap.origin, np.array([gap.at(t, across) for t in lo]))
+        cover_b = _hit(ink, gap.origin, np.array([gap.at(t, across) for t in hi]))
+        if cover_a >= MIN_TRACK_HIT and cover_b <= MAX_TRACK_OTHER:
+            leans.add(-1)
+        elif cover_b >= MIN_TRACK_HIT and cover_a <= MAX_TRACK_OTHER:
+            leans.add(1)
+    return Leaf(hinge_at_b=False, side=0, kind="sliding") if leans == {-1, 1} else None
+
+
+def _frame(page: PageRaster, a: Vec, b: Vec, half_thickness: float) -> tuple[_Gap, tuple[int, int, int, int]] | None:
+    """Khung đọc khe `a → b` + hộp px `(x0, y0, x1, y1)` cắt theo trang; `None` khi khe quá hẹp hay ra ngoài trang."""
     ax, ay = a
     bx, by = b
     width = math.hypot(bx - ax, by - ay)
     if width < MIN_WIDTH_PX:
         return None
     ux, uy = (bx - ax) / width, (by - ay) / width
-    nx, ny = -uy, ux
     reach = width + half_thickness + 4
     height, cols = page.gray.shape
     x0 = max(0, math.floor(min(ax, bx) - reach))
@@ -96,31 +202,40 @@ def read_leaf(page: PageRaster, a: Vec, b: Vec, half_thickness: float) -> Leaf |
     y1 = min(height, math.ceil(max(ay, by) + reach) + 1)
     if x1 <= x0 or y1 <= y0:
         return None
-    ink = _ink(page, x0, y0, x1, y1, max(2, round(0.05 * width)))
-    depths = np.linspace(_LEAF_FROM, 1.0, 24) * width
-    angles = np.radians(np.linspace(8.0, 82.0, 32))
-    scores: list[tuple[float, float, float, bool, int]] = []
-    for hinge_at_b in (False, True):
-        hx, hy = (bx, by) if hinge_at_b else (ax, ay)
-        # Từ bản lề nhìn về mép kia của khe.
-        tx, ty = (-ux, -uy) if hinge_at_b else (ux, uy)
-        for side in (1, -1):
-            px, py = hx + side * nx * half_thickness, hy + side * ny * half_thickness
-            sx, sy = side * nx, side * ny
-            leaf = np.column_stack((px + sx * depths, py + sy * depths))
-            arc = np.column_stack(
-                (
-                    px + width * (tx * np.cos(angles) + sx * np.sin(angles)),
-                    py + width * (ty * np.cos(angles) + sy * np.sin(angles)),
-                )
-            )
-            leaf_hit, arc_hit = _hit(ink, (x0, y0), leaf), _hit(ink, (x0, y0), arc)
-            scores.append(((leaf_hit + arc_hit) / 2, leaf_hit, arc_hit, hinge_at_b, side))
-    scores.sort(reverse=True)
-    best, runner = scores[0], scores[1]
-    if best[1] < MIN_LEAF_HIT or best[2] < MIN_ARC_HIT or best[0] - runner[0] < MIN_MARGIN:
+    return _Gap((x0, y0), a, width, (ux, uy), (-uy, ux), half_thickness), (x0, y0, x1, y1)
+
+
+def _passes(score: _Score) -> bool:
+    """Đủ ngưỡng thắng: cánh ≥ `MIN_LEAF_HIT`, cung ≥ `MIN_ARC_HIT`; giả thuyết hai cánh cả hai ≥ `MIN_DOUBLE_HIT`."""
+    if score[3].kind == "double":
+        return score[1] >= MIN_DOUBLE_HIT and score[2] >= MIN_DOUBLE_HIT
+    return score[1] >= MIN_LEAF_HIT and score[2] >= MIN_ARC_HIT
+
+
+def read_leaf(page: PageRaster, a: Vec, b: Vec, half_thickness: float) -> Leaf | None:
+    """Đọc kiểu + bản lề + phía cánh của cửa đi có khe `a → b` (px, trên tim tường), tường dày `2·half_thickness` px.
+
+    Giả thuyết một cánh: bản lề `h` (đầu `a` hay `b`) dời ra mặt tường `h + s·n·t`, cánh là đoạn vuông tường dài `w`
+    (bỏ 15 % sát tường), cung tâm bản lề bán kính `w` từ mép kia tới đầu cánh (mẫu ở 8°-82°). Khi
+    `DOOR_KIND_HYPOTHESES`: thêm hai giả thuyết hai cánh (chỉ dự thi khi tự đủ `MIN_DOUBLE_HIT`), và khi không giả
+    thuyết cánh nào thắng thì thử ray cửa lùa. Thắng = đủ `MIN_*` và hơn nhì `MIN_MARGIN`. `None` khi khe quá hẹp,
+    trang lệch khổ mặt nạ, hay không đọc được gì (nơi gọi lùi về luật bề rộng). Chỉ gọi cho ô mở `kind == "door"`.
+    """
+    if page.gray.shape != page.walls.shape:
         return None
-    return Leaf(hinge_at_b=best[3], side=best[4])
+    framed = _frame(page, a, b, half_thickness)
+    if framed is None:
+        return None
+    gap, box = framed
+    ink = _ink(page, box, max(2, round(0.05 * gap.width)))
+    scores = _single_scores(ink, gap)
+    if DOOR_KIND_HYPOTHESES:
+        scores += [score for score in _double_scores(ink, gap) if _passes(score)]
+    scores.sort(key=lambda score: (*score[:3], score[3].hinge_at_b, score[3].side), reverse=True)
+    best, runner = scores[0], scores[1]
+    if _passes(best) and best[0] - runner[0] >= MIN_MARGIN:
+        return best[3]
+    return _track_leaf(page, gap, box) if DOOR_KIND_HYPOTHESES else None
 
 
 def _inside(p: Vec, outline: Sequence[Point]) -> bool:

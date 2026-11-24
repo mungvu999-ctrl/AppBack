@@ -5,10 +5,23 @@
 `packages.genai` (agent G) mới dùng nội dung.
 """
 
+import logging
 from functools import cache
+from typing import Final
 
 from pydantic import PositiveInt, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_log: Final = logging.getLogger(__name__)
+
+
+@cache
+def _warn_disclosure_missing() -> None:
+    """Một dòng log cho mỗi tiến trình: công tắc bật + có khoá nhưng chưa xác nhận đã thông báo (L6-N01)."""
+    _log.warning(
+        "design_director_disclosure_missing: DESIGN_DIRECTOR_ENABLED=true nhung chua dat "
+        "DESIGN_DIRECTOR_DISCLOSURE_ACK=true; anh ban ve se gui toi Google Vertex AI nen tinh nang van tat"
+    )
 
 
 class DesignDirectorSettings(BaseSettings):
@@ -17,6 +30,7 @@ class DesignDirectorSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore", env_file=None)
 
     design_director_enabled: bool = False
+    design_director_disclosure_ack: bool = False
     design_director_daily_quota: PositiveInt = 30
     design_director_vertex_sa_json: SecretStr | None = None
     design_director_resend_after_s: PositiveInt = 600
@@ -25,9 +39,17 @@ class DesignDirectorSettings(BaseSettings):
 
     @property
     def available(self) -> bool:
-        """Bật công tắc **và** có khoá service account — thiếu một trong hai thì coi như tắt."""
+        """Bật công tắc, có khoá service account **và** đã xác nhận thông báo người dùng (L6-N01).
+
+        Ảnh trang bản vẽ được gửi tới Google Vertex AI (Gemini); `DESIGN_DIRECTOR_DISCLOSURE_ACK=true`
+        nghĩa là người vận hành đã báo người dùng. Thiếu một trong ba thì coi như tắt.
+        """
         key = self.design_director_vertex_sa_json
-        return self.design_director_enabled and key is not None and bool(key.get_secret_value().strip())
+        configured = self.design_director_enabled and key is not None and bool(key.get_secret_value().strip())
+        if configured and not self.design_director_disclosure_ack:
+            _warn_disclosure_missing()
+            return False
+        return configured
 
 
 @cache

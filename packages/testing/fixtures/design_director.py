@@ -13,8 +13,11 @@ TEST_QUOTA: Final = 3
 
 @pytest.fixture
 def design_director_on(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """`DESIGN_DIRECTOR_ENABLED=true`, khoá service account giả (không gọi mạng), hạn mức `TEST_QUOTA`."""
+    """`DESIGN_DIRECTOR_ENABLED=true` + `DISCLOSURE_ACK=true` (L6-N01), khoá service account giả, hạn mức `TEST_QUOTA`.
+
+    Không gọi mạng."""
     monkeypatch.setenv("DESIGN_DIRECTOR_ENABLED", "true")
+    monkeypatch.setenv("DESIGN_DIRECTOR_DISCLOSURE_ACK", "true")
     monkeypatch.setenv("DESIGN_DIRECTOR_VERTEX_SA_JSON", '{"type": "service_account"}')
     monkeypatch.setenv("DESIGN_DIRECTOR_DAILY_QUOTA", str(TEST_QUOTA))
     reset_design_director_settings_cache()

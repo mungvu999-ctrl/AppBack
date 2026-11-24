@@ -160,6 +160,7 @@ Commit đã soát `2a63cfc5420f`. Dẫn chiếu `tệp:dòng` trỏ lại theo m
 | URL ký và `/api/files` | D | Liên tục thử token rác | cùng 404, không chạm đĩa với token hỏng (`verify_token` trước `stat`) — không có hạn mức riêng | không hạn mức IP cho `/api/files` (chi phí HMAC thấp) · B0-06 |
 | URL ký và `/api/files` | E | Đọc object ngoài khoá được ký | khoá nằm trong MAC; `..` bị chặn; `inline` chỉ ảnh đã sniff (`apps/api/files/router.py:51-53`) | — |
 | liên kết chia sẻ `/share/{token}` | I | Token chia sẻ (quyền đọc mặt bằng + địa chỉ) lộ qua log nginx | nginx `access_log off` + `error_log … crit` cho `/api/share/` và `/share/`, map `$appback_access_log` bỏ `/share/` ở lớp tiền-location (K-41); uvicorn `--no-access-log`; `Referrer-Policy: same-origin` | log nginx không còn token chia sẻ (test `…__k41`); hạn dùng mặc định thuộc L6-N05 · K-41 |
+| AI chọn phong cách (`design_director`) → Google Vertex AI | I | Ảnh trang bản vẽ (có thể có họ tên/địa chỉ ở khung tên) rời hệ thống sang `aiplatform.googleapis.com` mà người dùng không được báo | mặc định tắt (`DESIGN_DIRECTOR_ENABLED=false`), cần khoá service account **và** `DESIGN_DIRECTOR_DISCLOSURE_ACK=true` (người vận hành xác nhận đã thông báo), thiếu thì `available=False` + log `design_director_disclosure_missing` (L6-N01 A); route bật lượt cần `project.settings.edit` | chưa có thông báo/đồng ý theo dự án trong giao diện, chưa có chính sách quyền riêng tư; điều khoản dữ liệu Vertex AI chủ dự án cần đọc · L6-N01 (phương án B, F2) |
 
 ### /api/telemetry công khai
 

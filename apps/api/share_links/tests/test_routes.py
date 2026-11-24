@@ -376,7 +376,7 @@ async def test_share_links_open_hides_building_address__L6N06(
     link = await _create_link(api_client, project, admin, label="khách")
     response = await api_client.get(f"/api/share/{link['url'].rsplit('/', 1)[1]}")
     assert response.status_code == 200, response.text
-    building = response.json()["graph"]["building"]
+    building = response.json()["graph"]["graph"]["building"]
     assert "address" not in building
     assert "12 Đường Mẫu" not in response.text
     assert building["name"] == project.name

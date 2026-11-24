@@ -159,6 +159,7 @@ Commit đã soát `2a63cfc5420f`. Dẫn chiếu `tệp:dòng` trỏ lại theo m
 | URL ký và `/api/files` | I | Token lộ qua log/metric/referrer | log chỉ `routeTemplate` (C-07); nhãn metric là mẫu đường (C-45); `Referrer-Policy: same-origin`; nginx `access_log off` (C-08) | log nginx/uvicorn sống: token không vào log (C-08, W10/L-01) · B0-08 |
 | URL ký và `/api/files` | D | Liên tục thử token rác | cùng 404, không chạm đĩa với token hỏng (`verify_token` trước `stat`) — không có hạn mức riêng | không hạn mức IP cho `/api/files` (chi phí HMAC thấp) · B0-06 |
 | URL ký và `/api/files` | E | Đọc object ngoài khoá được ký | khoá nằm trong MAC; `..` bị chặn; `inline` chỉ ảnh đã sniff (`apps/api/files/router.py:51-53`) | — |
+| liên kết chia sẻ `/share/{token}` | I | Token chia sẻ (quyền đọc mặt bằng + địa chỉ) lộ qua log nginx | nginx `access_log off` + `error_log … crit` cho `/api/share/` và `/share/`, map `$appback_access_log` bỏ `/share/` ở lớp tiền-location (K-41); uvicorn `--no-access-log`; `Referrer-Policy: same-origin` | log nginx không còn token chia sẻ (test `…__k41`); hạn dùng mặc định thuộc L6-N05 · K-41 |
 
 ### /api/telemetry công khai
 

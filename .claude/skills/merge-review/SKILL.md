@@ -49,19 +49,18 @@ Nhánh > 400 dòng logic → ghi `P2 MNT-05` và nói rõ nếu đáng tách.
 
 ### 3. Bằng chứng cổng
 
-Yêu cầu **mã thoát thật**. Trước khi chạy, **đánh giá phạm vi kiểm** theo `docs/RULE-CODE.md` R-33b và ghi
-`Phạm vi kiểm: đầy đủ | đích — <lý do>` vào phán quyết:
+Yêu cầu **mã thoát thật**, lấy từ CI của PR — **không chạy `run.sh verify` đầy đủ trên máy** (`docs/RULE-CODE.md` R-33b,
+chủ dự án quyết 2026-11-25). Ghi `Phạm vi kiểm: fast + CI — <đường dẫn lượt CI>` vào phán quyết:
 ```
-bash tools/verify/run.sh verify        # đầy đủ: ~25 phút > trần 10 phút của lệnh Bash → chạy nền + log, đọc mã thoát từ log
-bash tools/verify/run.sh verify --steps 1,2,3,4   # đích: + pytest/coverage của file đổi qua run.sh shell
+gh pr checks <số PR>                      # mọi job của workflow CI phải xanh trên đúng SHA đầu nhánh
+bash tools/verify/run.sh verify --fast    # trên máy: chỉ test bị ảnh hưởng bởi diff
 ```
-- Review lượt 1 của một nhánh: **đầy đủ** (R-33b điều kiện 1). Lượt ≥ 2 chỉ soát diff vòng sửa: đích, trừ khi diff đó
-  chạm một điều kiện (2)–(7) của R-33b. Tác giả chọn "đích" mà diff chạm điều kiện "đầy đủ" → tự chạy đầy đủ, ghi finding.
-- Thoát khác 0 → `REQUEST CHANGES`, trích bước hỏng.
+- Nhánh chưa có PR, hay CI chưa chạy xong trên SHA đầu nhánh → chưa đủ bằng chứng, không `APPROVE`.
+- Job CI đỏ, hay `--fast` thoát khác 0 → `REQUEST CHANGES`, trích job/bước hỏng.
 - Bước ghi "không áp dụng" phải đúng luật BE-00 §12 (prompt chủ chưa hợp nhất), nếu
   không thì là "hỏng".
-- Độ phủ mỗi gói bị chạm và tổng đều ≥ 90% dòng **và** ≥ 90% nhánh (lượt đầy đủ). Lượt đích: mỗi file đổi ≥ 90/90,
-  tổng ghi `không đo (phạm vi đích)` — không chép số của lượt trước (K25).
+- Độ phủ mỗi gói bị chạm và tổng đều ≥ 90% dòng **và** ≥ 90% nhánh: đọc từ job pytest/coverage của CI, không chép số
+  của SHA khác (K25).
 
 ### 4. Review theo miền
 

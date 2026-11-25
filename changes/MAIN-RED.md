@@ -14,6 +14,8 @@ chat: "oke làm đi, đơn giản mà thực dụng là tốt nhất" — vì v�
 - Cổng nhanh: bước 7 không còn chạy khi chỉ `cases.toml` đổi (cổng đầy đủ vẫn chạy).
 - Dọn tên cũ: chú thích, docstring và thông điệp cổng thôi gọi `BE-BIND`, `CASE.md`, `CASE §…` (118 tệp, chỉ đổi chữ); hai
   docstring trong đó là mô tả API nên `docs/contracts/openapi.json` sinh lại bằng `run.sh openapi` (khác đúng hai dòng `description`).
+- Luật chạy cổng (chủ dự án, 25/11/2026: "đổi luật đi chỉ chạy test cho những phần mà cập nhập thôi ko p chạy full luồng cho mất time"):
+  R-33/R-33b, `CLAUDE.md`, skill `merge-review` §3 — trên máy chỉ `verify --fast`, cổng đầy đủ là CI của PR.
 
 ## Nợ và việc chưa làm
 - NO-569: `CLAUDE.md` mục đọc trước 1–3 và skill `merge-review` còn trỏ `docs/charter/BE-00.md`, `BE-KFM.md`, `ENV.md`, `docs/RULE.md`

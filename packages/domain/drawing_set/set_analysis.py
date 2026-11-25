@@ -216,18 +216,28 @@ def _with_storey(guess: ViewGuess, floor: FloorProposal) -> ViewGuess:
     )
 
 
-def guess_views(pages: Sequence[PageReading]) -> list[ViewGuess]:
-    """Đề xuất cho mọi hình của bộ (theo thứ tự trang rồi khung); tầng giải chung một lần cho cả bộ.
+def solve_set(pages: Sequence[PageReading]) -> tuple[list[ViewGuess], dict[int, FloorProposal]]:
+    """`guess_views` kèm đề xuất cả nhà của từng mặt bằng (khoá = chỉ số hình trong danh sách đề xuất).
 
-    Không ném lỗi với đầu vào hợp lệ (trang rỗng, không chữ, không khung). Khổ trang phải dương.
+    Cốt và chiều cao `solve_house` tính ra không lên `ViewGuess` (màn duyệt chưa hỏi chúng), nên thước bộ hồ sơ
+    (`tools/bench/muc3/predict.py`, NHA-00) không đo được nếu chỉ có `guess_views`. Bộ không có mặt bằng → `{}`.
     """
     views = [view for index, page in enumerate(pages) for view in _views(index, page)]
     blocks = [_block(read_title_block(page.texts)) if page.read else {} for page in pages]
     guesses = [_guess(view, pages[view.page].size, blocks[view.page]) for view in views]
     plans = [(i, view) for i, (view, guess) in enumerate(zip(views, guesses, strict=True)) if guess.kind == "plan"]
     if not plans:
-        return guesses
+        return guesses, {}
     house = solve_house([HouseView(f"v{i}", view.texts, view.size, i) for i, view in plans])
-    for (i, _view), floor in zip(plans, house.floors, strict=True):
+    floors = {i: floor for (i, _view), floor in zip(plans, house.floors, strict=True)}
+    for i, floor in floors.items():
         guesses[i] = _with_storey(guesses[i], floor)
-    return guesses
+    return guesses, floors
+
+
+def guess_views(pages: Sequence[PageReading]) -> list[ViewGuess]:
+    """Đề xuất cho mọi hình của bộ (theo thứ tự trang rồi khung); tầng giải chung một lần cho cả bộ.
+
+    Không ném lỗi với đầu vào hợp lệ (trang rỗng, không chữ, không khung). Khổ trang phải dương.
+    """
+    return solve_set(pages)[0]

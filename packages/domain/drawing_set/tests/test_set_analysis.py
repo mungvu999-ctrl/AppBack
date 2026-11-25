@@ -20,6 +20,7 @@ from packages.domain.drawing_set.set_analysis import (
     ViewGuess,
     assign_texts,
     guess_views,
+    solve_set,
 )
 
 _DATA: Final = Path(__file__).parent / "data" / "page_kind" / "views.json"
@@ -134,6 +135,16 @@ def test_plan_titles_give_storeys() -> None:
     assert all(g.storey_confidence is not None for g in guesses)
     assert guesses[1].title_text == "MẶT BẰNG TẦNG 2"
     assert [g.page for g in guesses] == [0, 1, 2]
+
+
+def test_solve_set_returns_house_floors_of_plans_only() -> None:
+    """`solve_set` trả đúng đề xuất của `guess_views`, kèm đề xuất cả nhà chỉ cho hình máy xếp mặt bằng."""
+    pages = [plan_page("MẶT BẰNG TẦNG 1"), PageReading((800, 600)), plan_page("MẶT BẰNG TẦNG 2")]
+    guesses, floors = solve_set(pages)
+    assert guesses == guess_views(pages)
+    assert sorted(floors) == [0, 2]
+    assert [floors[i].storey_no for i in (0, 2)] == [1, 2]
+    assert solve_set([PageReading((800, 600))])[1] == {}
 
 
 def test_plan_without_storey_in_title_is_asked() -> None:

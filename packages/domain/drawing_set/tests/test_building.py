@@ -261,9 +261,9 @@ _TWO = ("±0.000", "+3.300")  # hai tầng; không mặt cắt nên chiều cao 
 
 def _roofed(*marks: str, sections: tuple[SectionView, ...] = (), **kwargs: Source) -> BuildingProposal:
     """Nhà hai tầng kèm một hình mặt bằng mái `r0` mang các dòng chữ `marks`; `kwargs` là lựa chọn của người duyệt."""
-    views = [*_stack(*_TWO), _view("r0", _ROOF_PLAN, *marks, position=2)]
+    roofs = [_view("r0", _ROOF_PLAN, *marks)]
     picks = {key.replace("_", ":"): source for key, source in kwargs.items()}
-    return propose_building(views, sections, order_known=True, picks=picks)
+    return propose_building(_stack(*_TWO), sections, roofs=roofs, order_known=True, picks=picks)
 
 
 def _measured(item: Measured | None) -> tuple[float | str, str, float, tuple[str, ...]]:
@@ -324,7 +324,8 @@ def test_tum_gets_its_own_roof_and_a_slab_over_the_storey_below() -> None:
 def test_sloped_evidence_with_a_tum_builds_no_roof() -> None:
     """Có tum mà hình mái ghi độ dốc: mái dốc sẽ xuyên qua tum, nên không đề xuất mái nào, chỉ hỏi."""
     tum = _view("t0", "MẶT BẰNG TUM", "+6.600", position=2)
-    proposal = propose_building([*_stack(*_TWO), tum, _view("r0", _ROOF_PLAN, "30°", position=3)], order_known=True)
+    roof_plan = [_view("r0", _ROOF_PLAN, "30°")]
+    proposal = propose_building([*_stack(*_TWO), tum], roofs=roof_plan, order_known=True)
     assert proposal.roofs == ()
     assert hits(proposal, "M-06") == [(("t0", "f1"), ("tum", "sloped"))]  # không có hình mái thì đây là dấu duy nhất
     assert hits(proposal, "M-18") == [(("r0",), ("none",))]
@@ -333,7 +334,8 @@ def test_sloped_evidence_with_a_tum_builds_no_roof() -> None:
 def test_attic_keeps_the_sloped_roof_the_drawings_show() -> None:
     """Áp mái nằm dưới mái dốc: chữ ghi độ dốc thì áp mái nhận mái dốc đó, không có tấm phủ tầng dưới; vẫn hỏi M-06."""
     attic = _view("a0", "MẶT BẰNG ÁP MÁI", "+6.600", position=2)
-    proposal = propose_building([*_stack(*_TWO), attic, _view("r0", _ROOF_PLAN, "30°", position=3)], order_known=True)
+    roof_plan = [_view("r0", _ROOF_PLAN, "30°")]
+    proposal = propose_building([*_stack(*_TWO), attic], roofs=roof_plan, order_known=True)
     assert [floor.storey_label for floor in proposal.floors[:3]] == ["ground", "floor", "attic"]
     assert [(roof.level_ref, roof.form.value, roof.pitch_deg.value) for roof in proposal.roofs] == [
         ("a0", "gable", 30.0)
@@ -441,7 +443,7 @@ def test_imperial_set_defaults_to_a_gable() -> None:
 
 def test_roof_plan_without_any_storey_is_reported() -> None:
     """Chỉ có hình mái, không mặt bằng nào: không có mái để đề xuất, M-18 báo hình mái bị bỏ."""
-    proposal = propose_building([_view("r0", _ROOF_PLAN, "30°")])
+    proposal = propose_building([], roofs=[_view("r0", _ROOF_PLAN, "30°")])
     assert (proposal.roofs, hits(proposal, "M-18")) == ((), [(("r0",), ("none",))])
 
 
@@ -476,3 +478,10 @@ def test_slab_under_a_tum_uses_the_lower_storeys_own_wall_top() -> None:
     by_ref = {roof.level_ref: roof for roof in proposal.roofs}
     assert sorted(by_ref) == ["f1", "t0"]
     assert _measured(by_ref["f1"].eave_elevation_mm)[0] == 6600
+
+
+def test_only_views_passed_as_roofs_are_roof_text_sources() -> None:
+    """Loại hình do người duyệt chốt: hình mái lẫn trong `views` không được đọc làm nguồn mái, cũng không gây M-18."""
+    proposal = propose_building([*_stack(*_TWO), _view("r0", _ROOF_PLAN, "30°", position=2)], order_known=True)
+    (roof,) = proposal.roofs
+    assert (_measured(roof.form), hits(proposal, "M-18")) == (("flat", "default", 0.3, ()), [])

@@ -68,3 +68,9 @@ lock = "thành viên"
 op = "drawing_sets_replace_views"
 type = "GV"
 lock = "floor.upload"
+
+# Đề xuất ngôi nhà của một bộ (NHA-06a). Chỉ đọc, Loại Đ; công tắc tắt (200 `enabled: false`) có test `__disabled`.
+[[endpoint]]
+op = "drawing_sets_read_building"
+type = "Đ"
+lock = "thành viên"

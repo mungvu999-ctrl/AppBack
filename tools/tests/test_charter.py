@@ -27,10 +27,10 @@ def _repo(tmp_path: Path, paths: dict[str, dict[str, dict[str, str]]], **cases: 
     return tmp_path
 
 
-def test_repo_thật_đọc_đủ_111_dòng() -> None:
-    """Dữ liệu thật: 111 thao tác hợp đồng, một dòng mẫu đủ mọi trường."""
+def test_repo_thật_đọc_đủ_112_dòng() -> None:
+    """Dữ liệu thật: 112 thao tác hợp đồng, một dòng mẫu đủ mọi trường."""
     rows = {row.operation_id: row for row in load_bind_rows(REPO_ROOT)}
-    assert len(rows) == 111
+    assert len(rows) == 112
     assert rows["projects_create_project"] == BindRow(
         method="POST",
         path="/api/projects",

@@ -17,7 +17,8 @@ from apps.api.core.deps import ClockDep, CurrentPrincipal, DbSession, Storage
 from apps.api.core.pagination import CursorPage
 from apps.api.core.ratelimit import key_user, rate_limit
 from apps.api.core.routing import protected_router, route_options
-from apps.api.drawing_sets import confirm, set_delete, set_read, set_review, set_upload
+from apps.api.drawing_sets import building_read, confirm, set_delete, set_read, set_review, set_upload
+from apps.api.drawing_sets.building_schemas import BUILDING_DISABLED, SetBuildingOut, set_building_out
 from apps.api.drawing_sets.errors import DRAWING_SET_DISABLED
 from apps.api.drawing_sets.set_schemas import (
     CompleteSetBody,
@@ -119,6 +120,20 @@ async def drawing_sets_list_sets(
 ) -> CursorPage[DrawingSetSummaryOut]:
     """N58 — bộ của dự án, mới trước, trần một trang theo cấu hình (W22)."""
     return await set_read.list_sets(db, project_id=project_id, cursor=cursor)
+
+
+@router.get(f"{_BASE}/{{set_id}}/building", dependencies=[_member_gate])
+async def drawing_sets_read_building(
+    project_id: str, set_id: str, db: DbSession, storage: Storage, settings: Settings
+) -> SetBuildingOut:
+    """NHA-06a — đề xuất ngôi nhà của bộ (tầng, mái, mâu thuẫn, vi phạm) tính ngay lúc đọc, không ghi gì.
+
+    Công tắc tắt → 200 `{"enabled": false}` (mẫu N52: "tắt" là trạng thái thường, service không được gọi). Tách khỏi
+    N57 vì N57 được thăm dò mỗi 2 s, còn route này đọc lại kết quả của mọi trang từ kho.
+    """
+    if not settings.drawing_set_enabled:
+        return BUILDING_DISABLED
+    return set_building_out(await building_read.read_building(db, storage, project_id=project_id, set_id=set_id))
 
 
 @router.put(f"{_BASE}/{{set_id}}/views")

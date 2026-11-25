@@ -605,6 +605,65 @@
         "title": "BuildingOut",
         "type": "object"
       },
+      "BuildingProposalOut": {
+        "additionalProperties": false,
+        "description": "Đề xuất của máy cho cả nhà: hệ đơn vị, tầng theo thứ tự hình mặt bằng, mái, mâu thuẫn, vi phạm.",
+        "properties": {
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/ConflictOut"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "floors": {
+            "items": {
+              "$ref": "#/components/schemas/FloorProposalOut"
+            },
+            "title": "Floors",
+            "type": "array"
+          },
+          "roofs": {
+            "items": {
+              "$ref": "#/components/schemas/RoofSpecOut"
+            },
+            "title": "Roofs",
+            "type": "array"
+          },
+          "unitSystem": {
+            "$ref": "#/components/schemas/MeasuredOut"
+          },
+          "violations": {
+            "items": {
+              "$ref": "#/components/schemas/RuleHitOut"
+            },
+            "title": "Violations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "unitSystem",
+          "floors",
+          "roofs",
+          "conflicts",
+          "violations"
+        ],
+        "title": "BuildingProposalOut",
+        "type": "object"
+      },
+      "BuildingSource": {
+        "enum": [
+          "reviewer",
+          "plan+section",
+          "roofPlan",
+          "section",
+          "elevation",
+          "plan",
+          "convention",
+          "default"
+        ],
+        "type": "string"
+      },
       "CancelTrainingJobIn": {
         "additionalProperties": false,
         "description": "Thân N35 là `{}`; khoá lạ → 422 `VALIDATION` (C03), không bị bỏ qua.",
@@ -702,6 +761,50 @@
           "revision"
         ],
         "title": "ConfirmSetBody",
+        "type": "object"
+      },
+      "ConflictField": {
+        "enum": [
+          "elevationMm",
+          "pitchDeg"
+        ],
+        "type": "string"
+      },
+      "ConflictOut": {
+        "additionalProperties": false,
+        "description": "Hai nguồn của một trường lệch quá dung sai; `chosenSource` vắng = người duyệt chưa chọn.",
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/MeasuredOut"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "chosenSource": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BuildingSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "field": {
+            "$ref": "#/components/schemas/ConflictField"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "field",
+          "candidates"
+        ],
+        "title": "ConflictOut",
         "type": "object"
       },
       "CornerIn": {
@@ -4729,6 +4832,48 @@
         "title": "MeSchema",
         "type": "object"
       },
+      "MeasuredOut": {
+        "additionalProperties": false,
+        "description": "Một giá trị kèm độ tin, nguồn và các hình nó được đọc ra. Số mm là số nguyên; số thực chỉ dùng cho độ dốc.",
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "source": {
+            "$ref": "#/components/schemas/BuildingSource"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Value"
+          },
+          "viewIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Viewids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "value",
+          "confidence",
+          "source",
+          "viewIds"
+        ],
+        "title": "MeasuredOut",
+        "type": "object"
+      },
       "MeasurementMode": {
         "enum": [
           "pointToPoint",
@@ -7039,6 +7184,77 @@
         "title": "RoofOut",
         "type": "object"
       },
+      "RoofSpecOut": {
+        "additionalProperties": false,
+        "description": "Mái đề xuất cho tầng có hình đại diện `levelRef`; cốt diềm vắng khi tầng chưa có cốt.",
+        "properties": {
+          "eaveElevationMm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MeasuredOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "form": {
+            "$ref": "#/components/schemas/MeasuredOut"
+          },
+          "levelRef": {
+            "title": "Levelref",
+            "type": "string"
+          },
+          "material": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MeasuredOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "overhangMm": {
+            "$ref": "#/components/schemas/MeasuredOut"
+          },
+          "parapetMm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MeasuredOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pitchDeg": {
+            "$ref": "#/components/schemas/MeasuredOut"
+          },
+          "quarterTurns": {
+            "$ref": "#/components/schemas/MeasuredOut"
+          },
+          "ridgeElevationMm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MeasuredOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "levelRef",
+          "form",
+          "pitchDeg",
+          "quarterTurns",
+          "overhangMm"
+        ],
+        "title": "RoofSpecOut",
+        "type": "object"
+      },
       "Room": {
         "additionalProperties": false,
         "description": "Phòng khép kín; điểm đầu không lặp ở cuối nên ít nhất ba điểm.",
@@ -7586,6 +7802,59 @@
         "title": "RuleConfigWriteIn",
         "type": "object"
       },
+      "RuleHitOut": {
+        "additionalProperties": false,
+        "description": "Một vi phạm luật ghép: mã (`T-01`…, `M-02`…), mức, các hình liên quan và số liệu để FE viết câu.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "floorRefs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Floorrefs",
+            "type": "array"
+          },
+          "level": {
+            "$ref": "#/components/schemas/RuleLevel"
+          },
+          "values": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "level",
+          "floorRefs",
+          "values"
+        ],
+        "title": "RuleHitOut",
+        "type": "object"
+      },
+      "RuleLevel": {
+        "enum": [
+          "error",
+          "warning",
+          "hint"
+        ],
+        "type": "string"
+      },
       "RuleSeverityName": {
         "enum": [
           "critical",
@@ -7789,6 +8058,31 @@
           "body"
         ],
         "title": "SetActiveModelVersionIn",
+        "type": "object"
+      },
+      "SetBuildingOut": {
+        "additionalProperties": false,
+        "description": "`GET …/drawing-sets/{setId}/building`: công tắc và đề xuất.\n\n`proposal` vắng khi công tắc tắt (`enabled: false`, mẫu N52) hoặc bộ chưa qua phân tích.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "proposal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BuildingProposalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "SetBuildingOut",
         "type": "object"
       },
       "SetChunkBody": {
@@ -11922,6 +12216,58 @@
           }
         },
         "summary": "Drawing Sets Read Set",
+        "tags": [
+          "drawing_sets"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/drawing-sets/{set_id}/building": {
+      "get": {
+        "description": "NHA-06a — đề xuất ngôi nhà của bộ (tầng, mái, mâu thuẫn, vi phạm) tính ngay lúc đọc, không ghi gì.\n\nCông tắc tắt → 200 `{\"enabled\": false}` (mẫu N52: \"tắt\" là trạng thái thường, service không được gọi). Tách khỏi\nN57 vì N57 được thăm dò mỗi 2 s, còn route này đọc lại kết quả của mọi trang từ kho.",
+        "operationId": "drawing_sets_read_building_api_projects__project_id__drawing_sets__set_id__building_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "title": "Set Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetBuildingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawing Sets Read Building",
         "tags": [
           "drawing_sets"
         ]

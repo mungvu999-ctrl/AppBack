@@ -152,6 +152,8 @@ export const SCHEMA_MAP: Readonly<Record<string, SchemaMapEntry>> = {
   design_director_select_concept: object('@/api/schemas/designConcept', 'DesignConceptSchema'), // N48 (AID-01)
   // N52 (HS-03). Schema FE cố ý không `.strict()` (bảng phụ): giải bằng bản strict riêng của harness (L4-N07, W16).
   drawing_sets_read_house_proposal: object('./strict/houseProposal', 'HouseProposalStrictSchema'),
+  // NHA-06a: FE chưa có schema cho route này (NHA-06c), nên giải bằng bản strict của harness.
+  drawing_sets_read_building: object('./strict/houseProposal', 'SetBuildingStrictSchema'),
   projects_cancel_create_project: object(INDEX, 'ProjectSchema'), // N40
   // N54–N61 (K-32a): schema FE strict (L4-N07), giải thẳng bằng schema của FE.
   drawing_sets_create_set: object(DRAWING_SET, 'DrawingSetSchema'), // N54 (201)

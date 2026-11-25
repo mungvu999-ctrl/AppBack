@@ -146,6 +146,13 @@ def assign_texts(boxes: Sequence[Box], texts: Sequence[Text]) -> list[tuple[Text
     return [tuple(items) for items in out]
 
 
+def is_ladder_section(kind: str, confidence: float, texts: Sequence[Text], size: tuple[int, int]) -> bool:
+    """Hình này có là nguồn cốt thứ hai của cả bộ không: mặt cắt chắc loại và đọc được đủ số cốt (NHA-04)."""
+    if kind not in _SIDE_KINDS or confidence < NOT_PLAN_SURE:
+        return False
+    return len(side_levels(texts, size)) >= _SIDE_MIN_LEVELS
+
+
 def _area_ratio(box: Box, size: tuple[int, int]) -> float:
     """Diện tích khung (phần nằm trong trang) theo diện tích trang."""
     width = min(box[2], size[0]) - max(box[0], 0.0)
@@ -244,9 +251,7 @@ def solve_set(pages: Sequence[PageReading]) -> tuple[list[ViewGuess], dict[int, 
     sides = [
         SectionView(view.texts, view.size)
         for view, guess in zip(views, guesses, strict=True)
-        if guess.kind in _SIDE_KINDS
-        and guess.kind_confidence >= NOT_PLAN_SURE
-        and len(side_levels(view.texts, view.size)) >= _SIDE_MIN_LEVELS
+        if is_ladder_section(guess.kind, guess.kind_confidence, view.texts, view.size)
     ]
     house = solve_house([HouseView(f"v{i}", view.texts, view.size, i) for i, view in plans], sections=sides)
     floors = {i: floor for (i, _view), floor in zip(plans, house.floors, strict=True)}

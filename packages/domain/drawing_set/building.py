@@ -375,15 +375,16 @@ def propose_building(
     views: Sequence[HouseView],
     sections: Sequence[SectionView] = (),
     *,
+    roofs: Sequence[HouseView] = (),
     order_known: bool = False,
     picks: Mapping[str, Source] | None = None,
 ) -> BuildingProposal:
-    """Đề xuất cho cả nhà từ các hình mặt bằng và mặt cắt người duyệt đã chốt loại.
+    """Đề xuất cho cả nhà từ các hình mặt bằng (`views`), mặt cắt và mặt bằng mái (`roofs`) người duyệt đã chốt loại.
 
     `order_known` như `solve_house`. `picks`: khoá mâu thuẫn (`elevationMm:<hình>`, `pitchDeg:<hình>`) → nguồn người
     duyệt đã chọn. `floors` luôn là giá trị máy đề xuất; giá trị sau lựa chọn lấy bằng `effective(conflict)`, và luật
-    T-01 kiểm trên giá trị đó (chọn cốt khác thì chiều cao tầng dưới không còn khớp: phải thấy ngay). Hình loại
-    `roof` trong `views` và mọi mặt cắt là nguồn chữ của mái (`_roofs`).
+    T-01 kiểm trên giá trị đó (chọn cốt khác thì chiều cao tầng dưới không còn khớp: phải thấy ngay). Các hình
+    trong `roofs` và mọi mặt cắt là nguồn chữ của mái; hình máy tự xếp là mái trong `views` thì không (NHA-06a).
     Vi phạm kiểm ở đây: T-01, T-02, T-03, T-05 (mâu thuẫn chưa chọn), T-06, T-07 và M-03, M-05, M-06, M-07, M-09,
     M-18, M-19. T-04, M-02 và M-17 cần giá trị người duyệt gán hoặc sửa nên do nơi có dữ liệu đó gọi (NHA-06).
 
@@ -435,13 +436,13 @@ def propose_building(
     for hit in (t02_storey_count(plans, _section_storeys(rungs_mm)), unit_hit):
         if hit is not None:
             hits.append(hit)
-    reading = read_roof({floor.floor_id: texts[floor.floor_id] for floor in floors if floor.kind == "roof"}, sections)
+    reading = read_roof({view.floor_id: view.texts for view in roofs}, sections)
     imperial = unit_system.value == "imperial"
-    roofs, roof_conflicts, roof_hits = _roofs(floors, storeys, reading, imperial=imperial, picked=picked)
+    specs, roof_conflicts, roof_hits = _roofs(floors, storeys, reading, imperial=imperial, picked=picked)
     return BuildingProposal(
         unit_system=unit_system,
         floors=floors,
-        roofs=tuple(roofs),
+        roofs=tuple(specs),
         conflicts=(*conflicts, *roof_conflicts),
         violations=(*hits, *roof_hits),
     )

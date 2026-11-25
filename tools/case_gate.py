@@ -1,4 +1,4 @@
-"""Cổng case — nguồn duy nhất của luật "thao tác Loại nào phải có case nào" (B0-01 [6]H; trước là CASE.md §2.3).
+"""Cổng case — nguồn duy nhất của luật "thao tác Loại nào phải có case nào" (B0-01 [6]H).
 
 Kiến trúc: các hàm tính toán thuần (`evaluate`, `required_cases_for`, …) nhận
 dữ liệu qua tham số, không tự đọc file — để test dựng fixture tạm mà không
@@ -30,7 +30,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # junit bước 5 (addopts) và bước 5b; file nào có thì đọc
 JUNIT_PATHS = (Path("/tmp/junit.xml"), Path("/tmp/junit-perf.xml"))
 # route hạ tầng/tệp nhị phân (= H1_EXEMPT): miễn cảnh báo "đã mount nhưng không có dòng";
-# N44 có dòng BE-BIND nên vẫn đòi case
+# N44 có dòng hợp đồng nên vẫn đòi case
 INFRA_OPS = frozenset({"files_read_object", "health_live", "health_ready", "lighting_bake_download_file"})
 
 # ---------------------------------------------------------------------------
@@ -118,7 +118,7 @@ class OpResult:
 
 @dataclass
 class GateResult:
-    """Kết quả toàn cổng: bảng thao tác, task thiếu, phát hiện hỏng, cảnh báo thao tác chưa có dòng BE-BIND."""
+    """Kết quả toàn cổng: bảng thao tác, task thiếu, phát hiện hỏng, cảnh báo thao tác chưa có dòng hợp đồng."""
 
     op_results: list[OpResult] = field(default_factory=list)
     task_missing: list[str] = field(default_factory=list)
@@ -133,7 +133,7 @@ class GateResult:
 
 
 # ---------------------------------------------------------------------------
-# Tập case bắt buộc — CASE.md §2.1, §2.2, "Case thêm cố định"
+# Tập case bắt buộc: case chung, case theo Loại, case thêm cố định
 # ---------------------------------------------------------------------------
 
 _CASE_CHUNG = {"C04", "C05", "C12", "C13", "C25"}
@@ -156,7 +156,7 @@ _LOAI_CANDIDATES: dict[str, set[str]] = {
     "S": {"S01", "S02", "S03", "S04", "S05", "S07", "S09", "S06", "S08"},
 }
 
-# tên thao tác → case thêm cố định; bảng này là nguồn duy nhất (trước là CASE §2.2 "Case thêm cố định")
+# tên thao tác → case thêm cố định; bảng này là nguồn duy nhất
 _FIXED_EXTRA: dict[str, set[str]] = {
     "floors_create_floor": {"C14"},
     "measurements_create_record": {"C14"},
@@ -180,7 +180,7 @@ def _flag(value: bool | None) -> bool:
 
 
 def _gate(case_id: str, *, row: BindRow, op: Operation, loai: str) -> bool:
-    """Case có chú thích (CASE §2.3 bước 2) có áp cho thao tác này không, tính từ metadata và cột BE-BIND."""
+    """Case có điều kiện có áp cho thao tác này không, tính từ metadata và dòng hợp đồng."""
     if case_id == "C07":
         return row.lock != "—"
     if case_id in ("C15",):
@@ -213,7 +213,7 @@ def _gate(case_id: str, *, row: BindRow, op: Operation, loai: str) -> bool:
 
 
 def required_cases_for(row: BindRow, op: Operation) -> set[str]:
-    """Tập case bắt buộc của một thao tác theo dòng BE-BIND và metadata (CASE §2.1, §2.2, case thêm cố định)."""
+    """Tập case bắt buộc của một thao tác theo dòng hợp đồng và metadata (case chung, theo Loại, thêm cố định)."""
     loai = row.case_type
     candidates = set(_LOAI_CANDIDATES.get(loai, set()))
     required = {c for c in candidates if _gate(c, row=row, op=op, loai=loai)}
@@ -224,7 +224,7 @@ def required_cases_for(row: BindRow, op: Operation) -> set[str]:
         if idempotency_applies:
             required |= {"C10", "C22"}
 
-    # CASE §2.1: route bảo vệ `+ngoài` cần C10 riêng (không lặp thư/thông báo/job/SSE)
+    # route bảo vệ `+ngoài` cần C10 riêng (không lặp thư/thông báo/job/SSE)
     if row.outside and _flag(op.protected):
         required.add("C10")
 
@@ -315,7 +315,7 @@ _FIXED_CODE: dict[str, str] = {
     "C24": "ORIGIN_MISMATCH",
 }
 
-# task (CASE.md §2.3 bản 7): `test_<tên hàm>__<case>`, case J (§4), U của task tiền xử lý (§2.2), M của task ML
+# task: `test_<tên hàm>__<case>`, case J, U của task tiền xử lý, M của task ML
 # (§6); id tham số `[...]` được như op, hậu tố `_<việc>` thì không
 _TEST_TASK_RE = re.compile(r"^test_(?P<fn>.+)__(?P<case>[JUM]\d{2})(?:\[.*\])?$")
 
@@ -353,7 +353,7 @@ def _found_cases_by_op(
 
 
 def _task_found(tests: list[TestResult]) -> dict[str, set[str]]:
-    """Case task (J/U/M) theo tên hàm từ các test đạt tên `test_<hàm>__<case>[<id tham số>]` (CASE.md §2.3 bản 7)."""
+    """Case task (J/U/M) theo tên hàm từ các test đạt tên `test_<hàm>__<case>[<id tham số>]`."""
     found: dict[str, set[str]] = {}
     for t in tests:
         if t.outcome != "passed" or t.is_xfail:
@@ -448,7 +448,7 @@ def evaluate(
     task_names: list[str],
     task_requirements: list[TaskRequirement],
 ) -> GateResult:
-    """Áp CASE §2.3 lên dữ liệu đã nạp: bảng thao tác, miễn hợp lệ, task lạ/trùng/thiếu, mỗi task một dòng."""
+    """Áp luật cổng case lên dữ liệu đã nạp: bảng thao tác, miễn hợp lệ, task lạ/trùng/thiếu, mỗi task một dòng."""
     result = GateResult()
 
     rows_by_op = {r.operation_id: r for r in bind_rows}
@@ -466,7 +466,7 @@ def evaluate(
             # test chung không thoả C10 của route `+ngoài`
             found = specific_by_op.get(op.op, set()) | (common_by_op.get(op.op, set()) - {"C10"})
             if op.idempotency == "off":
-                result.findings.append(f'{op.op}: route bảo vệ +ngoài mà idempotency="off" (CASE §2.1)')
+                result.findings.append(f'{op.op}: route bảo vệ +ngoài mà idempotency="off"')
 
         if row.case_type not in _LOAI_CANDIDATES:
             # gõ sai Loại thì tập case của Loại rỗng và cổng xanh oan

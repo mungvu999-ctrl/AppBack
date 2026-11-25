@@ -12,7 +12,9 @@ chat: "oke làm đi, đơn giản mà thực dụng là tốt nhất" — vì v�
   duy nhất, bỏ test so với `CASE.md`); `type` lạ trong `cases.toml` là hỏng.
 - Cổng hợp đồng: bỏ `CONTRACT_REQUIRE_ALL` và luật "chủ đã hợp nhất"; lượt thật luôn đòi mọi thao tác trong `openapi.json` đã mount.
 - Cổng nhanh: bước 7 không còn chạy khi chỉ `cases.toml` đổi (cổng đầy đủ vẫn chạy).
+- Dọn tên cũ: chú thích, docstring và thông điệp cổng thôi gọi `BE-BIND`, `CASE.md`, `CASE §…` (118 tệp, chỉ đổi chữ); hai
+  docstring trong đó là mô tả API nên `docs/contracts/openapi.json` sinh lại bằng `run.sh openapi` (khác đúng hai dòng `description`).
 
 ## Nợ và việc chưa làm
 - NO-569: `CLAUDE.md` mục đọc trước 1–3 và skill `merge-review` còn trỏ `docs/charter/BE-00.md`, `BE-KFM.md`, `ENV.md`, `docs/RULE.md`
-  (đã xoá, chủ dự án chưa quyết thay bằng gì); chú thích `tools/ci/job.sh:311` và nhiều docstring còn gọi tên `BE-BIND`/`CASE.md`.
+  (đã xoá, chủ dự án chưa quyết thay bằng gì); mã còn trích `BE-00 §…`, `HOP-DONG-MOI §…` và số dòng cũ (`#8`, `N47`) không còn bảng tra.

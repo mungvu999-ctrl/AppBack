@@ -117,7 +117,7 @@ def _single_method(name: str, methods: set[str] | None) -> str:
     """Phương thức duy nhất của route (không tính `HEAD` Starlette tự thêm cho GET).
 
     Một route nhiều phương thức là **một** `operationId` cho nhiều thao tác: không khớp
-    được một dòng BE-BIND nào, và `Operation.method` chỉ báo được một trong số đó — nên
+    được một dòng hợp đồng nào, và `Operation.method` chỉ báo được một trong số đó — nên
     lượt POST của `GET|POST` mất idempotency và cổng case không đòi test cho nó (LOG-02).
     """
     real = sorted((methods or set()) - {"HEAD"})

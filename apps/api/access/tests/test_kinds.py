@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture(scope="module")
 def logged_op_ids() -> set[str]:
-    """operationId của mọi dòng BE-BIND có cột Nhật ký `có`."""
+    """operationId của mọi dòng hợp đồng có `logged = true`."""
     rows: list[BindRow] = load_bind_rows(REPO_ROOT)
     return {row.operation_id for row in rows if row.logged}
 

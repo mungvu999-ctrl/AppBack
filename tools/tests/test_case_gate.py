@@ -1,4 +1,4 @@
-"""tools/case_gate.py — [8]: từng nhánh CASE §2.3 (đầu vào dựng tạm trong test)."""
+"""tools/case_gate.py — [8]: từng nhánh của cổng case (đầu vào dựng tạm trong test)."""
 
 from __future__ import annotations
 
@@ -259,7 +259,7 @@ def test_task_require_thêm_case() -> None:
 
 @pytest.mark.parametrize("case_id", ["U01", "M03"])
 def test_evaluate__task_require_u_m(case_id: str) -> None:
-    """Task khai được case U (tiền xử lý, CASE §2.2) và M (ML, CASE §6), không chỉ J (NO-294, NO-256)."""
+    """Task khai được case U (tiền xử lý) và M (ML), không chỉ J (NO-294, NO-256)."""
     tests = [TestResult(name=f"test_train__{c}", outcome="passed") for c in ("J01", "J06", case_id)]
     result = evaluate([], [], {}, tests, [], ["train"], [TaskRequirement(fn="train", require={case_id})])
     assert not result.task_missing
@@ -420,11 +420,11 @@ def test_marker_khác_không_bị_nhầm_là_gpu(tmp_path: Path) -> None:
     assert check_gpu_markers(tmp_path) == []
 
 
-# --- +ngoài (CASE §2.1) ------------------------------------------------------------
+# --- +ngoài -------------------------------------------------------------------------
 
 
 def _outside_setup() -> tuple[BindRow, Operation]:
-    """Dòng BE-BIND `+ngoài` và thao tác bảo vệ dùng chung cho nhóm test `+ngoài`."""
+    """Dòng hợp đồng `+ngoài` và thao tác bảo vệ dùng chung cho nhóm test `+ngoài`."""
     row = _row(case_type="A", outside=True, lock="user.manage")
     return row, _op(protected=True, idempotency="default", versioned=False)
 
@@ -571,7 +571,7 @@ def test_real_operations_khi_chủ_chưa_hợp_nhất_trả_rỗng(monkeypatch: 
     """Module có mà chưa có `operations` (prompt chủ chưa hợp nhất) → cổng chạy với 0 thao tác.
 
     Vắng mặt được dựng bằng `sys.modules`, không bằng trạng thái thật của repo: mọi
-    prompt mount route đều làm sổ thao tác **khác rỗng** (CASE §2.3).
+    prompt mount route đều làm sổ thao tác **khác rỗng** (cổng case).
     """
     monkeypatch.setitem(sys.modules, "apps.api.core.openapi", types.SimpleNamespace())
     assert case_gate._real_operations() == []
@@ -653,7 +653,7 @@ def test_main__in_dòng_task_đạt(
 
 @pytest.mark.parametrize("op_name", ["files_read_object", "health_live", "health_ready"])
 def test_evaluate__infra_op_without_bind_row_no_warning(op_name: str) -> None:
-    """Route hạ tầng/tệp (`INFRA_OPS`) không có dòng BE-BIND thì miễn cảnh báo, không vào bảng."""
+    """Route hạ tầng/tệp (`INFRA_OPS`) không có dòng hợp đồng thì miễn cảnh báo, không vào bảng."""
     result = evaluate([_op(op=op_name)], [], {}, [], [], [], [])
     assert not result.unmounted_warnings
     assert not result.op_results

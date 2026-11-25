@@ -1,4 +1,4 @@
-# Bảng case bắt buộc thêm/miễn của module chất lượng (B2-05b [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm/miễn của module chất lượng (B2-05b [8], cổng case).
 #
 # `quality_read_assessment` (Đ) không cần khai: case của Loại đã đủ. C10 của #31/#32 là case
 # "+ngoài" (route xếp `pipeline.orchestrate.start` qua `start_run`): cổng chỉ nhận test

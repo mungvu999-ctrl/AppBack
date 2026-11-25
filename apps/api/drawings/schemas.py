@@ -153,7 +153,7 @@ LatestFloorUploadPage = CursorPage[LatestFloorUploadOut]
 class PipelineRunOut(WireModel):
     """Mục N7b: một lượt chạy pipeline của một tầng (màn Nhật ký lượt xử lý, UIFIX-B7).
 
-    `step` + `progressPercent` cùng nghĩa với `Progress` (BE-BIND §4): FE tự dựng các giai
+    `step` + `progressPercent` cùng nghĩa với `Progress`: FE tự dựng các giai
     đoạn từ chúng. `startedAt`/`endedAt`/`errorCode`/`supersededBy` vắng khoá khi chưa có (W2).
     Lượt `failed` **không** có `endedAt` (K33): giờ dừng của nó là `updatedAt`.
     """

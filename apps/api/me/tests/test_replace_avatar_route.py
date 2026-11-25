@@ -153,7 +153,7 @@ async def test_me_replace_avatar_gif_is_avatar_type_unsupported(
 
 
 async def test_me_replace_avatar__C11(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """C11: 11 lượt trong 15 phút → 429 `RATE_LIMITED` (`AVATAR_RATE_LIMIT` = 10; CASE §2.2 "Case thêm cố định").
+    """C11: 11 lượt trong 15 phút → 429 `RATE_LIMITED` (`AVATAR_RATE_LIMIT` = 10; `_FIXED_EXTRA` của cổng case).
 
     Catalog: B07-G-079.
     """

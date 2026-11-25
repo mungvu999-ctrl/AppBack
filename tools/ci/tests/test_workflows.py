@@ -766,7 +766,7 @@ def test_gitleaks_toml_exempts_only_env_example_by_path() -> None:
     [
         ("pull_request", ["docs/reviews/x.md", "DEBT.md", ".claude/skills/a/SKILL.md"], "false"),
         ("pull_request", ["docs/reviews/x.md", "apps/api/main.py"], "true"),
-        ("pull_request", ["docs/charter/BE-BIND.md"], "true"),
+        ("pull_request", ["docs/charter/x.md"], "true"),
         ("pull_request", ["docs/contracts/openapi.json"], "true"),
         ("pull_request", ["README.md"], "true"),
         ("push", ["docs/reviews/x.md"], "true"),

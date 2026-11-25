@@ -1,4 +1,4 @@
-"""`Operation` và CLI xuất OpenAPI (CASE §2.3, BE-00 §12 bước 8)."""
+"""`Operation` và CLI xuất OpenAPI (cổng case, BE-00 §12 bước 8)."""
 
 import json
 import re
@@ -56,7 +56,7 @@ def test_real_app_keeps_the_core_operations_public() -> None:
 
 
 def test_operation_rows_have_every_field() -> None:
-    """`case_gate` đọc đúng những tên trường này (CASE §2.3)."""
+    """`case_gate` đọc đúng những tên trường này."""
     expected = {
         "op",
         "method",

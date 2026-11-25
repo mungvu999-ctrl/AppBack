@@ -1,4 +1,4 @@
-# Bảng case bắt buộc thêm/miễn của module thông báo (B4-02 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm/miễn của module thông báo (B4-02 [8], cổng case).
 #
 # Không khai `extra` hay `waive`: `notifications_list` (Đ*) tự đòi C01 C15 C17; `notifications_mark_read` và
 # `notifications_mark_all_read` (G*) đòi C01 C02 C03; `notifications_accept_invite` (G*, đường có `{`) đòi

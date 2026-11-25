@@ -1,4 +1,4 @@
-# Case thêm của AI chọn phong cách (AID-01, CASE.md §2.3). Case chung C04 C05 C12 C13 C25 do
+# Case thêm của AI chọn phong cách (AID-01, cổng case). Case chung C04 C05 C12 C13 C25 do
 # `apps/api/core/tests/test_common.py` chạy. Lịch `sweep_design_concepts` tự bị đòi J01, J06.
 
 [[endpoint]]

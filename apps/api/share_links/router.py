@@ -1,4 +1,4 @@
-"""Xuất mô hình + liên kết chia sẻ (BE-BIND #47-#49) — quyền kiểm ở máy chủ, không chỉ ở FE.
+"""Xuất mô hình + liên kết chia sẻ (hợp đồng #47-#49) — quyền kiểm ở máy chủ, không chỉ ở FE.
 
 - `POST /projects/{id}/exports`: `model.export` (admin, engineer); trả đồ thị N15 để FE đóng gói.
 - `GET|POST /projects/{id}/share-links`, `DELETE .../{link_id}`: `share.create`. Liên kết MỚI bị giới hạn (L6-N05):

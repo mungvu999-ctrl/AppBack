@@ -1,6 +1,6 @@
-# Bảng case bắt buộc thêm của module quản trị người dùng (B1-05 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm của module quản trị người dùng (B1-05 [8], cổng case).
 #
-# #39, #40 (A, trả mảng), #41 (C14 cố định), #43, #45 không cần khai gì; #44 có C11 cố định
+# #39, #40 (A, trả mảng), #41 (C14 cố định), #43, #45 không cần `extra`/`waive`; #44 có C11 cố định
 # và C10 riêng (`+ngoài`) do metadata tự đòi.
 
 [[endpoint]]

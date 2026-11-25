@@ -1,4 +1,4 @@
-"""`POST /api/auth/login`, `/refresh`, `/logout` (BE-BIND #1, #3, #4; BE-00 §5, §11).
+"""`POST /api/auth/login`, `/refresh`, `/logout` (hợp đồng #1, #3, #4; BE-00 §5, §11).
 
 Ba route **công khai** (không Bearer), đều đòi `Origin` khớp `PUBLIC_BASE_URL` (C24) vì
 chúng dùng cookie. `POST /api/auth/register` **không** có ở đây (K7 = B: chỉ vào qua lời mời).

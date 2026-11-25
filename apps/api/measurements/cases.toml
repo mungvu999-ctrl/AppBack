@@ -1,6 +1,6 @@
-# Bảng case bắt buộc thêm/miễn của module phép đo (B2-07 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm/miễn của module phép đo (B2-07 [8], cổng case).
 #
-# `measurements_list_records` (Đ) không cần khai gì: case của Loại đã đủ.
+# `measurements_list_records` (Đ) không cần `extra`/`waive`: case của Loại đã đủ.
 
 [[endpoint]]
 op = "measurements_create_record"

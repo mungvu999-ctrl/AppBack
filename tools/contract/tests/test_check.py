@@ -168,7 +168,7 @@ def test_datetime_outside_w3_fails_at_any_depth(contract_build: Path, shapes: di
 
 
 def test_progress_needs_all_four_branches(contract_build: Path, shapes: dict[str, str]) -> None:
-    """`drawings_read_progress` đã mount thiếu nhánh `failed` → hỏng (BE-BIND §4); đủ 4 → đạt."""
+    """`drawings_read_progress` đã mount thiếu nhánh `failed` → hỏng; đủ 4 → đạt."""
     branches = {
         "pending": wire.progress("pending"),
         "running": wire.progress("running", progressPercent=5, startedAt=wire.AT),
@@ -177,7 +177,7 @@ def test_progress_needs_all_four_branches(contract_build: Path, shapes: dict[str
     }
     samples = [HttpSample(name, "drawings_read_progress", 200, body) for name, body in branches.items()]
     short = h1(contract_build, shapes, inputs("drawings_read_progress", samples=samples[:3]))
-    assert short.problems == ("drawings_read_progress: thiếu mẫu 2xx nhánh failed (BE-BIND §4)",)
+    assert short.problems == ("drawings_read_progress: thiếu mẫu 2xx nhánh failed",)
     assert h1(contract_build, shapes, inputs("drawings_read_progress", samples=samples)).status == STATUS_OK
 
 

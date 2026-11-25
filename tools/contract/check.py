@@ -56,7 +56,7 @@ H5_OWNER: Final = "B4-01"
 
 @dataclass(frozen=True, slots=True)
 class Mounted:
-    """Một thao tác đã mount — đủ để so với dòng BE-BIND (K06)."""
+    """Một thao tác đã mount — đủ để so với dòng hợp đồng (K06)."""
 
     op: str
     method: str
@@ -183,7 +183,7 @@ def _missing_success(samples: Sequence[HttpSample], shapes: Mapping[str, str], i
 
 
 def _progress_branches(samples: Sequence[HttpSample], inputs: Inputs) -> list[str]:
-    """`drawings_read_progress` đã mount phải có mẫu 2xx cho đủ 4 nhánh `status` (BE-BIND §4)."""
+    """`drawings_read_progress` đã mount phải có mẫu 2xx cho đủ 4 nhánh `status`."""
     if PROGRESS_OP not in {item.op for item in inputs.mounted}:
         return []
     seen = {
@@ -192,7 +192,7 @@ def _progress_branches(samples: Sequence[HttpSample], inputs: Inputs) -> list[st
         if sample.operation_id == PROGRESS_OP and 200 <= sample.status < 300 and isinstance(sample.body, dict)
     }
     missing = [branch for branch in PROGRESS_BRANCHES if branch not in seen]
-    return [f"{PROGRESS_OP}: thiếu mẫu 2xx nhánh {', '.join(missing)} (BE-BIND §4)"] if missing else []
+    return [f"{PROGRESS_OP}: thiếu mẫu 2xx nhánh {', '.join(missing)}"] if missing else []
 
 
 def check_h1(

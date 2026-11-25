@@ -1,7 +1,7 @@
-# Bảng case bắt buộc thêm của dataset ML (B6-02 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm của dataset ML (B6-02 [8], cổng case).
 #
-# `ml_list_datasets`, `ml_list_dataset_versions` (Loại A) không cần khai gì: case của Loại đã
-# đủ, tính từ metadata route + BE-BIND (C07 khoá `admin`; C08 cho đường có `{…}`; C15 cho
+# `ml_list_datasets`, `ml_list_dataset_versions` (Loại A) không cần `extra`/`waive`: case của Loại đã
+# đủ, tính từ metadata route + `type`/`lock` khai bên dưới (C07 khoá `admin`; C08 cho đường có `{…}`; C15 cho
 # danh sách; C17 cho trường ⇔ trạng thái). `ml_create_dataset`, `ml_build_dataset_version`
 # thêm C14 (tranh chấp ghi song song, K18) — `ml_create_dataset` còn thêm C16 (`name` NFD/NFC,
 # chuỗi người nhập, giống `label` của `ml_upload_version` ở B6-01).

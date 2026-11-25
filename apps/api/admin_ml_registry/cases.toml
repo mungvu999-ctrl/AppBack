@@ -1,7 +1,7 @@
-# Bảng case bắt buộc thêm của registry model ML (B6-01 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm của registry model ML (B6-01 [8], cổng case).
 #
 # `ml_list_families`, `ml_list_versions`, `ml_read_version`, `ml_activate_version` (Loại A) không
-# cần khai gì: case của Loại đã đủ, tính từ metadata route + BE-BIND (C07 vì khoá `admin`; C08 cho
+# cần `extra`/`waive`: case của Loại đã đủ, tính từ metadata route + `type`/`lock` khai bên dưới (C07 vì khoá `admin`; C08 cho
 # hai đường có `{…}`; C09, C09b, C14 cho N24 `versioned`; C18 cho hai dòng "có" nhật ký; C15 cho
 # hai danh sách). C10, C22 tự miễn: N24 là GV, N26 khai `idempotency="off"`, ba route còn lại GET.
 #

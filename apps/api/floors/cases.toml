@@ -1,7 +1,7 @@
-# Bảng case bắt buộc thêm/miễn của module tầng (B2-03 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm/miễn của module tầng (B2-03 [8], cổng case).
 #
-# `floors_list_floors` (Đ) không cần khai gì: case của Loại đã đủ, tính từ metadata + BE-BIND.
-# `floors_create_floor`, `floors_patch_spatial_floor` (G) cũng không cần khai gì.
+# `floors_list_floors` (Đ) không cần `extra`/`waive`: case của Loại đã đủ, tính từ metadata + `type`/`lock` khai bên dưới.
+# `floors_create_floor`, `floors_patch_spatial_floor` (G) cũng không cần `extra`/`waive`.
 
 [[endpoint]]
 op = "floors_delete_floor"

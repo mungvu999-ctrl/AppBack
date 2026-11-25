@@ -1,4 +1,4 @@
-"""Test `tools.ci.import_all` — CASE §2.3 [8] "import_all": nhập hỏng khi thiếu phụ thuộc của app.
+"""Test `tools.ci.import_all` — [8] "import_all": nhập hỏng khi thiếu phụ thuộc của app.
 
 Mọi test dùng gói `apps.<app>` tạm đều chạy trong **tiến trình Python mới** (`subprocess.run`,
 BE-00 §12): tên module luôn là `apps.<app>...` bất kể `--root` trỏ đâu, nên nếu chạy trong cùng

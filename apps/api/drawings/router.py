@@ -113,7 +113,7 @@ async def drawings_complete_upload(
 
 @router.get("/projects/{project_id}/drawings/uploads/{upload_id}/progress", dependencies=[_member_gate])
 async def drawings_read_progress(project_id: str, upload_id: str, db: DbSession) -> ProgressOut:
-    """#8 — `Progress` hiện tại của một lượt tải, mọi trạng thái (BE-BIND §4)."""
+    """#8 — `Progress` hiện tại của một lượt tải, mọi trạng thái."""
     facts = await uploads.load_upload(db, project_id=project_id, upload_id=upload_id)
     return ProgressOut.model_validate(await progress_wire(db, facts.id))
 

@@ -1,6 +1,6 @@
 """Dependency quyền cấp hệ thống trên app thử: verifier **thật** của B1-01, Postgres và Redis thật.
 
-Route mẫu không có dòng BE-BIND (trừ một route cố ý mang `users_list_users` để chứng
+Route mẫu không có dòng hợp đồng (trừ một route cố ý mang `users_list_users` để chứng
 minh khoá `role:…` làm phép so của `test_routes.py` hỏng), nên tên test mô tả việc.
 """
 
@@ -35,7 +35,7 @@ from tools.charter import load_bind_rows
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
 PREFIX: Final = "/api/access-probe"
 BIND_OP: Final = "users_list_users"
-"""Thao tác BE-BIND thật (khoá `user.manage`) mà route thử mượn — `operationId` là tên hàm (`route.name`)."""
+"""Thao tác hợp đồng thật (khoá `user.manage`) mà route thử mượn — `operationId` là tên hàm (`route.name`)."""
 
 STAFF: Final = require_role("engineer", "admin")
 
@@ -71,13 +71,13 @@ async def access_probe_admin() -> dict[str, bool]:
 
 @router.get("/staff", dependencies=[Depends(STAFF)])
 async def access_probe_staff() -> dict[str, bool]:
-    """Route mẫu của `require_role("engineer", "admin")`, không có dòng BE-BIND."""
+    """Route mẫu của `require_role("engineer", "admin")`, không có dòng hợp đồng."""
     return {"ok": True}
 
 
 @router.get("/bind-mismatch", dependencies=[Depends(STAFF)])
 async def users_list_users() -> dict[str, bool]:
-    """Mượn `operationId` của BE-BIND #38 với khoá sai — không bao giờ gọi, chỉ để quét."""
+    """Mượn `operationId` của hợp đồng #38 với khoá sai — không bao giờ gọi, chỉ để quét."""
     return {"ok": True}
 
 
@@ -138,7 +138,7 @@ async def test_require_admin_admits_only_admin(
 async def test_require_role_off_bind_route_still_gates(
     access_client: httpx.AsyncClient, db_session: AsyncSession, role: str, status: int
 ) -> None:
-    """`require_role("engineer", "admin")` trên route không có dòng BE-BIND vẫn chạy đúng."""
+    """`require_role("engineer", "admin")` trên route không có dòng hợp đồng vẫn chạy đúng."""
     response = await access_client.get(f"{PREFIX}/staff", headers=await _token(access_client, db_session, role))
     if status == 403:
         _assert_forbidden(response)
@@ -174,7 +174,7 @@ def test_operations_expose_permission_keys(access_app: FastAPI) -> None:
 
 
 def test_role_key_on_bind_route_fails_the_route_scan(access_app: FastAPI) -> None:
-    """Phép so của `test_permission_keys_match_bind_rows` bắt route BE-BIND gắn `require_role` lệch."""
+    """Phép so của `test_permission_keys_match_bind_rows` bắt route hợp đồng gắn `require_role` lệch."""
     rows = {row.operation_id: row for row in load_bind_rows(REPO_ROOT)}
     mismatched = {
         operation.op

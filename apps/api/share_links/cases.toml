@@ -1,4 +1,4 @@
-# Miễn case của module liên kết chia sẻ (CASE.md §2.3: chỉ C16 được miễn).
+# Miễn case của module liên kết chia sẻ (cổng case: chỉ C16 được miễn).
 
 [[endpoint]]
 op = "share_links_revoke"

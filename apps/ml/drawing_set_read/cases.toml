@@ -1,4 +1,4 @@
-# Case bắt buộc thêm của lượt đọc bộ hồ sơ (K-32a PR(3), CASE.md §2.3). Cổng tự đòi J01, J06.
+# Case bắt buộc thêm của lượt đọc bộ hồ sơ (K-32a PR(3), cổng case). Cổng tự đòi J01, J06.
 # J03: model hỏng vẫn tách khung, `on_failed` vẫn gửi `drawing_set.publish`; J05: hết `READ_BUDGET_S` → trang sau
 # hạn không OCR (`read=False`), lượt không treo.
 

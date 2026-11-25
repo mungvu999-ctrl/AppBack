@@ -1,4 +1,4 @@
-"""Schema dây của quản trị người dùng (B1-05 [2], `src/api/schemas/users.ts`, BE-BIND #38-#46).
+"""Schema dây của quản trị người dùng (B1-05 [2], `src/api/schemas/users.ts`, hợp đồng #38-#46).
 
 Response dựng từ `WireModel` (vắng khoá khi `None`, riêng `lastActiveAt` là `KeepNull`, K01/K02).
 Request kế thừa `WireRequest` (`extra="forbid"`, C03). Email trong `emails` đi qua

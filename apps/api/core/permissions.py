@@ -3,8 +3,8 @@
 Khung **không** biết luật quyền — `require_role`/`require_admin` là của B1-02,
 `require_project` của B2-01. Nó chỉ đòi hai thứ ở mỗi dependency quyền:
 
-- phơi `permission_key` để `Operation.permission_key` (CASE §2.3) so được với cột
-  "Khoá" của BE-BIND; quét route hỏng khi lệch;
+- phơi `permission_key` để `Operation.permission_key` (cổng case) so được với
+  `lock` ở `cases.toml`; quét route hỏng khi lệch;
 - có mặt trong `registered()` để test case chung ghi đè được (C10, C22 phải đi qua
   được dependency quyền mới tới bước nhận việc idempotency).
 """

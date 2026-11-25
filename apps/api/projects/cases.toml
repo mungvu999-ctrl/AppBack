@@ -1,7 +1,7 @@
-# Bảng case bắt buộc thêm/miễn của module dự án (B2-01 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm/miễn của module dự án (B2-01 [8], cổng case).
 #
 # `projects_list_projects` (Đ*), `projects_read_project` (Đ), `projects_update_project` (G)
-# không cần khai gì: case của Loại đã đủ, tính từ metadata + cột BE-BIND.
+# không cần `extra`/`waive`: case của Loại đã đủ, tính từ metadata + `type`/`lock` khai bên dưới.
 
 [[endpoint]]
 op = "projects_create_project"

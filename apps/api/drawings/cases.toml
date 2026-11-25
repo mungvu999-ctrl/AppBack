@@ -1,10 +1,10 @@
-# Bảng case bắt buộc thêm/miễn của module bản vẽ (B2-04 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm/miễn của module bản vẽ (B2-04 [8], cổng case).
 #
 # `drawings_upload_chunk` (T-chunk) không khai gì: C21 tự miễn theo lớp vì thân `{chunk,
 # chunkIndex}` không mang id nào của đường (`body_mirrors_path = false` ở metadata route),
 # nên `required_cases_for` đã bỏ C21 — không cần `waive` (chỉ C16 được miễn bằng tay).
-# `drawings_read_progress`, `drawings_list_latest_uploads` (Đ) cũng không cần khai gì:
-# case của Loại đã đủ, tính từ metadata + BE-BIND.
+# `drawings_read_progress`, `drawings_list_latest_uploads` (Đ) cũng không cần `extra`/`waive`:
+# case của Loại đã đủ, tính từ metadata + `type`/`lock` khai bên dưới.
 #
 # C10 của #7 là case "+ngoài" (route xếp `pipeline.orchestrate.start`): cổng chỉ nhận test
 # **riêng** của op, nên [8] đòi hai test `…__C10_queue_once` và `…__C10_no_key_replay`.

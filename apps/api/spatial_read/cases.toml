@@ -1,8 +1,8 @@
-# Bảng case bắt buộc thêm/miễn của module đọc lớp không gian (B3-02 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm/miễn của module đọc lớp không gian (B3-02 [8], cổng case).
 #
 # Cả ba route (`spatial_read_floor`, `spatial_read_graph`, `spatial_read_layer`) là Loại Đ
-# và **không cần khai gì**: C01 C06 C08 C17 đã tính đủ từ metadata của `operations()` cộng
-# BE-BIND. C15 không áp — không route nào trả danh sách ở mức ngoài. C16 không áp — GET
+# và **không cần `extra`/`waive`**: C01 C06 C08 C17 đã tính đủ từ metadata của `operations()` cộng
+# bảng hợp đồng. C15 không áp — không route nào trả danh sách ở mức ngoài. C16 không áp — GET
 # không có thân, nên cũng không có gì để miễn.
 #
 # Lịch đối chiếu `reconcile_floor_counts` cũng không cần dòng `[[task]]`: `tools/case_gate.py:493-499`

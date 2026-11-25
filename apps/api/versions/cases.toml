@@ -1,6 +1,6 @@
-# Bảng case bắt buộc thêm/miễn của module phiên bản (B3-04 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm/miễn của module phiên bản (B3-04 [8], cổng case).
 #
-# #36, N17, N18 (Đ) và N20 (G, Nhật ký `có`) không cần khai gì: case của Loại đã đủ.
+# #36, N17, N18 (Đ) và N20 (G, Nhật ký `có`) không cần `extra`/`waive`: case của Loại đã đủ.
 
 [[endpoint]]
 op = "versions_restore_version"

@@ -1,4 +1,4 @@
-"""C13: phụ thuộc hỏng → 503 `DEPENDENCY_UNAVAILABLE` (CASE §1, BE-00 §4).
+"""C13: phụ thuộc hỏng → 503 `DEPENDENCY_UNAVAILABLE` (cổng case, BE-00 §4).
 
 Chạy Postgres **thật** (K23); các lượt hỏng dùng `ephemeral_postgres()` để dừng được.
 """

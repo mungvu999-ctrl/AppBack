@@ -1,4 +1,4 @@
-"""Khai báo và chạy task Celery (BE-00 §7, CASE §4).
+"""Khai báo và chạy task Celery (BE-00 §7, cổng case).
 
 `define_task` bọc một hàm thường thành task Celery và **quyết định thay module chủ**
 cái gì là thử lại được: lỗi tạm (`TransientError`, `DEPENDENCY_UNAVAILABLE`) thì
@@ -51,7 +51,7 @@ return count
 
 _delivery_client: Final = ProcessLocal[SyncRedis](safe_redis_sync)
 _runner: Final = ProcessLocal[asyncio.Runner](asyncio.Runner)
-# tên task → dòng sổ, cho `registered_tasks()` và cổng case (CASE §2.3)
+# tên task → dòng sổ, cho `registered_tasks()` và cổng case
 _TASKS: Final[dict[str, "TaskEntry"]] = {}
 
 type OnFailed = Callable[[Any, str], None]
@@ -158,7 +158,7 @@ def registered_tasks() -> list[str]:
     """Tên **hàm** của mọi task và lịch của **mã sản phẩm**, sau khi dò một cấp các gói chủ.
 
     Trả tên hàm (không phải tên task) vì `tools/case_gate.py` đối chiếu chúng với
-    `test_<tên hàm>__J01` (CASE §2.3). Chỉ `case_gate` và test gọi hàm này: nó nhập
+    `test_<tên hàm>__J01`. Chỉ `case_gate` và test gọi hàm này: nó nhập
     `apps.ml`, thứ mà tiến trình worker không có.
 
     Task mẫu khai trong module test bị loại: sổ là **đầu vào của cổng**, nên nó chỉ

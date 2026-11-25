@@ -3,7 +3,7 @@
 Router **mỏng**: mỗi hàm chỉ đọc dependency rồi gọi đúng một hàm của `service.py`. Ba điều
 khai ở đây mà không ở chỗ khác được:
 
-- **cổng quyền** (BE-BIND cột "Khoá"): #23 và N1 chỉ đòi đăng nhập (`—`), #24 đòi là thành
+- **cổng quyền** (`lock` ở `cases.toml`): #23 và N1 chỉ đòi đăng nhập (`—`), #24 đòi là thành
   viên, #25 đòi khoá hệ thống `project.create`, #26 đòi `project.settings.edit` **trong
   dự án**, #27 đòi là thành viên **và** vai `admin` (BUG-513: FE chỉ mở vùng nguy hiểm cho
   admin). Cổng đặt ở `dependencies=` chứ không ở tham số handler: giá trị trả về của chúng

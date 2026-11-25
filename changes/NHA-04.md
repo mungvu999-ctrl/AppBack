@@ -69,6 +69,13 @@ Thước NHA-00, cùng đệm (`MANIFEST.json` sha256 `9259e86a…`, 50 tờ c�
   trên bậc; và bậc được nhiều hình đỡ hơn thắng khi chọn chiều cao tầng trên cùng (review: nhiều mặt đứng cùng ghi
   cốt đỉnh parapet sẽ thắng cốt sàn mái của một mặt cắt). Luật có từ HS-02, nay lộ ra với mặt cắt máy tự chọn. Gốc:
   điểm bậc `_RUNG_SCORE` không xét số cốt của hình nguồn. Chủ: `heights.py` (HS-02). P2. Mở.
+  Cập nhật NHA-05a: lệch trên 250 mm giữa bậc thang và cốt hình tự ghi nay lộ ra thành `Conflict` + T-05 cho
+  người duyệt chọn nguồn. Lệch từ 250 mm trở xuống vẫn im lặng (một mặt cắt đơn lẻ thắng cốt hình tự ghi);
+  giữ P2 tới khi NHA-10 đo dung sai trên bộ thật.
 - NO-574 — Chưa có test nào cho thấy bộ phân loại thật xếp một trang mặt cắt thực tế >= 0,8 (test của lát thay
   `classify_page`), và trang thử chỉ có một khung cả trang nên chưa đi qua phép dời toạ độ theo khung. Chủ: NHA-04.
   P3. Mở.
+- NO-590 — Mặt cắt máy tự chọn đổi độ tin tầng và câu hỏi tầng trên đường sản phẩm (`guess_views`): bậc thang kéo
+  cốt của hình đại diện sang giá trị mặt cắt, hình cùng tầng còn lại giữ cốt riêng, lệch quá 0,25 m nên cả hai tụt
+  còn 0,65 và nhận `STOREY_CONFLICT` oan. Không test nào chạm. Gốc: cùng gốc với NO-573. Chủ: `heights.py`,
+  `set_analysis.py`. P2. Mở.

@@ -19,12 +19,14 @@ from apps.api.drawing_sets.tests._set_helpers import (
 )
 from apps.api.drawings.tests._upload_helpers import Stage, headers_of, make_stage
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
-from packages.domain.drawing_set import building, rules
+from packages.domain.drawing_set import building, heights, rules
 from packages.ml_contracts.artifacts import BoxPx, TextPx
 from packages.ml_contracts.drawing_sets import PageReadingDoc, reading_to_json
 from packages.storage.keys import drawing_set_reading
 from packages.storage.local import LocalDiskStorage
 from packages.testing.factories.auth import make_user
+from packages.testing.factories.drawing_sets import make_drawing_set
+from packages.testing.fixtures.clock import FakeClock
 
 pytestmark = pytest.mark.usefixtures("drawing_set_on")
 
@@ -193,14 +195,24 @@ async def test_drawing_sets_read_building__disabled(
 async def test_drawing_sets_read_building__C06(
     api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage
 ) -> None:
-    """Người ngoài dự án → 404 `resource:"project"`; bộ không có → 404 `resource:"drawingSet"`."""
+    """Người ngoài dự án → 404 `resource:"project"`."""
     stage, seeded = await _house(db_session, local_storage)
     outsider = await make_user(db_session, role="admin")
     await db_session.commit()
     denied = await api_client.get(_path(stage, seeded.drawing_set.id), headers=headers_of(outsider))
-    missing = await api_client.get(_path(stage, MISSING_SET), headers=stage.headers)
     assert (denied.status_code, denied.json()["resource"]) == (404, "project")
-    assert (missing.status_code, missing.json()["resource"]) == (404, "drawingSet")
+
+
+@pytest.mark.parametrize("deleted", [False, True])
+async def test_drawing_sets_read_building__C08(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, deleted: bool
+) -> None:
+    """Bộ không có, hay đã xoá mềm → 404 `resource:"drawingSet"`."""
+    stage = await make_stage(db_session)
+    drawing_set = await make_drawing_set(db_session, project=stage.scene.project, deleted_at=fake_clock.now())
+    await db_session.commit()
+    response = await api_client.get(_path(stage, drawing_set.id if deleted else MISSING_SET), headers=stage.headers)
+    assert (response.status_code, response.json()["resource"]) == (404, "drawingSet")
 
 
 async def test_reading_past_the_deadline_is_a_retryable_503(
@@ -221,6 +233,8 @@ def test_wire_enums_cover_what_the_domain_can_produce() -> None:
     """Mọi nguồn và mức luật của miền nằm trong enum dây — miền thêm giá trị mới thì test này đỏ."""
     assert set(get_args(building.Source.__value__)) == set(get_args(BuildingSource.__value__))
     assert set(get_args(rules.RuleLevel.__value__)) == set(get_args(RuleLevel.__value__))
+    levels = set(get_args(heights.LevelSource)) | set(get_args(heights.HeightSource))
+    assert levels <= set(get_args(building.Source.__value__))  # nguồn của tầng đi thẳng vào `Measured.source`
     fields = building.Conflict.model_fields["field"].annotation
     assert set(get_args(fields)) == set(get_args(ConflictField.__value__))
 

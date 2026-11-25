@@ -233,6 +233,18 @@ def test_feet_inch_text_makes_the_set_imperial() -> None:
     assert "T-06" not in codes(proposal)
 
 
+def test_bare_feet_axis_labels_do_not_make_the_set_imperial() -> None:
+    """Nhãn trục phụ `1'`, `2'` trên bản vẽ hệ mét không phải bằng chứng feet-inch: hệ mét, không hỏi T-06; khi
+    bộ không còn chữ nào khác thì hệ đơn vị là "chưa rõ" (mặc định mét, có hỏi), không phải imperial 0,9."""
+    metric = propose_building([_view("a", "MẶT BẰNG TẦNG 1", "±0.000", "1'", "2'")])
+    assert (metric.unit_system.value, metric.unit_system.confidence) == ("metric", 0.9)
+    assert "T-06" not in codes(metric)
+    unknown = propose_building([_view("a", "MẶT BẰNG TẦNG 1", "1'", "2'")])
+    assert (unknown.unit_system.value, unknown.unit_system.source) == ("metric", "default")
+    assert "T-06" in codes(unknown)
+    assert propose_building([_view("a", "FIRST FLOOR PLAN", "EL. 100'")]).unit_system.value == "imperial"
+
+
 def test_mixed_units_ask_the_reviewer() -> None:
     """Lẫn cốt mét và chữ feet-inch: T-06, độ tin hệ đơn vị không quá 0,5."""
     proposal = propose_building([_view("a", "MẶT BẰNG TẦNG 1", "±0.000", "+3.300", "10'-6\"")])

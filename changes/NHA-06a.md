@@ -67,3 +67,19 @@ hợp đồng đọc bảng thao tác từ `docs/charter/BE-BIND.md` (tệp bả
 - NO-585 — Route mới chưa có schema zod và client phía AppFront; cổng đang giải bằng bản strict trong
   `tools/contract/strict/houseProposal.ts`. Khi FE có schema thì cân nhắc trỏ `schema-map.ts` sang đó. Chủ: NHA-06c.
   P2. Mở.
+- NO-591 — Route đọc `building` không có hạn mức: mỗi lượt đọc lại kết quả của mọi trang từ kho rồi giải trong nhóm
+  2 luồng; một thành viên gọi dồn làm người khác nhận 503 sau 12 s. Chủ: `apps/api/drawing_sets` (thêm `rate_limit`
+  theo người dùng, hoặc đệm theo `revision`). P3. Mở.
+
+## Vòng sửa sau merge-review (PR 120, phán quyết REQUEST CHANGES ngày 2026-11-25)
+
+- `test_drawing_sets_read_building__C08` tách khỏi `__C06`: `case_gate` (bước 5b, cổng nhanh không chạy) đòi tên này
+  cho route Loại Đ nên CI đỏ.
+- `_unit_system`: feet trần (`1'`, `2'`, cũng là nhãn trục phụ) không còn được đếm là bằng chứng feet-inch; phải có
+  phần inch hoặc tiền tố `EL.`. Trước đó hai chữ như vậy trên một bộ không đọc ra cốt làm cả bộ thành imperial 0,9.
+- Test enum khẳng định thêm nguồn cốt/chiều cao của `heights` là tập con của `building.Source`.
+- Dòng nợ còn thiếu theo ba phán quyết trước: NO-586…NO-590 ở `changes/K-33.md`, `NHA-00.md`, `NHA-04.md`; NO-570
+  nâng lên P2; cập nhật NO-573; sửa câu sai ở `NHA-00.md` và docstring `set_analysis.py`.
+- Kiểm của vòng sửa: `verify --fast` (2026-11-25) — ruff format, ruff check, lint-imports đạt; pytest cả bộ 12 514
+  đạt, 2 hỏng ở mô-đun không liên quan (`streams …__S05`, `auth_recovery …__C27`), đều là phép đo thời gian, lúc máy
+  đang chạy chồng một lượt cổng khác; mypy **chưa chạy** vì bước 5 hỏng. Bằng chứng để gộp là CI trên SHA mới.

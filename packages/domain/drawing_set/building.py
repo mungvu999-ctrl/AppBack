@@ -12,6 +12,7 @@ hình. Chưa nối API hay DB; kết quả không lưu ở đâu.
 
 import itertools
 import math
+import re
 from collections.abc import Mapping, Sequence
 from typing import Final, Literal, Self, cast
 
@@ -61,6 +62,11 @@ CONFLICT_CAP: Final = 0.65  # độ tin tối đa của giá trị còn mâu thu
 _GROUND_MIN_MM: Final = -300  # bậc thấp hơn mức này là tầng hầm, không tính vào số tầng nổi
 # Sàn trên mái (cùng tập với `order._ROOFISH`): thường thấp hơn 2,4 m nên thang cốt không đếm, mặt bằng cũng không đếm.
 _ROOFTOP: Final = frozenset({"tum", "attic", "roof_terrace"})
+# Feet trần (`1'`, `2'`) cũng là nhãn trục phụ trên bản vẽ hệ mét: không tính là bằng chứng feet-inch. Phải có phần inch
+# (`10'-6"`) hoặc tiền tố cốt (`EL. 100'`).
+_BARE_FEET: Final = re.compile(
+    "[+\\-\N{MINUS SIGN}\N{EN DASH}]?\\s*\\d{1,3}\\s*['\N{RIGHT SINGLE QUOTATION MARK}\N{PRIME}]"
+)
 _UNIT_SURE: Final = 0.9
 _UNIT_MIXED: Final = 0.5
 _UNIT_UNKNOWN: Final = 0.3
@@ -207,9 +213,9 @@ def _unit_system(pages: Sequence[Sequence[OcrText]]) -> tuple[Measured, RuleHit 
     """Hệ đơn vị của cả bộ từ chữ: đếm chữ feet-inch và cốt mét. Lẫn hai hệ hoặc không có gì thì kèm vi phạm T-06."""
     metric = imperial = 0
     for texts in pages:
-        rest = [item for item in texts if parse_feet_inch(item.text) is None]
-        imperial += len(texts) - len(rest)
-        metric += len(levels_from_texts(rest))
+        feet = [item for item in texts if parse_feet_inch(item.text) is not None]
+        imperial += sum(_BARE_FEET.fullmatch(item.text.strip()) is None for item in feet)
+        metric += len(levels_from_texts([item for item in texts if item not in feet]))
     hit = t06_units(metric, imperial)
     confidence = _UNIT_SURE if hit is None else _UNIT_MIXED if metric or imperial else _UNIT_UNKNOWN
     value = "imperial" if imperial > metric else "metric"

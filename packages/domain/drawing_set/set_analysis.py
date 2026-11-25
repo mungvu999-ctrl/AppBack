@@ -13,8 +13,8 @@ Luật:
  * Chỉ hình máy xếp mặt bằng vào bài toán số tầng; câu hỏi tầng giữ `STOREY_UNSURE`/`STOREY_CONFLICT`/
    `NOT_A_PLAN` (cốt và chiều cao là việc của N52 sau khi dựng, không hỏi ở màn duyệt).
  * Mặt cắt máy xếp chắc (>= `NOT_PLAN_SURE`) và đọc được từ `_SIDE_MIN_LEVELS` cốt là nguồn cốt thứ hai của cả bộ
-   (NHA-04): không cần người đánh dấu. Nó không đổi số tầng, chỉ đổi cốt/chiều cao trong `solve_set`. Mặt đứng
-   chưa vào (`_SIDE_KINDS`).
+   (NHA-04): không cần người đánh dấu. Nó không đổi số tầng nhưng đổi cốt/chiều cao, và qua đó có thể hạ độ
+   tin tầng và sinh `STOREY_CONFLICT` cho hai hình cùng một tầng (NO-590). Mặt đứng chưa vào (`_SIDE_KINDS`).
  * Trang chưa đọc chữ (OCR hỏng/hết giờ) hay hình không có chữ: loại "other", độ tin 0, câu hỏi `NO_TEXT`.
  * Loại `cover` của K-14 không có trên dây: ra "other" (lý do giữ trong `machine`).
 """

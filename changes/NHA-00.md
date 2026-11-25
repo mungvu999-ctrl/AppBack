@@ -30,7 +30,7 @@ từng byte.
 - Đối chiếu K-32a (18 tờ đã lộ/test của nó): hình tìm được 141/186 (76 %) so với 153/194 (79 %) ở đây — cùng đường
   đọc, khác chỗ K-32a bỏ hình `minor`/`unknown` khỏi mẫu số. "Đúng loại" của K-32a tính mặt bằng mái là mặt bằng;
   thước này chấm `roof` riêng nên số thấp hơn, không so trực tiếp.
-- Nhóm sạch thấp hẳn ở loại hình (29 % trên hình khớp so với 61 %): tên hình tiếng nước ngoài — mốc "trước" của NHA-03.
+- Nhóm sạch thấp hẳn ở loại hình (29 % trên hình khớp so với 61 %): phần lớn là tờ không chứa tên hình trong ảnh (NO-575), không phải tên hình tiếng nước ngoài như ghi lúc đầu.
 - Chiều cao: sản phẩm chỉ đề xuất 26/51 cặp có đáp án ở nhóm đã lộ, đúng 4. Bộ quốc tế gần như không có đáp án
   chiều cao (3 cặp).
 - Giới hạn: tờ là bản CAD đổi ra ảnh giả quét 150 dpi ghép lại, không phải PDF người dùng thật; OCR là model ghim
@@ -52,4 +52,10 @@ từng byte.
   thuộc lát NHA-05b/NHA-07a. Chủ: NHA-10. P3. Mở.
 - NO-570 — Thước không chấm cốt tầng và chiều cao tầng trên cùng (chỉ cặp `(from, to)` ± 50 mm), không in khoảng tin
   cậy Wilson, và "lỗi im lặng" của nó là "sai ở độ chắc >= 0,9" chứ không phải "sai mà không kèm câu hỏi" của K-32a.
-  Gốc: giữ nguyên bộ chấm K-33 để số so được. Chủ: `tools/bench/muc3` (K-33/NHA-10). P3. Mở.
+  Gốc: giữ nguyên bộ chấm K-33 để số so được. Chủ: `tools/bench/muc3` (K-33/NHA-10). P2 (nâng từ P3 theo merge-review
+  2026-11-25: NHA-04 đổi đúng hai thứ thước này không chấm). Mở.
+- NO-589 — Thước nhập ba hàm riêng tư của module khác: `apps.api.drawing_sets.jobs._render_page`,
+  `apps.ml.drawing_set_read.tasks._read_one`, `apps.api.drawing_sets.analysis._to_domain`
+  (`tools/bench/muc3/readings.py`, `predict.py`). Chủ module đổi tên hay thêm bước ngoài ba hàm này thì thước hỏng
+  hoặc lệch khỏi đường sản phẩm mà không ai biết. Gốc: ba module chưa có hàm công khai cho việc đó. Chủ: K-32a
+  (`apps/api/drawing_sets`, `apps/ml/drawing_set_read`). P2. Mở.

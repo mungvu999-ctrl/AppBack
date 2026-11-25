@@ -2,10 +2,13 @@
 
 Nhóm T (tầng) kiểm lúc đề xuất, khi mới có chữ và cốt. Hàm kiểm nhận số liệu trần, trả `RuleHit` (hoặc không gì); FE
 viết câu tiếng Việt theo mã. Mức `error` chặn xác nhận; `warning` chặn cho tới khi người duyệt chọn nguồn hoặc bấm
-"Đã xem". Dung sai là số đề xuất của thiết kế, chưa hiệu chỉnh bằng số đo. Nhóm M (mái) thêm ở NHA-05b.
+"Đã xem"; `hint` chỉ hiển thị. Dung sai là số đề xuất của thiết kế, chưa hiệu chỉnh bằng số đo.
+
+Nhóm M (mái, NHA-05b) chỉ gồm các luật kiểm lúc đề xuất; các luật M kiểm lúc ráp và lúc đọc thuộc NHA-07a/08.
 """
 
 import itertools
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
@@ -16,6 +19,11 @@ type RuleLevel = Literal["error", "warning", "hint"]
 
 HEIGHT_OK_MM: Final = (2400, 4600)  # chiều cao một tầng "còn hợp lý"; cùng dải với `heights._LOOSE`
 _ASSUMED_SOURCES: Final = frozenset({"default", "convention"})
+FLAT_MAX_DEG: Final = math.degrees(math.atan(0.05))  # dưới 5 % là dốc thoát nước của mái bằng, không phải mái dốc
+_MAX_PITCH_DEG: Final = 85.0  # từ 85° là tường; cùng trần với `slope._MAX_DEG`
+# Độ dốc tối thiểu theo vật liệu (cao/ngang), IRC chương 9; tôn chưa có ngưỡng xác minh được nên không kiểm.
+_MIN_SLOPE: Final[Mapping[str, float]] = {"tile": 2.5 / 12, "shingle": 2 / 12}
+TUM_LABELS: Final = frozenset({"tum", "attic"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +41,7 @@ class RuleHit(DomainModel):
     code: str
     level: RuleLevel
     floor_refs: tuple[str, ...]
-    values: tuple[int | str, ...]
+    values: tuple[int | float | str, ...]  # mm giữ nguyên số nguyên; số thực chỉ dùng cho độ dốc (độ)
 
 
 RULES: Final[Mapping[str, Rule]] = {
@@ -46,11 +54,22 @@ RULES: Final[Mapping[str, Rule]] = {
         Rule("T-05", "warning", 250),
         Rule("T-06", "warning"),
         Rule("T-07", "warning"),
+        Rule("M-02", "warning", 100),
+        Rule("M-03", "warning", 3),  # độ
+        Rule("M-05", "warning"),
+        Rule("M-06", "warning"),
+        Rule("M-07", "hint"),
+        Rule("M-09", "hint"),
+        Rule("M-17", "error"),
+        Rule("M-18", "warning"),
+        Rule("M-19", "warning"),
     )
 }
 
 
-def _hit(code: str, refs: Sequence[str], values: Sequence[int | str], level: RuleLevel | None = None) -> RuleHit:
+def _hit(
+    code: str, refs: Sequence[str], values: Sequence[int | float | str], level: RuleLevel | None = None
+) -> RuleHit:
     """`RuleHit` của một mã, mức lấy từ bảng trừ khi luật có hai mức."""
     return RuleHit(code=code, level=level or RULES[code].level, floor_refs=tuple(refs), values=tuple(values))
 
@@ -102,7 +121,76 @@ def t06_units(metric: int, imperial: int) -> RuleHit | None:
 
 
 def t07_assumed(ref: str, field: str, source: str | None) -> RuleHit | None:
-    """T-07: cốt hoặc chiều cao lấy từ mặc định/quy ước phải được người duyệt xem."""
+    """T-07: giá trị lấy từ mặc định/quy ước (cốt, chiều cao tầng, dạng mái, độ dốc) phải được người duyệt xem."""
     if source is None or source not in _ASSUMED_SOURCES:
         return None
     return _hit("T-07", (ref,), (field, source))
+
+
+def m02_eave(ref: str, eave_mm: int, wall_top_mm: int) -> RuleHit | None:
+    """M-02: cốt diềm mái = đỉnh tường của tầng nó che (± 100 mm). Vi phạm kèm cốt diềm rồi đỉnh tường."""
+    tolerance = RULES["M-02"].tolerance or 0
+    return None if abs(eave_mm - wall_top_mm) <= tolerance else _hit("M-02", (ref,), (eave_mm, wall_top_mm))
+
+
+def m03_pitch(ref: str, degs: Sequence[float]) -> RuleHit | None:
+    """M-03: độ dốc từ các nguồn (mặt bằng mái, mặt cắt) cách nhau không quá 3°."""
+    tolerance = RULES["M-03"].tolerance or 0
+    spread = round(max(degs, default=0) - min(degs, default=0), 1)  # 4,4 trừ 1,4 ra 3,0000000000000004
+    return None if spread <= tolerance else _hit("M-03", (ref,), degs)
+
+
+def m05_form(ref: str, forms: Sequence[str]) -> RuleHit | None:
+    """M-05: các nguồn nói cùng một dạng mái."""
+    return None if len(set(forms)) <= 1 else _hit("M-05", (ref,), forms)
+
+
+def m06_rooftop(refs: Sequence[str], label: str | None, *, sloped: bool = False) -> RuleHit | None:
+    """M-06: tầng cao nhất là tum/áp mái thì hỏi về mái của nó và tấm phủ tầng dưới. `refs`: tum, rồi tầng dưới.
+
+    `sloped`: chữ ghi mái dốc trên nhà có tum nên không mái nào được đề xuất; vi phạm kèm thêm chữ `sloped`.
+    """
+    if label is None or label not in TUM_LABELS:
+        return None
+    return _hit("M-06", refs, (label, "sloped") if sloped else (label,))
+
+
+def m07_flat_drain(ref: str, form: str, *, drains: bool) -> RuleHit | None:
+    """M-07: mái bằng nên có parapet hoặc thoát nước; `drains` = bộ có chữ sê nô, parapet, drain hay scupper."""
+    return None if form != "flat" or drains else _hit("M-07", (ref,), ())
+
+
+def m09_min_pitch(ref: str, pitch_deg: float, material: str | None) -> RuleHit | None:
+    """M-09: độ dốc không thấp hơn ngưỡng tối thiểu của vật liệu. Vi phạm kèm độ dốc, ngưỡng (độ) và vật liệu."""
+    minimum = _MIN_SLOPE.get(material or "")
+    if material is None or minimum is None or math.tan(math.radians(pitch_deg)) >= minimum:
+        return None
+    return _hit("M-09", (ref,), (pitch_deg, round(math.degrees(math.atan(minimum)), 1), material))
+
+
+def m17_consistent(ref: str, form: str, pitch_deg: float, eave_mm: int | None, ridge_mm: int | None) -> RuleHit | None:
+    """M-17: thông số mái tự nhất quán. Vi phạm kèm tên từng điều sai.
+
+    `ridgeBelowEave`: mái dốc mà cốt đỉnh không cao hơn cốt diềm. `pitchTooLow`: mái dốc mà độ dốc dưới 5 %.
+    `pitchTooHigh`: độ dốc từ 85°.
+    """
+    sloped = form != "flat"
+    checks = (
+        ("ridgeBelowEave", sloped and eave_mm is not None and ridge_mm is not None and ridge_mm <= eave_mm),
+        ("pitchTooLow", sloped and pitch_deg < FLAT_MAX_DEG),
+        ("pitchTooHigh", pitch_deg >= _MAX_PITCH_DEG),
+    )
+    failed = [name for name, bad in checks if bad]
+    return _hit("M-17", (ref,), failed) if failed else None
+
+
+def m18_roof_plan(roof_views: Sequence[str], form_source: str | None) -> RuleHit | None:
+    """M-18: bộ có hình mặt bằng mái thì mái không được vắng (`form_source` rỗng) hay mang dạng giả định."""
+    if not roof_views or (form_source is not None and form_source not in _ASSUMED_SOURCES):
+        return None
+    return _hit("M-18", roof_views, (form_source or "none",))
+
+
+def m19_ambiguous(ref: str, text: str | None) -> RuleHit | None:
+    """M-19: độ dốc ghi dạng `a:b` nhập nhằng phải được người duyệt chọn cách đọc. `text`: chữ gốc, rỗng = ghi rõ."""
+    return None if text is None else _hit("M-19", (ref,), (text,))

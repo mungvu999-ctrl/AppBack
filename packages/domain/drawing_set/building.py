@@ -3,10 +3,15 @@
 Bọc `solve_house`, không sửa nó: tầng trả nguyên `FloorProposal`. Thêm vào đó các ứng viên theo nguồn cho cốt của
 từng hình (cốt hình tự ghi, bậc thang cốt của mặt cắt); hai nguồn lệch quá dung sai thành `Conflict` mà máy không tự
 chọn. Lựa chọn của người duyệt ghi theo **nguồn** chứ không theo chỉ số, nên tính lại làm ứng viên đổi thứ tự cũng
-không trỏ nhầm. Mô hình là pydantic vì đây là hình dạng sẽ lưu JSONB (`drawing_sets.building`, NHA-06). Chưa có mái
-(NHA-05b), chưa nối API hay DB; kết quả không lưu ở đâu.
+không trỏ nhầm. Mô hình là pydantic vì đây là hình dạng sẽ lưu JSONB (`drawing_sets.building`, NHA-06).
+
+Mái (NHA-05b): mỗi tầng được che một `RoofSpec`, từng trường kèm nguồn và độ tin, suy theo thứ tự của thiết kế §2.C
+Câu 6 từ chữ mà `roof_reading` đọc được; hai nguồn độ dốc lệch nhau cũng thành `Conflict`. Chỉ đề xuất, không dựng
+hình. Chưa nối API hay DB; kết quả không lưu ở đâu.
 """
 
+import itertools
+import math
 from collections.abc import Mapping, Sequence
 from typing import Final, Literal, Self, cast
 
@@ -15,9 +20,19 @@ from pydantic import Field, model_validator
 from packages.domain.drawing_set.feet_inch import parse_feet_inch
 from packages.domain.drawing_set.levels import levels_from_texts, main_floor_level
 from packages.domain.drawing_set.proposal import FloorProposal, HouseView, SectionView, solve_house
+from packages.domain.drawing_set.roof_reading import RoofReading, read_roof
 from packages.domain.drawing_set.rules import (
+    FLAT_MAX_DEG,
     HEIGHT_OK_MM,
+    TUM_LABELS,
     RuleHit,
+    m03_pitch,
+    m05_form,
+    m06_rooftop,
+    m07_flat_drain,
+    m09_min_pitch,
+    m18_roof_plan,
+    m19_ambiguous,
     t01_stack,
     t02_storey_count,
     t03_height,
@@ -29,12 +44,13 @@ from packages.domain.drawing_set.sections import side_levels
 from packages.domain.drawing_set.titles import OcrText
 from packages.domain.spatial.model import DomainModel
 
-type Source = Literal["reviewer", "plan+section", "section", "elevation", "plan", "convention", "default"]
+type Source = Literal["reviewer", "plan+section", "roofPlan", "section", "elevation", "plan", "convention", "default"]
 
-# Thứ tự ưu tiên nguồn của cốt và chiều cao tầng (thiết kế §2.E), nguồn đứng trước thắng.
+# Thứ tự ưu tiên nguồn (thiết kế §2.E), nguồn đứng trước thắng. `roofPlan` chỉ có ở các trường của mái.
 LEVEL_PRIORITY: Final[tuple[Source, ...]] = (
     "reviewer",
     "plan+section",
+    "roofPlan",
     "section",
     "elevation",
     "plan",
@@ -48,12 +64,22 @@ _ROOFTOP: Final = frozenset({"tum", "attic", "roof_terrace"})
 _UNIT_SURE: Final = 0.9
 _UNIT_MIXED: Final = 0.5
 _UNIT_UNKNOWN: Final = 0.3
+# Độ tin của các trường mái (thiết kế §2.C Câu 6: quy ước ≤ 0,4, mặc định ≤ 0,3; §2.D: dạng `a:b` ≤ 0,5).
+_READ: Final = 0.8  # trị số ghi rõ trên một nguồn
+_AMBIGUOUS: Final = 0.5
+_GUESS: Final = 0.6  # suy từ nhãn hình (sân thượng → mái bằng) và hướng mái đoán (§2.E)
+_MATERIAL: Final = 0.7
+_CONVENTION: Final = 0.4
+_DEFAULT: Final = 0.3
+_SLOPED_PITCH_DEG: Final = 30.0  # độ dốc mặc định khi chỉ biết là mái dốc
+_PITCH_BY_MATERIAL: Final[Mapping[str, float]] = {"tile": 30.0, "metal": 8.5, "shingle": 26.6}  # ngói, tôn 15 %, 6:12
+_OVERHANG_MM: Final = (300, 450)  # độ đua quy ước: bộ hệ mét, bộ feet-inch; mái bằng thì 0
 
 
 class Measured(DomainModel):
-    """Một giá trị kèm độ tin, nguồn và các hình nó được đọc ra."""
+    """Một giá trị kèm độ tin, nguồn và các hình nó được đọc ra. Số mm là số nguyên; số thực chỉ dùng cho độ dốc."""
 
-    value: int | str
+    value: int | float | str
     confidence: float = Field(ge=0, le=1)
     source: Source
     view_ids: tuple[str, ...] = ()
@@ -63,31 +89,52 @@ class Conflict(DomainModel):
     """Hai nguồn của cùng một trường lệch quá dung sai. `chosen_source` rỗng = người duyệt chưa chọn (chặn xác nhận)."""
 
     key: str
-    field: Literal["elevationMm"]
+    field: Literal["elevationMm", "pitchDeg"]
     candidates: tuple[Measured, ...]
     chosen_source: Source | None = None
 
     @model_validator(mode="after")
     def _well_formed(self) -> Self:
-        """Ít nhất hai ứng viên, giá trị là số mm, mỗi nguồn một ứng viên, nguồn đã chọn là một trong số đó.
+        """Ít nhất hai ứng viên, giá trị là số (cốt: số mm nguyên), mỗi nguồn một ứng viên, nguồn đã chọn có trong đó.
 
         JSONB cũ hay bị sửa tay sai các điều này thì hỏng ngay lúc đọc, thay vì chọn bừa hoặc vỡ ở `effective`.
         """
         sources = [candidate.source for candidate in self.candidates]
         if len(sources) < 2 or len(set(sources)) != len(sources):  # mâu thuẫn cần hai phía khác nguồn
             raise ValueError(f"mâu thuẫn {self.key} cần ít nhất hai ứng viên, mỗi nguồn một ứng viên")
-        if not all(isinstance(candidate.value, int) for candidate in self.candidates):
-            raise ValueError(f"ứng viên của {self.key} phải là số mm")
+        number, unit = (int, "số mm") if self.field == "elevationMm" else ((int, float), "số độ")
+        if not all(isinstance(candidate.value, number) for candidate in self.candidates):
+            raise ValueError(f"ứng viên của {self.key} phải là {unit}")
         if self.chosen_source is not None and self.chosen_source not in sources:
             raise ValueError(f"nguồn đã chọn {self.chosen_source} không có trong ứng viên của {self.key}")
         return self
 
 
+class RoofSpec(DomainModel):
+    """Mái đề xuất cho một tầng (thiết kế §2.E). `level_ref` là mã hình mặt bằng đại diện của tầng được che.
+
+    `form`: flat | shed | gable | hip. `pitch_deg`: độ; mái bằng vẫn ghi trị số thoát nước đọc được. `quarter_turns`:
+    số góc phần tư xoay so với trục chính của đường bao, luôn là đoán. `eave_elevation_mm` rỗng khi tầng chưa có cốt.
+    `ridge_elevation_mm` và `parapet_mm` chưa nơi nào đọc: người duyệt nhập (NHA-06).
+    """
+
+    level_ref: str
+    form: Measured
+    pitch_deg: Measured
+    quarter_turns: Measured
+    eave_elevation_mm: Measured | None
+    overhang_mm: Measured
+    ridge_elevation_mm: Measured | None = None
+    parapet_mm: Measured | None = None
+    material: Measured | None = None
+
+
 class BuildingProposal(DomainModel):
-    """Đề xuất cho cả nhà: hệ đơn vị, tầng (nguyên kiểu của `solve_house`), mâu thuẫn và vi phạm luật ghép."""
+    """Đề xuất cho cả nhà: hệ đơn vị, tầng (nguyên kiểu của `solve_house`), mái, mâu thuẫn và vi phạm luật ghép."""
 
     unit_system: Measured
     floors: tuple[FloorProposal, ...]
+    roofs: tuple[RoofSpec, ...]
     conflicts: tuple[Conflict, ...]
     violations: tuple[RuleHit, ...]
 
@@ -169,6 +216,161 @@ def _unit_system(pages: Sequence[Sequence[OcrText]]) -> tuple[Measured, RuleHit 
     return Measured(value=value, confidence=confidence, source="plan" if metric or imperial else "default"), hit
 
 
+def _assumed(value: float | str, source: Literal["convention", "default"]) -> Measured:
+    """Giá trị không đọc từ bản vẽ: quy ước hoặc mặc định, độ tin chặn theo thiết kế Câu 6."""
+    return Measured(value=value, confidence=_CONVENTION if source == "convention" else _DEFAULT, source=source)
+
+
+def _pitch(
+    ref: str, reading: RoofReading, pick: Source | None
+) -> tuple[Measured | None, Conflict | None, list[RuleHit]]:
+    """Độ dốc đọc được cho mái của `ref` (độ, một chữ số lẻ), `None` khi chữ không ghi.
+
+    Hai nguồn lệch quá 3° thành mâu thuẫn `pitchDeg:<ref>`: chưa chọn thì lấy nguồn ưu tiên hơn với độ tin bị chặn,
+    kèm M-03, và M-05 nếu một nguồn nói mái bằng còn nguồn kia nói mái dốc. `pick` không còn trong ứng viên thì bỏ.
+    """
+    candidates = tuple(
+        Measured(
+            value=round(math.degrees(math.atan(read.slope.rise_over_run)), 1),
+            confidence=_AMBIGUOUS if read.slope.ambiguous else _READ,
+            source=read.source,
+            view_ids=read.view_ids,
+        )
+        for read in reading.pitches
+    )
+    if not candidates:
+        return None, None, []
+    degs = [float(candidate.value) for candidate in candidates]
+    clash = m03_pitch(ref, degs)
+    if clash is None:  # các nguồn khớp nhau: lấy trị số rõ nhất, bằng nhau thì hình mái đứng trước
+        return max(candidates, key=lambda candidate: candidate.confidence), None, []
+    chosen = pick if any(candidate.source == pick for candidate in candidates) else None
+    conflict = Conflict(key=f"pitchDeg:{ref}", field="pitchDeg", candidates=candidates, chosen_source=chosen)
+    if chosen is not None:
+        return effective(conflict), conflict, []
+    split = m05_form(ref, ["flat" if deg < FLAT_MAX_DEG else "sloped" for deg in degs])
+    return effective(conflict), conflict, [clash] if split is None else [clash, split]
+
+
+def _form_and_pitch(
+    read: Measured | None, reading: RoofReading, terraces: Sequence[str], *, tum: bool, imperial: bool
+) -> tuple[Measured, Measured]:
+    """Dạng và độ dốc của mái theo thứ tự suy luận của thiết kế §2.C Câu 6.
+
+    Độ dốc đọc được: dưới 5 % là mái bằng (nguồn của chính trị số đó), từ 5 % là mái dốc mà dạng chưa đọc được nên
+    lấy hai mái theo quy ước. Không có trị số: hình sân thượng → bằng; tum → bằng mặc định; có chữ vật liệu → dốc
+    theo quy ước của vật liệu; bộ feet-inch → hai mái, 30°; còn lại mái bằng mặc định.
+    """
+    if read is not None:
+        if float(read.value) < FLAT_MAX_DEG:
+            return read.model_copy(update={"value": "flat"}), read
+        return _assumed("gable", "convention"), read
+    if terraces:
+        seen = Measured(value="flat", confidence=_GUESS, source="plan", view_ids=tuple(terraces[:1]))
+        return seen, _assumed(0.0, "default")
+    if tum or (reading.material is None and not imperial):
+        return _assumed("flat", "default"), _assumed(0.0, "default")
+    if reading.material is not None:
+        return _assumed("gable", "convention"), _assumed(_PITCH_BY_MATERIAL[reading.material.material], "convention")
+    return _assumed("gable", "convention"), _assumed(_SLOPED_PITCH_DEG, "default")
+
+
+def _roof_storeys(
+    floors: Sequence[FloorProposal], storeys: Mapping[int, tuple[str, int, int]]
+) -> tuple[list[FloorProposal], list[str]]:
+    """Hình đại diện của các tầng có thể mang mái, từ trên xuống, và mã các hình sân thượng nằm trên cùng.
+
+    Đại diện là hình mà `storeys` đã chọn (có cốt và chiều cao), không có thì hình đầu tiên mang số tầng đó. Hình sân
+    thượng là mặt trên của mái bằng chứ không phải tầng được che, nên không nhận mái; chỉ sân thượng nằm trên mọi
+    tầng thường mới là bằng chứng "mái bằng" (sân thượng giữa nhà không nói gì về mái trên cùng).
+    """
+    by_id = {floor.floor_id: floor for floor in floors}
+    reps: dict[int, FloorProposal] = {}
+    for floor in floors:
+        if floor.storey_no is not None:
+            reps.setdefault(floor.storey_no, floor)
+    reps.update({number: by_id[ref] for number, (ref, _, _) in storeys.items()})
+    ordered = [reps[number] for number in sorted(reps, reverse=True)]
+    terraces = itertools.takewhile(lambda floor: floor.storey_label == "roof_terrace", ordered)
+    covered = [floor for floor in ordered if floor.storey_label != "roof_terrace"]
+    return covered, [floor.floor_id for floor in terraces]
+
+
+def _roofs(
+    floors: Sequence[FloorProposal],
+    storeys: Mapping[int, tuple[str, int, int]],
+    reading: RoofReading,
+    *,
+    imperial: bool,
+    picked: Mapping[str, Source],
+) -> tuple[list[RoofSpec], list[Conflict], list[RuleHit]]:
+    """Mái đề xuất (thiết kế §2.C Câu 3 và Câu 6), mâu thuẫn độ dốc và vi phạm nhóm M kiểm lúc đề xuất.
+
+    Tầng cao nhất có mái. Tầng cao nhất là tum/áp mái thì nó có mái riêng và tầng ngay dưới nhận một tấm phủ (M-06).
+    Khi đó chữ mà ghi mái dốc: áp mái nhận mái dốc ấy và không có tấm phủ; tum thì không đề xuất mái nào (mái dốc sẽ
+    xuyên qua tum) và M-06 ghi rõ `sloped`. Diềm nằm ở đỉnh tường của tầng, thừa kế nguồn và độ tin của chiều cao
+    tầng. Dạng hay độ dốc là giả định thì hỏi: M-18 khi bộ có hình mặt bằng mái, ngược lại T-07.
+    shortcut: mọi mái của đợt đầu dùng chung dạng, độ dốc và vật liệu; mái nhiều cấp là NHA-11.
+    """
+    covered, terraces = _roof_storeys(floors, storeys)
+    if not covered:
+        orphan = m18_roof_plan(reading.roof_view_ids, None)
+        return [], [], [] if orphan is None else [orphan]
+    ref, label = covered[0].floor_id, covered[0].storey_label
+    rooftop = label in TUM_LABELS
+    read, conflict, hits = _pitch(ref, reading, picked.get(f"pitchDeg:{ref}"))
+    form, pitch = _form_and_pitch(read, reading, terraces, tum=rooftop, imperial=imperial)
+    flat = form.value == "flat"
+    pierced = label == "tum" and not flat
+    targets = [] if pierced else covered[:2] if rooftop and flat else covered[:1]
+    tum = m06_rooftop([floor.floor_id for floor in covered[:2]], label, sloped=pierced)
+    found = reading.material
+    material = (
+        None
+        if found is None
+        else Measured(value=found.material, confidence=_MATERIAL, source=found.source, view_ids=found.view_ids)
+    )
+    overhang = Measured(value=0 if flat else _OVERHANG_MM[imperial], confidence=_CONVENTION, source="convention")
+    turns = Measured(value=0, confidence=_GUESS, source="convention")
+    levels = {view: level_mm + height_mm for view, level_mm, height_mm in storeys.values()}
+
+    roofs: list[RoofSpec] = []
+    asks: list[RuleHit | None] = [tum, *hits]
+    for floor in targets:
+        view = floor.floor_id
+        eave = (
+            None
+            if view not in levels
+            else Measured(
+                value=levels[view],
+                confidence=floor.height_confidence or 0.0,
+                source=cast("Source", floor.height_source or "default"),
+                view_ids=(view,),
+            )
+        )
+        roofs.append(
+            RoofSpec(
+                level_ref=view,
+                form=form,
+                pitch_deg=pitch,
+                quarter_turns=turns,
+                eave_elevation_mm=eave,
+                overhang_mm=overhang,
+                material=material,
+            )
+        )
+        asks.append(m07_flat_drain(view, str(form.value), drains=reading.drains))
+        if not flat and found is not None:
+            asks.append(m09_min_pitch(view, float(pitch.value), found.material))
+    unclear = next((r.slope.text for r in reading.pitches if r.slope.ambiguous and r.source == pitch.source), None)
+    unsure = m18_roof_plan(reading.roof_view_ids, form.source if roofs else None)
+    asks += [m19_ambiguous(ref, unclear), unsure]
+    if unsure is None and roofs:
+        asks.append(t07_assumed(ref, "roofForm", form.source))
+        asks.append(None if flat else t07_assumed(ref, "roofPitchDeg", pitch.source))
+    return roofs, [] if conflict is None else [conflict], [hit for hit in asks if hit is not None]
+
+
 def propose_building(
     views: Sequence[HouseView],
     sections: Sequence[SectionView] = (),
@@ -178,11 +380,12 @@ def propose_building(
 ) -> BuildingProposal:
     """Đề xuất cho cả nhà từ các hình mặt bằng và mặt cắt người duyệt đã chốt loại.
 
-    `order_known` như `solve_house`. `picks`: khoá mâu thuẫn (`elevationMm:<hình>`) → nguồn người duyệt đã chọn.
-    `floors` luôn là giá trị máy đề xuất; giá trị sau lựa chọn lấy bằng `effective(conflict)`, và luật T-01 kiểm
-    trên giá trị đó (chọn cốt khác thì chiều cao tầng dưới không còn khớp: phải thấy ngay).
-    Vi phạm kiểm ở đây: T-01, T-02, T-03, T-05 (mâu thuẫn chưa chọn), T-06, T-07. T-04 cần đích tầng người duyệt
-    gán nên do nơi có dữ liệu đó gọi (`rules.t04_one_plan_per_storey`, NHA-06).
+    `order_known` như `solve_house`. `picks`: khoá mâu thuẫn (`elevationMm:<hình>`, `pitchDeg:<hình>`) → nguồn người
+    duyệt đã chọn. `floors` luôn là giá trị máy đề xuất; giá trị sau lựa chọn lấy bằng `effective(conflict)`, và luật
+    T-01 kiểm trên giá trị đó (chọn cốt khác thì chiều cao tầng dưới không còn khớp: phải thấy ngay). Hình loại
+    `roof` trong `views` và mọi mặt cắt là nguồn chữ của mái (`_roofs`).
+    Vi phạm kiểm ở đây: T-01, T-02, T-03, T-05 (mâu thuẫn chưa chọn), T-06, T-07 và M-03, M-05, M-06, M-07, M-09,
+    M-18, M-19. T-04, M-02 và M-17 cần giá trị người duyệt gán hoặc sửa nên do nơi có dữ liệu đó gọi (NHA-06).
 
     Raises:
         ValueError: hai hình trùng `floor_id` (từ `solve_house`).
@@ -232,4 +435,13 @@ def propose_building(
     for hit in (t02_storey_count(plans, _section_storeys(rungs_mm)), unit_hit):
         if hit is not None:
             hits.append(hit)
-    return BuildingProposal(unit_system=unit_system, floors=floors, conflicts=tuple(conflicts), violations=tuple(hits))
+    reading = read_roof({floor.floor_id: texts[floor.floor_id] for floor in floors if floor.kind == "roof"}, sections)
+    imperial = unit_system.value == "imperial"
+    roofs, roof_conflicts, roof_hits = _roofs(floors, storeys, reading, imperial=imperial, picked=picked)
+    return BuildingProposal(
+        unit_system=unit_system,
+        floors=floors,
+        roofs=tuple(roofs),
+        conflicts=(*conflicts, *roof_conflicts),
+        violations=(*hits, *roof_hits),
+    )

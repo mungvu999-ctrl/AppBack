@@ -1,0 +1,10 @@
+# Thao tác của module streams: Loại, khoá, nhật ký cho cổng case (`tools/charter.py`).
+
+[[endpoint]]
+op = "streams_open_progress"
+type = "S"
+lock = "thành viên"
+
+[[endpoint]]
+op = "streams_open_notifications"
+type = "S"

@@ -443,7 +443,7 @@ async def test_fail_run_ignores_an_unknown_run(db_session: AsyncSession, fake_cl
 
 
 async def test_fail_run_rejects_a_non_upper_snake_code(db_session: AsyncSession, fake_clock: FakeClock) -> None:
-    """Mã lỗi sai mẫu là lỗi lập trình: `error` của `Progress` luôn UPPER_SNAKE (BE-BIND §4)."""
+    """Mã lỗi sai mẫu là lỗi lập trình: `error` của `Progress` luôn UPPER_SNAKE."""
     _, run = await _started_run(db_session, fake_clock)
     with pytest.raises(ValueError, match="UPPER_SNAKE"):
         await fail_run(db_session, run_id=run.id, error_code="stalled", clock=fake_clock)

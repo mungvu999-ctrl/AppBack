@@ -1,4 +1,4 @@
-"""Test case chung, tham số hoá theo route **được bảo vệ** của app thật (CASE §2.1).
+"""Test case chung, tham số hoá theo route **được bảo vệ** của app thật (cổng case).
 
 Hôm nay repo chưa có route được bảo vệ nào, nên tập tham số rỗng và pytest báo
 "empty parameter set" — `case_gate` chấp nhận đúng một lý do bỏ qua này (BE-00 §12).
@@ -47,7 +47,7 @@ SEEDED_BODY: Final = b'{"mau":"c10"}'
 ULID: Final = "01JABCDEFGHJKMNPQRSTVWXYZ0"
 """Thân ULID hợp lệ (Crockford base32 HOA, 26 ký tự) cho mọi id mẫu (W4)."""
 
-# Giá trị mẫu cho mọi tên tham số đường đang dùng trong BE-BIND (khối [8] của B0-06).
+# Giá trị mẫu cho mọi tên tham số đường đang dùng trong bảng hợp đồng (khối [8] của B0-06).
 PATH_VALUES: Final[dict[str, str]] = {
     "project_id": f"prj_{ULID}",
     "upload_id": f"upl_{ULID}",

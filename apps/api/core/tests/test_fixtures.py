@@ -1,6 +1,6 @@
 """Fixture HTTP dùng chung (`packages/testing/fixtures/api.py`): observer và vết case.
 
-Vết case là đầu vào của `tools/case_gate.py` (CASE §2.3): ghi sai là một test đặt đúng
+Vết case là đầu vào của `tools/case_gate.py`: ghi sai là một test đặt đúng
 tên vẫn không được tính, hoặc tệ hơn — được tính cho sai thao tác.
 """
 

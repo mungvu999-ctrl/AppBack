@@ -1,4 +1,4 @@
-"""Case của #5 `drawings_init_upload` (CASE §2.2 T-init + `cases.toml` `extra`).
+"""Case của #5 `drawings_init_upload` (case T-init + `cases.toml` `extra`).
 
 Postgres, Redis và kho local thật: `api_client` chạy app thật nên mọi khẳng định "đã ghi"
 đọc lại qua session khác (K22). Không test nào ở đây gửi byte: #5 chỉ khai kích thước, nên

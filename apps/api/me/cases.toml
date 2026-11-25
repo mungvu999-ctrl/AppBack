@@ -1,9 +1,22 @@
-# Bảng case bắt buộc thêm của module hồ sơ (B1-04 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm của module hồ sơ (B1-04 [8], cổng case).
 #
 # `me_read_profile` (Đ*), `me_change_password` (G*, N13 đã có C11 cố định qua row_id trong
-# case_gate.py), `me_replace_avatar` (T-avatar) không cần khai gì thêm.
+# case_gate.py), `me_replace_avatar` (T-avatar) không cần `extra`/`waive` thêm.
 
 [[endpoint]]
 op = "me_update_profile"
+type = "G*"
 # G* không tự đòi C16 (chỉ G mới có); thân có `fullName` (chuỗi người nhập, NFD → NFC).
 extra = ["C16"]
+
+[[endpoint]]
+op = "me_read_profile"
+type = "Đ*"
+
+[[endpoint]]
+op = "me_change_password"
+type = "G*"
+
+[[endpoint]]
+op = "me_replace_avatar"
+type = "T-avatar"

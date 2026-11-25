@@ -1,6 +1,6 @@
 """Các kiểm của `tools.contract.check` (B0-07 [8] "Cấu trúc", H3, H4, H5, test khói).
 
-Dữ liệu FE luôn lấy từ runner Node thật trên AppFront thật; phía BE (BE-BIND tạm, repo tạm,
+Dữ liệu FE luôn lấy từ runner Node thật trên AppFront thật; phía BE (dòng hợp đồng tạm, repo tạm,
 module gương tạm) dựng trong test để chạm từng nhánh mà không đợi prompt khác hợp nhất.
 """
 
@@ -14,7 +14,7 @@ from typing import Any, Final
 
 import pytest
 
-from tools.charter import merged_prompts
+from tools.charter import BindRow, merged_prompts
 from tools.contract import check
 from tools.contract.runner_client import lock_digest, node_dir_from_env, run_command
 from tools.contract.samples import EventSample, HttpSample
@@ -23,20 +23,16 @@ from tools.verify.steps import STATUS_FAIL, STATUS_NA, STATUS_OK
 
 ROWS: Final = check.contract_rows()
 ABSENT_MODULE: Final = "packages.domain.khong_co_guong_b0_07"
-GHOST_BIND: Final = """
-| # | Đường v1 | operationId | Schema (file) | Loại | Khoá | Nhật ký | Chủ BE | Nối FE |
-|---|---|---|---|---|---|---|---|---|
-| N99 | `GET /api/ghosts` | `ghost_list_items` | `ghosts.ts` | Đ\\* | — | — | B9-99 | — |
-"""
+GHOST_ROW: Final = BindRow("GET", "/api/ghosts", "ghost_list_items", "Đ*", outside=False, lock="—", logged=False)
 
 
 def mounted(*ops: str) -> list[check.Mounted]:
-    """Thao tác đã mount đúng đường của BE-BIND."""
+    """Thao tác đã mount đúng đường của dòng hợp đồng."""
     return [check.Mounted(op, ROWS[op].method, ROWS[op].path) for op in ops]
 
 
 def inputs(*ops: str, **overrides: Any) -> check.Inputs:
-    """Đầu vào với BE-BIND thật, `ops` đã mount, chưa prompt chủ nào hợp nhất."""
+    """Đầu vào với dòng hợp đồng thật, `ops` đã mount, không đòi mount đủ."""
     return check.Inputs(rows=ROWS, mounted=mounted(*ops), merged=frozenset(), **overrides)
 
 
@@ -78,63 +74,51 @@ def test_real_map_covers_every_contract_row(shapes: dict[str, str]) -> None:
     assert len(shapes) == len(ROWS) == 111
 
 
-def test_map_missing_a_bind_row_fails(tmp_path: Path, shapes: dict[str, str]) -> None:
-    """BE-BIND tạm có thêm một dòng mà bản đồ không có mục → hỏng."""
-    bind = tmp_path / "BE-BIND.md"
-    bind.write_text(GHOST_BIND, encoding="utf-8")
-    result = check.check_map(shapes, {**ROWS, **check.contract_rows(bind)})
+def test_map_missing_a_bind_row_fails(shapes: dict[str, str]) -> None:
+    """Thêm một dòng hợp đồng mà bản đồ không có mục → hỏng."""
+    result = check.check_map(shapes, {**ROWS, GHOST_ROW.operation_id: GHOST_ROW})
     assert result.status == STATUS_FAIL
-    assert result.problems == ("ghost_list_items: dòng BE-BIND không có mục trong schema-map.ts",)
+    assert result.problems == ("ghost_list_items: dòng hợp đồng không có mục trong schema-map.ts",)
 
 
 def test_map_extra_entry_fails(shapes: dict[str, str]) -> None:
-    """Mục ngoài BE-BIND và ngoài danh sách miễn → hỏng."""
+    """Mục ngoài dòng hợp đồng và ngoài danh sách miễn → hỏng."""
     result = check.check_map({**shapes, "ghost_list_items": "object"}, ROWS)
-    assert result.problems == ("ghost_list_items: mục thừa, không có dòng BE-BIND",)
+    assert result.problems == ("ghost_list_items: mục thừa, không có dòng hợp đồng",)
 
 
 def test_exempt_and_contract_mounts_pass() -> None:
-    """Các route miễn và thao tác đúng đường BE-BIND qua được; chưa chủ nào hợp nhất."""
-    # Miễn có dòng BE-BIND (N44) mount ở đường thật của nó; ở đây chỉ dựng đường giả cho miễn ngoài BE-BIND.
+    """Các route miễn và thao tác đúng đường hợp đồng qua được khi không đòi mount đủ."""
+    # Miễn có dòng hợp đồng (`lighting_bake_download_file`) mount ở đường thật; đường giả chỉ cho miễn không dòng.
     exempt = [check.Mounted(op, "GET", f"/api/{op}") for op in sorted(check.H1_EXEMPT - ROWS.keys())]
     data = check.Inputs(rows=ROWS, mounted=[*exempt, *mounted("projects_read_project")], merged=frozenset())
     assert check.check_mounted(data).status == STATUS_OK
 
 
 def test_unknown_mount_fails() -> None:
-    """K06: `operationId` không thuộc BE-BIND hay miễn → hỏng."""
+    """K06: thao tác không có dòng hợp đồng hay miễn → hỏng."""
     data = check.Inputs(
         rows=ROWS, mounted=[check.Mounted("ghost_list_items", "GET", "/api/ghosts")], merged=frozenset()
     )
     result = check.check_mounted(data)
     assert result.status == STATUS_FAIL
-    assert "ghost_list_items: đã mount mà không có dòng BE-BIND" in result.problems[0]
+    assert "ghost_list_items: đã mount mà không có dòng hợp đồng" in result.problems[0]
 
 
 def test_mount_on_another_path_fails() -> None:
-    """K06: đúng `operationId` mà khác đường BE-BIND ("đổi cho đẹp") → hỏng."""
+    """K06: đúng tên thao tác mà khác đường `openapi.json` ("đổi cho đẹp") → hỏng."""
     data = check.Inputs(
         rows=ROWS, mounted=[check.Mounted("floors_list_floors", "GET", "/api/levels")], merged=frozenset()
     )
-    assert "BE-BIND ghi GET /api/projects/{project_id}/floors" in check.check_mounted(data).problems[0]
+    assert "openapi.json ghi GET /api/projects/{project_id}/floors" in check.check_mounted(data).problems[0]
 
 
 def test_require_all_reports_every_unmounted_row() -> None:
-    """`CONTRACT_REQUIRE_ALL=1`: mọi dòng không v2 chưa mount → hỏng."""
+    """Đòi mount đủ (lượt thật): mọi dòng hợp đồng chưa mount → hỏng."""
     result = check.check_mounted(inputs("projects_read_project", require_all=True))
     assert result.status == STATUS_FAIL
     assert len(result.problems) == len(ROWS) - 1
-    assert "auth_login: chưa mount (CONTRACT_REQUIRE_ALL=1)" in result.problems
-
-
-def test_merged_owner_without_mount_fails(tmp_path: Path) -> None:
-    """Chủ đã có `changes/<mã>.md` (repo tạm) mà thao tác của nó chưa mount → hỏng."""
-    merged = repo_with_changes(tmp_path, "B0-06", "B1-04")
-    result = check.check_mounted(check.Inputs(rows=ROWS, mounted=mounted("me_read_profile"), merged=merged))
-    assert sorted(result.problems) == [
-        f"{op}: chủ B1-04 đã hợp nhất (changes/B1-04.md) mà chưa mount"
-        for op in ("me_change_password", "me_replace_avatar", "me_update_profile")
-    ]
+    assert "auth_login: có trong docs/contracts/openapi.json mà chưa mount" in result.problems
 
 
 # -- H1 cấu trúc --------------------------------------------------------------------------------
@@ -184,7 +168,7 @@ def test_datetime_outside_w3_fails_at_any_depth(contract_build: Path, shapes: di
 
 
 def test_progress_needs_all_four_branches(contract_build: Path, shapes: dict[str, str]) -> None:
-    """`drawings_read_progress` đã mount thiếu nhánh `failed` → hỏng (BE-BIND §4); đủ 4 → đạt."""
+    """`drawings_read_progress` đã mount thiếu nhánh `failed` → hỏng; đủ 4 → đạt."""
     branches = {
         "pending": wire.progress("pending"),
         "running": wire.progress("running", progressPercent=5, startedAt=wire.AT),
@@ -193,7 +177,7 @@ def test_progress_needs_all_four_branches(contract_build: Path, shapes: dict[str
     }
     samples = [HttpSample(name, "drawings_read_progress", 200, body) for name, body in branches.items()]
     short = h1(contract_build, shapes, inputs("drawings_read_progress", samples=samples[:3]))
-    assert short.problems == ("drawings_read_progress: thiếu mẫu 2xx nhánh failed (BE-BIND §4)",)
+    assert short.problems == ("drawings_read_progress: thiếu mẫu 2xx nhánh failed",)
     assert h1(contract_build, shapes, inputs("drawings_read_progress", samples=samples)).status == STATUS_OK
 
 
@@ -473,7 +457,6 @@ def test_real_repo_check_runs_through(
     mẫu thật do chính bước 7 đòi.
     """
     monkeypatch.setenv(check.SAMPLES_ENV, str(tmp_path / "mau"))
-    monkeypatch.delenv(check.REQUIRE_ALL_ENV, raising=False)
     assert check.main(["--build-dir", str(tmp_path / "build")]) in {0, 1}
     table = capsys.readouterr().out.splitlines()
     lines = [line.split(" | ") for line in table if line.count(" | ") == 2][1:]
@@ -529,9 +512,8 @@ def test_main_without_build_dir_removes_built_layout(
 
 
 def test_gather_inputs_reads_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Không đặt thư mục mẫu → không mẫu; `CONTRACT_REQUIRE_ALL=1` bật đòi mount đủ."""
+    """Không đặt thư mục mẫu → không mẫu; lượt thật luôn đòi mount đủ."""
     monkeypatch.delenv(check.SAMPLES_ENV, raising=False)
-    monkeypatch.setenv(check.REQUIRE_ALL_ENV, "1")
     data = check.gather_inputs()
     assert (data.samples, data.events, data.require_all) == ([], [], True)
     assert {"health_live", "health_ready", "files_read_object"} <= {item.op for item in data.mounted}

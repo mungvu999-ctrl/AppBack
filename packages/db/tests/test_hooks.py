@@ -1,4 +1,4 @@
-"""J09, J10: callback sau commit (BE-00 §7, CASE §4)."""
+"""J09, J10: callback sau commit (BE-00 §7, cổng case)."""
 
 import asyncio
 import logging

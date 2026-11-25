@@ -9,7 +9,7 @@
   token. Lượt refresh đó đã xoay cookie: test về chính thuật toán refresh tự đăng nhập;
 - `probe_app`/`probe_client` — app thật **cộng** một route được bảo vệ mẫu
   (`GET /api/auth-probe/me`, có đọc DB) để kiểm verifier thật. Đường của nó không khớp
-  thao tác BE-BIND nào nên không sinh vết case hay mẫu golden.
+  thao tác hợp đồng nào nên không sinh vết case hay mẫu golden.
 """
 
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator

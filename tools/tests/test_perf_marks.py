@@ -4,7 +4,7 @@ Quét tĩnh (AST) các tệp test đã rà trong cụm C07: một hàm `test_*` 
 (`elapsed < …`, `perf_counter() - started <= …`, `monotonic() - t0 < 1`) mà không mang `@pytest.mark.perf`
 là hỏng — dưới `pytest-xdist` (`-n 6`) trần đo tuần tự không giữ được. Hàm phụ (`_run…`) có trần thì hỏng
 trừ khi có test gọi nó và mọi test gọi nó đều mang `perf` (gọi bắc cầu qua hàm phụ khác không dò).
-Hai luật đi kèm: test mang mã case (`test_<op>__<case>`, CASE §2.3) **không bao giờ** gắn `perf`
+Hai luật đi kèm: test mang mã case (`test_<op>__<case>`, cổng case) **không bao giờ** gắn `perf`
 (`perf_case_named` của `tools/verify/steps.py` làm bước 5b hỏng), và không đặt `pytestmark = perf` cấp tệp
 (kéo cả test không có trần rời bước 5).
 

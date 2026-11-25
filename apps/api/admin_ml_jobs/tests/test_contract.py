@@ -133,7 +133,7 @@ async def test_ml_list_job_logs__C07(api_client: AsyncClient, fake_clock: FakeCl
 
 
 def test_ml_jobs_routes_are_all_admin_only(api_app: FastAPI) -> None:
-    """Sáu route mount đúng method và đều `protected` (BE-BIND N32-N37).
+    """Sáu route mount đúng method và đều `protected` (hợp đồng N32-N37).
 
     Catalog: B08M-D-040.
     """

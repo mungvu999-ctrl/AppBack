@@ -1,6 +1,6 @@
 """Case của #7 `drawings_complete_upload` (T-complete: C01 C06 C08 C14 C21 U07 U10 U11 + C18).
 
-C10 là case "+ngoài" nên phải có test **riêng** của op (CASE §2.2): hai test cuối đếm
+C10 là case "+ngoài" nên phải có test **riêng** của op (cổng case): hai test cuối đếm
 thông điệp `pipeline.cpu` trên Redis thật — lặp có khoá và lặp không khoá (như FE) đều chỉ
 được xếp **một** lượt `pipeline.orchestrate.start`.
 """

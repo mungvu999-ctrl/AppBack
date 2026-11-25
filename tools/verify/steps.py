@@ -535,7 +535,9 @@ FAST_MYPY_PREFIX = "mypy-fast-"
 _FAST_PYTEST = "pytest bị ảnh hưởng (cov đơn vị chạm)"
 FAST_STEP_INPUTS: dict[str, tuple[str, ...]] = {
     "6": ("packages/db/",),
-    "7": ("tools/contract/", "docs/charter/BE-BIND.md", "docs/contracts/"),
+    # shortcut: `apps/api/*/cases.toml` đổi không kéo bước 7 ở cổng nhanh (tiền tố không tả được, thêm cả
+    # `apps/api/` thì mọi lần sửa API trả giá bước 0 + 7); cổng đầy đủ trước merge luôn chạy bước 7.
+    "7": ("tools/contract/", "tools/charter.py", "docs/contracts/"),
     "8": ("apps/api/", "packages/domain/", "packages/ml_contracts/"),
 }
 """Bước có điều kiện của cổng nhanh → tiền tố đầu vào của nó: không tệp đổi nào khớp thì bỏ bước."""

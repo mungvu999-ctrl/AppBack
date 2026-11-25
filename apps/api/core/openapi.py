@@ -1,7 +1,7 @@
-"""Metadata thao tác (`Operation`) và CLI xuất OpenAPI (CASE §2.3, BE-00 §12 bước 8).
+"""Metadata thao tác (`Operation`) và CLI xuất OpenAPI (cổng case, BE-00 §12 bước 8).
 
 `operations()` là **nguồn duy nhất** để `tools/case_gate.py` tính tập case bắt buộc
-của mỗi route và để quét route so với BE-BIND. Mọi trường đều suy ra từ chính app
+của mỗi route và để quét route so với bảng hợp đồng. Mọi trường đều suy ra từ chính app
 đang chạy (cây `dependant`, `response_model`, `RouteOptions`) chứ không từ bảng khai
 tay: prompt sau thêm route là tự có metadata đúng, không ai phải sửa file này.
 
@@ -42,7 +42,7 @@ _cached_app: FastAPI | None = None
 
 @dataclass(frozen=True, slots=True)
 class Operation:
-    """Metadata của một thao tác đã mount, đúng các trường CASE §2.3 đòi."""
+    """Metadata của một thao tác đã mount, đúng các trường cổng case đòi."""
 
     op: str
     method: str

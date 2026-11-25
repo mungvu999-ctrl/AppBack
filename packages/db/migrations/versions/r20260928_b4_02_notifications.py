@@ -4,7 +4,7 @@ Revision ID: r20260928_b4_02
 Revises: r20260928_b3_05
 Create Date: 2026-09-28
 
-Bảng `notifications` (B4-02 [5], BE-BIND #19-#22): expand thuần, một bảng mới với FK `users` và FK `projects`
+Bảng `notifications` (B4-02 [5], hợp đồng #19-#22): expand thuần, một bảng mới với FK `users` và FK `projects`
 `ON DELETE CASCADE`. Hằng số chép tay từ `packages/db/models/notifications.py`, không nhập module model.
 Tên constraint bọc `op.f(...)` để quy ước của `Base.metadata` không ghép tiền tố lần hai.
 

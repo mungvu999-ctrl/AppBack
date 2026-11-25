@@ -1,4 +1,4 @@
-"""`packages/core/case_names.py`: tách tên test case theo CASE §2.3 (NO-337, chuyển từ `test_case_gate.py`)."""
+"""`packages/core/case_names.py`: tách tên test case theo cổng case (NO-337, chuyển từ `test_case_gate.py`)."""
 
 import pytest
 

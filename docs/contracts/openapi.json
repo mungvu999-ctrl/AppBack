@@ -5790,7 +5790,7 @@
       },
       "PipelineRunOut": {
         "additionalProperties": false,
-        "description": "Mục N7b: một lượt chạy pipeline của một tầng (màn Nhật ký lượt xử lý, UIFIX-B7).\n\n`step` + `progressPercent` cùng nghĩa với `Progress` (BE-BIND §4): FE tự dựng các giai\nđoạn từ chúng. `startedAt`/`endedAt`/`errorCode`/`supersededBy` vắng khoá khi chưa có (W2).\nLượt `failed` **không** có `endedAt` (K33): giờ dừng của nó là `updatedAt`.",
+        "description": "Mục N7b: một lượt chạy pipeline của một tầng (màn Nhật ký lượt xử lý, UIFIX-B7).\n\n`step` + `progressPercent` cùng nghĩa với `Progress`: FE tự dựng các giai\nđoạn từ chúng. `startedAt`/`endedAt`/`errorCode`/`supersededBy` vắng khoá khi chưa có (W2).\nLượt `failed` **không** có `endedAt` (K33): giờ dừng của nó là `updatedAt`.",
         "properties": {
           "createdAt": {
             "format": "date-time",
@@ -12476,7 +12476,7 @@
     },
     "/api/projects/{project_id}/drawings/uploads/{upload_id}/progress": {
       "get": {
-        "description": "#8 — `Progress` hiện tại của một lượt tải, mọi trạng thái (BE-BIND §4).",
+        "description": "#8 — `Progress` hiện tại của một lượt tải, mọi trạng thái.",
         "operationId": "drawings_read_progress_api_projects__project_id__drawings_uploads__upload_id__progress_get",
         "parameters": [
           {

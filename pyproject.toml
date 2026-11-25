@@ -106,7 +106,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 strict_markers = true
 markers = [
-    "case(id): case bắt buộc theo CASE.md (tools/case_gate.py đọc)",
+    "case(id): case bắt buộc (tools/case_gate.py đọc)",
     "gpu: cần GPU thật, ngoài verify và ngoài độ phủ (chỉ apps/ml/**)",
     "perf: có trần thời gian, chạy ở bước 5b (không coverage)",
 ]

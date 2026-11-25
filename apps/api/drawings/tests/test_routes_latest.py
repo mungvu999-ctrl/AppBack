@@ -1,4 +1,4 @@
-"""N7 `GET /api/projects/{project_id}/drawings/uploads/latest` (B2-04 [8], CASE §2.2).
+"""N7 `GET /api/projects/{project_id}/drawings/uploads/latest` (B2-04 [8], cổng case).
 
 Route N7 khai trong `apps/api/drawings/latest.py`; `router.py` nhập router đó vào `ROUTERS`
 nên `api_client` (app thật, `discover_routers()`) đã phục vụ nó.

@@ -6,7 +6,7 @@
   cho app của mình. `base_url` là `https://` để cookie `Secure` đi qua được;
 - `API_RESPONSE_OBSERVERS` — mọi response đi qua client được đưa cho các observer
   đã đăng ký. Observer sẵn có ghi **vết case** cho `tools/case_gate.py`: không có
-  vết thì một test đặt đúng tên vẫn không được tính (CASE §2.3).
+  vết thì một test đặt đúng tên vẫn không được tính (cổng case).
 
 Bucket rate limit sống ở `redis-cache` **và** ở DB an toàn (`store="safe"`, khoá đăng
 nhập), mà mọi lượt ASGI đều đến từ IP `127.0.0.1`; vì vậy `api_env` phụ thuộc cả
@@ -75,7 +75,7 @@ def operation_of(method: str, path: str) -> str | None:
 
 
 def _error_code(response: httpx.Response) -> str | None:
-    """Mã lỗi W7 trong thân, nếu có — `case_gate` đối chiếu nó với case (CASE §2.3)."""
+    """Mã lỗi W7 trong thân, nếu có — `case_gate` đối chiếu nó với case."""
     if not response.headers.get("content-type", "").startswith(JSON_PREFIX):
         return None
     try:

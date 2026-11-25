@@ -156,7 +156,7 @@ def test_ml_upload_version_takes_a_large_body_without_idempotency(api_app: FastA
 
 
 def test_ml_routes_are_all_admin_only(api_app: FastAPI) -> None:
-    """Cả năm route mang đúng năm `operationId` của BE-BIND và đều được bảo vệ.
+    """Cả năm route mang đúng năm `operationId` của bảng hợp đồng và đều được bảo vệ.
 
     Catalog: B08M-D-040.
     """

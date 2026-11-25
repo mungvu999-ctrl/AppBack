@@ -1,7 +1,23 @@
-# Bảng case bắt buộc thêm/miễn của module thông báo (B4-02 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm/miễn của module thông báo (B4-02 [8], cổng case).
 #
 # Không khai `extra` hay `waive`: `notifications_list` (Đ*) tự đòi C01 C15 C17; `notifications_mark_read` và
 # `notifications_mark_all_read` (G*) đòi C01 C02 C03; `notifications_accept_invite` (G*, đường có `{`) đòi
 # C01 C02 C03 C08 C17 C23. C21 không áp (thân không mang id); C16 không áp (thân không có chuỗi người nhập).
 # Hai lịch `publish_unsent_notifications`, `trim_notifications` tự đòi J01, J06; `notify` không phải task nên
 # J09, J10 của nó là test đặt tên theo việc (`test_notify__J09`, `test_notify__J10`), không vào bảng này.
+
+[[endpoint]]
+op = "notifications_list"
+type = "Đ*"
+
+[[endpoint]]
+op = "notifications_mark_read"
+type = "G*"
+
+[[endpoint]]
+op = "notifications_mark_all_read"
+type = "G*"
+
+[[endpoint]]
+op = "notifications_accept_invite"
+type = "G*"

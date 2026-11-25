@@ -1,4 +1,4 @@
-# Bảng case bắt buộc thêm của cầu nối huấn luyện (B6-03a [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm của cầu nối huấn luyện (B6-03a [8], cổng case).
 #
 # Sáu route Loại A ở `apps/api/admin_ml_jobs` không khai gì thêm: case của Loại đủ (C10 riêng
 # của N33, N35 là test đặt tên theo việc). Mọi task, lịch có `__J01`, `__J06`; dưới là phần [8] đòi thêm.

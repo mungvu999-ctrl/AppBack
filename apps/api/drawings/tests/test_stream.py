@@ -1,4 +1,4 @@
-"""Luồng S1 `upload_progress` với nhà cung cấp **thật** của `apps.api.drawings` (CASE §5).
+"""Luồng S1 `upload_progress` với nhà cung cấp **thật** của `apps.api.drawings` (cổng case).
 
 B4-01 đã kiểm trung tâm SSE bằng provider giả; ở đây chỉ còn hai câu hỏi của B2-04: người
 ngoài dự án có mở được luồng của một lượt tải không (S06), và khung đầu có đúng `Progress`

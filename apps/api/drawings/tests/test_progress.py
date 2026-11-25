@@ -1,4 +1,4 @@
-"""`progress_wire`/`progress_of` khớp từng hàng bảng "Nguồn trạng thái" (BE-BIND §4)."""
+"""`progress_wire`/`progress_of` khớp từng hàng bảng "Nguồn trạng thái"."""
 
 from datetime import UTC, datetime
 from typing import Any, Final

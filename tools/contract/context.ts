@@ -1,10 +1,10 @@
 import { ML_MODEL_FAMILIES } from '@/api/schemas/adminMl';
 
 /**
- * "H1 ngữ cảnh" (HOP-DONG-MOI §0.2 B, BE-BIND §4): luật liên tham chiếu mà zod
+ * "H1 ngữ cảnh" (HOP-DONG-MOI §0.2 B): luật liên tham chiếu mà zod
  * cố ý **không** kiểm, vì một thực thể lệch trong zod làm hỏng cả lượt giải mã
  * ở gateway FE. Chạy **sau** khi mẫu đã giải đạt, trên đầu ra của schema, kèm
- * tham số đường (`pathParams`, snake_case như đường của BE-BIND) và `context`
+ * tham số đường (`pathParams`, snake_case như đường của bảng hợp đồng) và `context`
  * mà test gắn bằng `attach_context` (B0-07 [2]).
  *
  * Mỗi luật trả `null` khi đạt, hoặc một câu nêu mã luật và chỗ lệch.
@@ -96,7 +96,7 @@ const n23: Rule = (data) => {
   return complete ? null : `N23: họ ${JSON.stringify(families)} khác ${JSON.stringify(ML_MODEL_FAMILIES)}`;
 };
 
-/** BE-BIND §4, K33: có `endedAt` ⇒ `status === "completed"`; lượt hỏng không bao giờ có `endedAt`. */
+/** K33: có `endedAt` ⇒ `status === "completed"`; lượt hỏng không bao giờ có `endedAt`. */
 const progress: Rule = (data) =>
   data.endedAt !== undefined && data.status !== 'completed'
     ? `K33: có endedAt mà status "${String(data.status)}"`

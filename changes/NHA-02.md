@@ -11,9 +11,9 @@ K-33 / NHA-00 / NHA-01 / NHA-04. Phần test AppFront của lát này làm sau, 
 - `packages/vision/roofs/rects.py` (mới): `roof_outline(rooms_mm, grow_mm)` hợp đường bao phòng thành đường bao mái;
   `roof_rects(outline_mm)` ra `RoofRects` (gần chữ nhật → một mặt; L/T/U → chữ nhật cực đại) hoặc mã từ chối
   `no_rooms` / `split` / `hole` / `poor_fit` / `complex`.
-- `packages/vision/roofs/tests/data/roof_golden.json` (mới): bảy ca do BE phát nguyên văn (chữ nhật hai dốc xoay 20°,
-  L hip, T gable, U hip, mái bằng, shed xoay một phần tư, mái bằng chữ L); `test_golden.py` khẳng định tệp trùng đầu ra.
-- Test viết trước mã (ba tệp, 64 ca sau review). Không nối vào luồng nào, không đọc `RoofSpec`, không ghi DB, không đổi hợp đồng.
+- `packages/vision/roofs/tests/data/roof_golden.json` (mới): sáu ca do BE phát nguyên văn (chữ nhật hai dốc xoay 20°,
+  L hip, T gable, U hip, mái bằng, shed xoay một phần tư); `test_golden.py` khẳng định tệp trùng đầu ra.
+- Test viết trước mã (ba tệp, 65 ca sau review và sau quyết định về mái bằng chữ L). Không nối vào luồng nào, không đọc `RoofSpec`, không ghi DB, không đổi hợp đồng.
 
 ## Lệch khỏi thiết kế
 
@@ -27,8 +27,12 @@ K-33 / NHA-00 / NHA-01 / NHA-04. Phần test AppFront của lát này làm sau, 
 - **Lọc phòng** theo công năng/tên (loggia, sân thượng, ban công) và các mã `OPEN_ENVELOPE` / `WALL_FRAGMENTS` không
   nằm ở đây: `roof_outline` chỉ nhận đường bao; NHA-07a lọc trước khi gọi.
 - **Kiểm hợp đồng với Pascal** (`setScene` thật, 0 lệnh, `getActiveRoofHeight`) đặt ở test AppFront chứ không ở
-  `tools/contract`: cổng ấy chỉ giải schema zod và không có dòng nào về mái. Vì vậy **mái bằng chữ L/T/U chưa được
-  quyết nhận hay loại**; `roof_nodes` vẫn dựng nếu được gọi.
+  `tools/contract`: cổng ấy chỉ giải schema zod và không có dòng nào về mái.
+- **Mái bằng chữ L/T/U: loại khỏi đợt đầu** (`roof_nodes` ném `ValueError` cho `flat` nhiều chữ nhật, như shed). Dựng
+  thử ở AppFront bằng `generateRoofSegmentGeometry` của vendor (2026-11-25): không lỗi CSG, toạ độ hữu hạn, nhưng ở
+  vùng chồng cả hai tấm đều còn nguyên mặt trên (0,15 m) và mặt dưới (0,05 m) trùng khít nhau; bộ ghép mái thật
+  (`updateMergedRoofGeometry`) không được vendor xuất nên không chạy được. Thiết kế §2.C Câu 2: chưa có fixture dựng
+  hình thật chạy đúng thì coi là "hình phức tạp, hãy vẽ tay".
 - `quarter_turns` quay đỉnh mái quanh tâm **từng** chữ nhật (thiết kế chỉ định nghĩa cho một mặt). Mái một dốc: mép
   cao ở phía -z cục bộ của mặt mái; hướng theo từng phần tư vòng ghi ở docstring `roof_nodes` và có test ghim.
 - **Giới hạn đã biết:** khung bao vuông (chữ L hai cánh bằng nhau) có hai trục chính tương đương, hàm chọn hướng
@@ -42,6 +46,9 @@ K-33 / NHA-00 / NHA-01 / NHA-04. Phần test AppFront của lát này làm sau, 
   tổng dòng 99,33 % · nhánh 97,40 %; tập tệp bị chạm 100 % · 100 %), 5b perf + case_gate, 6 migration, 7 hợp đồng
   H1 H3 H4 H5, 8 openapi — **đạt**, mã thoát 0. Tệp `changes` này sửa mục "Phạm vi kiểm" sau lượt đó; mã và test
   không đổi. Lượt cổng nhanh đầu hỏng bước 3 (mypy, kiểu trả về của `_maximal_boxes`); đã sửa.
+- Sửa bổ sung sau lượt đó (từ chối mái bằng nhiều chữ nhật, fixture vàng còn sáu ca): chỉ chạy `verify --fast` ở máy;
+  cổng đầy đủ để CI của GitHub chạy khi nhánh được push (chủ dự án yêu cầu ngày 2026-11-25: không chạy cổng đầy đủ ở
+  máy).
 - Review: `ecc:python-reviewer`, không CRITICAL/HIGH. MEDIUM đã sửa: đường bao rỗng không trả `no_rooms`, phòng tự
   cắt mất nửa diện tích, `roof_nodes` không chặn cạnh 0/âm/NaN, hướng mép cao mái một dốc chưa định nghĩa. LOW đã sửa:
   gom đường lưới dính chuỗi, chọn trục chính đổi theo nhiễu số thực. Còn lại ghi ở "Lệch khỏi thiết kế". Không chạy
@@ -53,7 +60,13 @@ K-33 / NHA-00 / NHA-01 / NHA-04. Phần test AppFront của lát này làm sau, 
 
 - NO-577 — `roof_nodes`, `roof_rects`, `roof_outline` chưa có nơi dùng trong mã sản phẩm (lệch R-10 theo thiết kế §5:
   lát tách riêng để NHA-07a nhỏ lại). Nếu NHA-07a đổi hướng thì xoá. Chủ: NHA-07a. P3. Mở.
-- NO-578 — Chưa có phép kiểm nào chạy node BE phát qua Pascal thật: test AppFront của NHA-02 (nạp fixture vàng, đọc
-  ngược 0 lệnh với cờ chi tiết bật/tắt và tầng xoay, đối chiếu `getActiveRoofHeight`, dựng hình mái bằng chữ L, sửa
-  fixture cũ còn `roofHeight`) chưa làm. Cho tới lúc đó danh sách khoá node chỉ dựa trên đọc mã vendor. Chủ: NHA-02
-  phần AppFront. P1. Mở.
+- NO-578 — Phép kiểm chạy node BE phát qua Pascal thật nằm ở nhánh AppFront `test/nha-02-roof-golden`
+  (`src/pascal-page/__tests__/roofGolden.test.ts`: nạp fixture vàng bằng `setScene`, đọc ngược 0 lệnh với cờ chi tiết
+  bật/tắt, đối chiếu `getActiveRoofHeight` và `getRoofPlanBounds`). Cả sáu ca đạt tại máy ngày 2026-11-25; nợ đóng
+  khi nhánh ấy gộp. Fixture ở AppFront là bản chép tay: BE đổi cách phát thì phải chép lại. Chủ: NHA-02 phần
+  AppFront. P1. Mở.
+- NO-579 — Tầng được căn hiển thị (dời hoặc xoay, `AppFront/src/lib/pascal/floorAlignment.ts`) làm toạ độ và góc
+  quay của node mái lệch một đơn vị số thực cuối khi đọc ngược (`(x + t) - t`, `(r - π/2) + π/2`), nên mái AI trên
+  tầng ấy bị coi là đã sửa ngay lần mở đầu. Lỗi sẵn có của AppFront với mọi mái, không do node BE. Thấy ở ca
+  `rect_gable_turned`; các ca toạ độ tròn không lệch. Chủ: AppFront (`floorAlignment.ts` / phép so mái lúc đọc
+  ngược). Phải sửa trước NHA-07a. P1. Mở.

@@ -37,7 +37,6 @@ CASES: list[tuple[str, list[XY], RoofForm, float, int, float, float, float]] = [
     ("u_hip", U_SHAPE, "hip", 25.0, 0, 3300.0, 300.0, 220.0),
     ("rect_flat", RECT, "flat", 0.0, 0, 3300.0, 0.0, 220.0),
     ("rect_shed_turned", RECT, "shed", 10.0, 1, 2700.0, 300.0, 110.0),
-    ("l_flat", L_SHAPE, "flat", 0.0, 0, 3300.0, 0.0, 220.0),  # AppFront dựng hình thật để quyết nhận hay loại
 ]
 
 

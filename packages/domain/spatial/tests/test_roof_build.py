@@ -183,6 +183,7 @@ def test_l_shape_in_a_rotated_frame_matches_the_plan() -> None:
         (ONE_RECT, {"quarter_turns": 4}),
         (ONE_RECT, {"quarter_turns": -1}),
         (RoofRects(0.0, (*ONE_RECT.rects, *ONE_RECT.rects)), {"form": "shed"}),  # shed không che được mặt anh em
+        (RoofRects(0.0, (*ONE_RECT.rects, *ONE_RECT.rects)), {"form": "flat"}),  # hai tấm đồng phẳng trùng khít nhau
         (RoofRects(0.0, (RoofRect(0.0, 0.0, 0.0, 6000.0),)), {}),  # Pascal thay cạnh 0 bằng mặc định 8 m
         (RoofRects(0.0, (RoofRect(0.0, 0.0, 8000.0, -6000.0),)), {}),
         (RoofRects(0.0, (RoofRect(0.0, 0.0, math.nan, 6000.0),)), {}),

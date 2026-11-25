@@ -73,7 +73,8 @@ def roof_nodes(
     nằm ở phía -z cục bộ của mặt mái (`getRoofSegmentSurfaceY` của Pascal), tức phía âm của trục vuông góc trục chính
     khi `quarter_turns` = 0 trên chữ nhật nằm dọc trục; mỗi phần tư vòng đưa mép cao sang -dọc, +vuông góc, +dọc.
     Mái bằng bỏ qua `pitch_deg`. Ném `ValueError` cho tham số Pascal sẽ tự sửa (độ dốc ngoài (0, 85), kích thước
-    không dương) hoặc dựng sai hình (shed nhiều mặt).
+    không dương) hoặc dựng sai hình: shed nhiều mặt không che được mặt anh em; mái bằng nhiều mặt cho các tấm đồng phẳng
+    trùng khít nhau ở vùng chồng (đã dựng thử ở AppFront, xem `changes/NHA-02.md`).
     """
     sloped = form != "flat"
     if not rects.rects:
@@ -87,8 +88,8 @@ def roof_nodes(
         raise ValueError(f"độ dốc mái {pitch_deg}° nằm ngoài (0, {_MAX_PITCH_DEG})")
     if quarter_turns not in range(4):
         raise ValueError(f"hướng mái {quarter_turns} phải là 0..3 phần tư vòng")
-    if form == "shed" and len(rects.rects) > 1:
-        raise ValueError("mái một dốc chỉ dựng được trên một chữ nhật")
+    if form in ("shed", "flat") and len(rects.rects) > 1:
+        raise ValueError("mái một dốc và mái bằng chỉ dựng được trên một chữ nhật")
 
     angle = math.radians(rects.angle_deg)
     cos, sin = math.cos(angle), math.sin(angle)

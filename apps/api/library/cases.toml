@@ -5,6 +5,10 @@
 
 [[endpoint]]
 op = "library_read_item"
+type = "Đ*"
 # Đ* không tự đòi C08; #15 có id trên đường dẫn (sai mẫu, không có, chưa phát hành, đã rút, `mine` của người khác).
 extra = ["C08"]
 
+[[endpoint]]
+op = "library_list_items"
+type = "Đ*"

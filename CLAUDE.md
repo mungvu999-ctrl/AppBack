@@ -6,8 +6,10 @@
 1. `docs/charter/BE-00.md` — hiến chương: stack, ranh giới import, quy ước dây W1–W24, lỗi, xác thực, migration, việc nền, cổng verify.
 2. `docs/charter/BE-KFM.md` — lỗi agent hay mắc (K01–K34); khối [9] của prompt trích lại phần liên quan.
 3. `docs/charter/ENV.md` — môi trường đã đo (mount, biến môi trường, trần chạy song song).
-4. `docs/charter/CASE.md` §2.3 — thuật toán `case_gate.py` (nguồn của case bắt buộc).
-5. `docs/charter/BE-BIND.md`, `docs/charter/HOP-DONG-MOI.md` — hợp đồng FE, chỉ đọc phần khối [2] của prompt trỏ tới.
+4. `tools/case_gate.py` — nguồn duy nhất của case bắt buộc theo Loại (bảng `_LOAI_CANDIDATES`, `_FIXED_EXTRA`).
+5. Bảng thao tác hợp đồng (thay `BE-BIND.md`, MAIN-RED): đường và tên ở `docs/contracts/openapi.json`; Loại, khoá,
+   nhật ký ở `apps/api/<module>/cases.toml` của chính module — route mới phải có mục `[[endpoint]]` với `op`, `type`
+   (và `lock`, `logged = true`, `outside = true` khi có), khuôn ở docstring `tools/charter.py`.
 
 Mâu thuẫn giữa prompt và hiến chương → làm theo hiến chương, ghi vào "Lệch khỏi prompt" của báo cáo.
 

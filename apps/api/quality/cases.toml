@@ -6,8 +6,19 @@
 
 [[endpoint]]
 op = "quality_set_corners"
+type = "G"
+lock = "floor.upload"
+outside = true
 waive = { C16 = "thân chỉ có toạ độ số, không có chuỗi người nhập" }
 
 [[endpoint]]
 op = "quality_straighten"
+type = "G"
+lock = "floor.upload"
+outside = true
 waive = { C16 = "thân rỗng, không có chuỗi người nhập" }
+
+[[endpoint]]
+op = "quality_read_assessment"
+type = "Đ"
+lock = "thành viên"

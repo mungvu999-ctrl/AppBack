@@ -5,5 +5,18 @@
 
 [[endpoint]]
 op = "me_update_profile"
+type = "G*"
 # G* không tự đòi C16 (chỉ G mới có); thân có `fullName` (chuỗi người nhập, NFD → NFC).
 extra = ["C16"]
+
+[[endpoint]]
+op = "me_read_profile"
+type = "Đ*"
+
+[[endpoint]]
+op = "me_change_password"
+type = "G*"
+
+[[endpoint]]
+op = "me_replace_avatar"
+type = "T-avatar"

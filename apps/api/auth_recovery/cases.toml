@@ -6,4 +6,17 @@
 
 [[endpoint]]
 op = "auth_preview_invitation"
+type = "C"
 waive = { C16 = "thân chỉ có token máy chủ phát, không có chuỗi người nhập" }
+
+[[endpoint]]
+op = "auth_request_password_reset"
+type = "C"
+
+[[endpoint]]
+op = "auth_confirm_password_reset"
+type = "C"
+
+[[endpoint]]
+op = "auth_accept_invitation"
+type = "C"

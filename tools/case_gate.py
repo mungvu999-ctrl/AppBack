@@ -1,4 +1,4 @@
-"""Cổng case — cài đúng CASE.md §2.3, nguồn duy nhất (B0-01 [6]H).
+"""Cổng case — nguồn duy nhất của luật "thao tác Loại nào phải có case nào" (B0-01 [6]H; trước là CASE.md §2.3).
 
 Kiến trúc: các hàm tính toán thuần (`evaluate`, `required_cases_for`, …) nhận
 dữ liệu qua tham số, không tự đọc file — để test dựng fixture tạm mà không
@@ -100,7 +100,6 @@ class TaskRequirement:
 class OpResult:
     """Kết quả một thao tác: case bắt buộc, case tìm thấy, case được miễn."""
 
-    row_id: str
     op: str
     required: set[str]
     found: set[str]
@@ -157,19 +156,19 @@ _LOAI_CANDIDATES: dict[str, set[str]] = {
     "S": {"S01", "S02", "S03", "S04", "S05", "S07", "S09", "S06", "S08"},
 }
 
-# row_id → case thêm cố định (CASE §2.2 "Case thêm cố định")
+# tên thao tác → case thêm cố định; bảng này là nguồn duy nhất (trước là CASE §2.2 "Case thêm cố định")
 _FIXED_EXTRA: dict[str, set[str]] = {
-    "10": {"C14"},
-    "17": {"C14"},
-    "41": {"C14"},
-    "N3": {"C14", "C11"},
-    "N4": {"C14"},
-    "N13": {"C11"},
-    "N14": {"C11"},
-    "44": {"C11"},
-    "37": {"C11"},
-    "N8": {"C28"},
-    "N60": {"C14"},
+    "floors_create_floor": {"C14"},
+    "measurements_create_record": {"C14"},
+    "users_change_role": {"C14"},
+    "members_add_member": {"C14", "C11"},
+    "members_remove_member": {"C14"},
+    "me_change_password": {"C11"},
+    "me_replace_avatar": {"C11"},
+    "users_invite_users": {"C11"},
+    "telemetry_ingest_batch": {"C11"},
+    "auth_request_password_reset": {"C28"},
+    "drawing_sets_confirm_set": {"C14"},
 }
 
 _ONLY_WAIVABLE = "C16"
@@ -203,13 +202,13 @@ def _gate(case_id: str, *, row: BindRow, op: Operation, loai: str) -> bool:
     if case_id == "C24":
         return loai in ("C", "R", "P")
     if case_id == "C27":
-        return row.row_id in ("1", "N8")
+        return row.operation_id in ("auth_login", "auth_request_password_reset")
     if case_id == "C26":
-        return row.row_id in ("N9", "N10")
+        return row.operation_id in ("auth_confirm_password_reset", "auth_accept_invitation")
     if case_id == "S06":
         return row.lock == "thành viên"
     if case_id == "S08":
-        return "progress" in (row.operation_id or "")
+        return "progress" in row.operation_id
     return True
 
 
@@ -229,7 +228,7 @@ def required_cases_for(row: BindRow, op: Operation) -> set[str]:
     if row.outside and _flag(op.protected):
         required.add("C10")
 
-    required |= _FIXED_EXTRA.get(row.row_id, set())
+    required |= _FIXED_EXTRA.get(row.operation_id, set())
     return required
 
 
@@ -452,7 +451,7 @@ def evaluate(
     """Áp CASE §2.3 lên dữ liệu đã nạp: bảng thao tác, miễn hợp lệ, task lạ/trùng/thiếu, mỗi task một dòng."""
     result = GateResult()
 
-    rows_by_op = {r.operation_id: r for r in bind_rows if r.operation_id is not None}
+    rows_by_op = {r.operation_id: r for r in bind_rows}
     specific_by_op, common_by_op = _found_cases_by_op(tests, trace)
 
     for op in operations:
@@ -469,6 +468,9 @@ def evaluate(
             if op.idempotency == "off":
                 result.findings.append(f'{op.op}: route bảo vệ +ngoài mà idempotency="off" (CASE §2.1)')
 
+        if row.case_type not in _LOAI_CANDIDATES:
+            # gõ sai Loại thì tập case của Loại rỗng và cổng xanh oan
+            result.findings.append(f"{op.op}: `type` lạ trong cases.toml: {row.case_type!r}")
         required = required_cases_for(row, op)
         ov = overrides.get(op.op, EndpointOverride())
         required |= ov.extra
@@ -483,7 +485,7 @@ def evaluate(
                 continue
             waived[case_id] = reason
 
-        result.op_results.append(OpResult(row_id=row.row_id, op=op.op, required=required, found=found, waived=waived))
+        result.op_results.append(OpResult(op=op.op, required=required, found=found, waived=waived))
 
     task_found = _task_found(tests)
     names = set(task_names)
@@ -545,7 +547,7 @@ def _real_task_names() -> list[str]:
 
 def main() -> int:
     """Nối dữ liệu thật, in bảng thao tác và task, trả 0 khi đạt, 1 khi hỏng."""
-    bind_rows = load_bind_rows(REPO_ROOT / "docs" / "charter" / "BE-BIND.md")
+    bind_rows = load_bind_rows(REPO_ROOT)
     cases_toml_paths = sorted((REPO_ROOT / "apps").glob("*/*/cases.toml"))
     overrides, task_requirements = load_cases_toml(cases_toml_paths)
 
@@ -566,7 +568,7 @@ def main() -> int:
     for row in result.task_rows:
         print(f"  {row}")
     for w in result.unmounted_warnings:
-        print(f"  CẢNH BÁO: {w} đã mount nhưng không có dòng BE-BIND")
+        print(f"  CẢNH BÁO: {w} đã mount nhưng `cases.toml` của module chưa khai `type`")
     for f in result.findings:
         print(f"  HỎNG: {f}")
     for t in result.task_missing:

@@ -2,12 +2,27 @@
 
 [[endpoint]]
 op = "share_links_revoke"
+type = "G"
+lock = "share.create"
 waive = { C16 = "DELETE không có thân" }
 
 [[endpoint]]
 op = "share_links_open"
+type = "C"
 waive = { C16 = "GET công khai không có thân" }
 
 [[endpoint]]
 op = "share_links_create"
+type = "G"
+lock = "share.create"
 extra = ["C11"]
+
+[[endpoint]]
+op = "share_links_list"
+type = "Đ"
+lock = "share.create"
+
+[[endpoint]]
+op = "share_links_export"
+type = "Đ"
+lock = "model.export"

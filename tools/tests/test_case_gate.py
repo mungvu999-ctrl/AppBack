@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 import sys
 import types
 from pathlib import Path
@@ -30,9 +29,8 @@ from tools.charter import BindRow
 
 
 def _row(**kw: Any) -> BindRow:
-    """Dòng BE-BIND mẫu, đè trường theo đối số."""
+    """Dòng hợp đồng mẫu, đè trường theo đối số."""
     base: dict[str, Any] = dict(
-        row_id="1",
         method="POST",
         path="/api/x",
         operation_id="x_create",
@@ -40,7 +38,6 @@ def _row(**kw: Any) -> BindRow:
         outside=False,
         lock="thành viên",
         logged=True,
-        owner="B9-99",
     )
     base.update(kw)
     return BindRow(**base)
@@ -54,21 +51,6 @@ def _op(**kw: Any) -> Operation:
 
 
 # --- required_cases_for: các nhánh chính của §2.2 -----------------------------
-
-
-def test_fixed_extra_khớp_case_md() -> None:
-    """`_FIXED_EXTRA` khớp đúng mục "Case thêm cố định" của CASE.md §2.2 (nguồn duy nhất, NO-335: N14 → C11).
-
-    Mỗi gạch `- Cxx ở #10 (…), N3 (…), …`: tách id dòng trước dấu ngoặc; `#10` của CASE là row_id `10`.
-    """
-    text = (case_gate.REPO_ROOT / "docs" / "charter" / "CASE.md").read_text(encoding="utf-8")
-    block = text.split("**Case thêm cố định**", 1)[1].split("\n\n", 1)[0]
-    expected: dict[str, set[str]] = {}
-    for case_id, rest in re.findall(r"^- (C\d+) ở (.+)$", block, flags=re.M):
-        rows = re.sub(r"\([^)]*\)", "", rest.split(". ", 1)[0])
-        for row_id in re.findall(r"#?(N?\d+)", rows):
-            expected.setdefault(row_id, set()).add(case_id)
-    assert expected == case_gate._FIXED_EXTRA
 
 
 def test_case_chung_chỉ_khi_protected() -> None:
@@ -144,10 +126,14 @@ def test_g_sao_c08_c23_chỉ_khi_đường_có_ngoặc() -> None:
 
 def test_c27_chỉ_login_và_n8_c26_chỉ_n9_n10() -> None:
     """C27 chỉ login và N8; C26 chỉ N9, N10."""
-    login = required_cases_for(_row(row_id="1", case_type="C", lock="—"), _op(protected=False))
-    n8 = required_cases_for(_row(row_id="N8", case_type="C", lock="—"), _op(protected=False))
-    n9 = required_cases_for(_row(row_id="N9", case_type="C", lock="—"), _op(protected=False))
-    other = required_cases_for(_row(row_id="99", case_type="C", lock="—"), _op(protected=False))
+    login = required_cases_for(_row(operation_id="auth_login", case_type="C", lock="—"), _op(protected=False))
+    n8 = required_cases_for(
+        _row(operation_id="auth_request_password_reset", case_type="C", lock="—"), _op(protected=False)
+    )
+    n9 = required_cases_for(
+        _row(operation_id="auth_confirm_password_reset", case_type="C", lock="—"), _op(protected=False)
+    )
+    other = required_cases_for(_row(case_type="C", lock="—"), _op(protected=False))
     assert "C27" in login
     assert "C27" in n8
     assert "C27" not in n9
@@ -157,10 +143,10 @@ def test_c27_chỉ_login_và_n8_c26_chỉ_n9_n10() -> None:
 
 
 def test_case_thêm_cố_định() -> None:
-    """Case thêm cố định của CASE §2.2 được cộng vào đúng dòng."""
-    row10 = _row(row_id="10", case_type="G")
+    """Case thêm cố định (`_FIXED_EXTRA`) được cộng vào đúng thao tác."""
+    row10 = _row(operation_id="floors_create_floor", case_type="G")
     assert "C14" in required_cases_for(row10, _op(protected=True))
-    row_n3 = _row(row_id="N3", case_type="G")
+    row_n3 = _row(operation_id="members_add_member", case_type="G")
     req = required_cases_for(row_n3, _op(protected=True))
     assert {"C14", "C11"} <= req
 
@@ -178,7 +164,7 @@ def test_trường_thiếu_coi_là_áp_dụng() -> None:
 
 def test_miễn_chỉ_c16_được_phép() -> None:
     """Miễn C16 với lý do đủ dài được chấp nhận."""
-    row = _row(row_id="1", case_type="G")
+    row = _row(case_type="G")
     op = _op(protected=True)
     overrides = {"x_create": EndpointOverride(waive={"C16": "thân không có chuỗi người nhập nào cả"})}
     result = evaluate([op], [row], overrides, [], [], [], [])
@@ -189,7 +175,7 @@ def test_miễn_chỉ_c16_được_phép() -> None:
 
 def test_miễn_case_khác_c16_bị_cấm() -> None:
     """Miễn case khác C16 là hỏng."""
-    row = _row(row_id="1", case_type="G")
+    row = _row(case_type="G")
     op = _op(protected=True)
     overrides = {"x_create": EndpointOverride(waive={"C06": "lý do dài đủ mười ký tự abc"})}
     result = evaluate([op], [row], overrides, [], [], [], [])
@@ -198,7 +184,7 @@ def test_miễn_case_khác_c16_bị_cấm() -> None:
 
 def test_miễn_lý_do_ngắn_bị_cấm() -> None:
     """Lý do miễn dưới 10 ký tự là hỏng."""
-    row = _row(row_id="1", case_type="G")
+    row = _row(case_type="G")
     op = _op(protected=True)
     overrides = {"x_create": EndpointOverride(waive={"C16": "ngắn"})}
     result = evaluate([op], [row], overrides, [], [], [], [])
@@ -207,7 +193,7 @@ def test_miễn_lý_do_ngắn_bị_cấm() -> None:
 
 def test_found_qua_junit_và_trace() -> None:
     """Case được tính khi test đạt và vết có response của đúng thao tác."""
-    row = _row(row_id="1", case_type="C", lock="—")
+    row = _row(case_type="C", lock="—")
     op = _op(protected=False, has_body=False, has_query=False)
     tests = [TestResult(name="test_x_create__C01", outcome="passed")]
     trace = [CaseTraceEntry(test="test_x_create__C01", op="x_create", status=200)]
@@ -217,7 +203,7 @@ def test_found_qua_junit_và_trace() -> None:
 
 def test_found_cần_status_khớp_mã_cố_định() -> None:
     """Case có status cố định chỉ được tính khi vết khớp status đó."""
-    row = _row(row_id="1", case_type="C", lock="—")
+    row = _row(case_type="C", lock="—")
     op = _op(protected=False)
     tests = [TestResult(name="test_x_create__C06", outcome="passed")]
     trace_wrong = [CaseTraceEntry(test="test_x_create__C06", op="x_create", status=403)]  # cần 404
@@ -225,8 +211,8 @@ def test_found_cần_status_khớp_mã_cố_định() -> None:
     assert "C06" not in result.op_results[0].found
 
 
-def test_op_mounted_không_có_be_bind_cảnh_báo() -> None:
-    """Thao tác đã mount mà không có dòng BE-BIND chỉ cảnh báo, không vào bảng."""
+def test_op_mounted_không_có_dòng_hợp_đồng_cảnh_báo() -> None:
+    """Thao tác đã mount mà không có dòng hợp đồng chỉ cảnh báo, không vào bảng."""
     op = _op(op="lạ_không_có_trong_bind")
     result = evaluate([op], [], {}, [], [], [], [])
     assert "lạ_không_có_trong_bind" in result.unmounted_warnings
@@ -439,7 +425,7 @@ def test_marker_khác_không_bị_nhầm_là_gpu(tmp_path: Path) -> None:
 
 def _outside_setup() -> tuple[BindRow, Operation]:
     """Dòng BE-BIND `+ngoài` và thao tác bảo vệ dùng chung cho nhóm test `+ngoài`."""
-    row = _row(row_id="44", case_type="A", outside=True, lock="user.manage")
+    row = _row(case_type="A", outside=True, lock="user.manage")
     return row, _op(protected=True, idempotency="default", versioned=False)
 
 
@@ -489,15 +475,21 @@ def test_id_tham_số_sau_mã_case_được_tính() -> None:
     assert "C02" in result.op_results[0].found
 
 
-def test_đường_be_bind_có_query_khớp_thao_tác() -> None:
-    """Đường BE-BIND kèm query vẫn khớp thao tác (so không kèm query)."""
+def test_dòng_hợp_đồng_thật_khớp_thao_tác() -> None:
+    """Dòng hợp đồng thật (`openapi.json` + `cases.toml`) khớp thao tác theo tên."""
     from tools.charter import load_bind_rows
 
-    rows = load_bind_rows(case_gate.REPO_ROOT / "docs" / "charter" / "BE-BIND.md")
+    rows = load_bind_rows(case_gate.REPO_ROOT)
     op = Operation(op="versions_list_versions", method="GET", path="/api/projects/{project_id}/versions")
     result = evaluate([op], rows, {}, [], [], [], [])
     assert not result.unmounted_warnings
-    assert result.op_results[0].row_id == "N17"
+    assert result.op_results[0].op == "versions_list_versions"
+
+
+def test_type_lạ_trong_cases_toml_hỏng() -> None:
+    """Gõ sai Loại không được cho qua với tập case rỗng."""
+    result = evaluate([_op()], [_row(case_type="G ")], {}, [], [], [], [])
+    assert result.findings == ["x_create: `type` lạ trong cases.toml: 'G '"]
 
 
 def test_task_có_j01_thiếu_j06_hỏng() -> None:

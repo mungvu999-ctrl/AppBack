@@ -5,4 +5,12 @@
 
 [[endpoint]]
 op = "settings_replace_settings"
+type = "GV"
+lock = "project.settings.edit"
+logged = true
 extra = ["C18"]
+
+[[endpoint]]
+op = "settings_read_settings"
+type = "Đ"
+lock = "thành viên"

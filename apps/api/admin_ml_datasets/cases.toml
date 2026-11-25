@@ -8,10 +8,17 @@
 
 [[endpoint]]
 op = "ml_create_dataset"
+type = "A"
+lock = "admin"
+logged = true
 extra = ["C14", "C16"]
 
 [[endpoint]]
 op = "ml_build_dataset_version"
+type = "A"
+lock = "admin"
+logged = true
+outside = true
 extra = ["C14"]
 
 [[task]]
@@ -21,3 +28,13 @@ require = ["J02", "J03", "J05", "J08", "J09"]
 [[task]]
 fn = "sweep_dataset_version_builds"
 require = ["J07"]
+
+[[endpoint]]
+op = "ml_list_datasets"
+type = "A"
+lock = "admin"
+
+[[endpoint]]
+op = "ml_list_dataset_versions"
+type = "A"
+lock = "admin"

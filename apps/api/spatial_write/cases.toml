@@ -1,0 +1,6 @@
+# Thao tác của module spatial_write: Loại, khoá, nhật ký cho cổng case (`tools/charter.py`).
+
+[[endpoint]]
+op = "spatial_write_layer"
+type = "GV"
+lock = "layer.edit"

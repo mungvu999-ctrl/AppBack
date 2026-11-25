@@ -4,9 +4,18 @@
 
 [[endpoint]]
 op = "measurements_create_record"
+type = "G"
+lock = "layer.edit"
 # C14: hai POST song song cùng id (cùng thân → {201, 200}; khác thân → {201, 409}).
 extra = ["C14"]
 
 [[endpoint]]
 op = "measurements_delete_record"
+type = "G"
+lock = "layer.edit"
 waive = { C16 = "DELETE không có thân, không có chuỗi người nhập" }
+
+[[endpoint]]
+op = "measurements_list_records"
+type = "Đ"
+lock = "thành viên"

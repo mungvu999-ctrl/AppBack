@@ -4,11 +4,18 @@
 
 [[endpoint]]
 op = "members_add_member"
+type = "G"
+lock = "project.settings.edit"
+logged = true
+outside = true
 # Hạn mức 60/giờ/người (C11); hai lượt cùng email song song (C14).
 extra = ["C11", "C14"]
 
 [[endpoint]]
 op = "members_remove_member"
+type = "G"
+lock = "project.settings.edit"
+logged = true
 waive = { C16 = "DELETE không có thân" }
 # Hai người sửa duy nhất gỡ lẫn nhau (C14).
 extra = ["C14"]

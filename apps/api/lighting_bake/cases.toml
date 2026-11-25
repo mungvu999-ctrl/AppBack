@@ -4,6 +4,23 @@
 
 [[endpoint]]
 op = "lighting_bake_start_bake"
+type = "G"
+lock = "layer.edit"
 # C14: hai lượt bắt đầu song song → đúng một 202, một 409 (unique partial `uq_lighting_bakes_active`).
 extra = ["C14"]
 waive = { C16 = "thân là byte GLB" }
+
+[[endpoint]]
+op = "lighting_bake_read_latest"
+type = "Đ"
+lock = "thành viên"
+
+[[endpoint]]
+op = "lighting_bake_download_file"
+type = "Đ"
+lock = "thành viên"
+
+[[endpoint]]
+op = "lighting_bake_read_availability"
+type = "Đ"
+lock = "thành viên"

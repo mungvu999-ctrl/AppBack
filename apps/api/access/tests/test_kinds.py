@@ -1,7 +1,7 @@
-"""Đối chiếu `ActivityKind`/`KIND_OPERATIONS` với BE-BIND thật (B1-02.md [8]).
+"""Đối chiếu `ActivityKind`/`KIND_OPERATIONS` với dòng hợp đồng thật có `logged = true` (B1-02.md [8]).
 
-Đường tới `docs/charter/BE-BIND.md` tính từ `__file__`, không đường tuyệt đối
-(K nhắc lại BE-01 [9]) — cùng khuôn `apps/api/core/tests/test_routes.py`.
+Gốc repo tính từ `__file__`, không đường tuyệt đối (K nhắc lại BE-01 [9]) — cùng khuôn
+`apps/api/core/tests/test_routes.py`.
 """
 
 import logging
@@ -15,7 +15,6 @@ from apps.api.access.kinds import KIND_OPERATIONS, ActivityKind
 from tools.charter import BindRow, load_bind_rows
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-BIND_PATH: Final = REPO_ROOT / "docs" / "charter" / "BE-BIND.md"
 
 _KIND_RE: Final = re.compile(r"^[a-z]+\.[a-z_]+$")
 
@@ -25,8 +24,8 @@ logger = logging.getLogger(__name__)
 @pytest.fixture(scope="module")
 def logged_op_ids() -> set[str]:
     """operationId của mọi dòng BE-BIND có cột Nhật ký `có`."""
-    rows: list[BindRow] = load_bind_rows(BIND_PATH)
-    return {row.operation_id for row in rows if row.logged and row.operation_id is not None}
+    rows: list[BindRow] = load_bind_rows(REPO_ROOT)
+    return {row.operation_id for row in rows if row.logged}
 
 
 def test_every_activity_kind_value_matches_pattern() -> None:

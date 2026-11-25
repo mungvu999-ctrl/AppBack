@@ -1,0 +1,13 @@
+# Thao tác của module auth: Loại, khoá, nhật ký cho cổng case (`tools/charter.py`).
+
+[[endpoint]]
+op = "auth_login"
+type = "C"
+
+[[endpoint]]
+op = "auth_refresh"
+type = "R"
+
+[[endpoint]]
+op = "auth_logout"
+type = "P"

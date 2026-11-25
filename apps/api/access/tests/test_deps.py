@@ -33,7 +33,6 @@ from packages.testing.fixtures.clock import FakeClock
 from tools.charter import load_bind_rows
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-BIND_PATH: Final = REPO_ROOT / "docs" / "charter" / "BE-BIND.md"
 PREFIX: Final = "/api/access-probe"
 BIND_OP: Final = "users_list_users"
 """Thao tác BE-BIND thật (khoá `user.manage`) mà route thử mượn — `operationId` là tên hàm (`route.name`)."""
@@ -176,7 +175,7 @@ def test_operations_expose_permission_keys(access_app: FastAPI) -> None:
 
 def test_role_key_on_bind_route_fails_the_route_scan(access_app: FastAPI) -> None:
     """Phép so của `test_permission_keys_match_bind_rows` bắt route BE-BIND gắn `require_role` lệch."""
-    rows = {row.operation_id: row for row in load_bind_rows(BIND_PATH) if row.operation_id is not None}
+    rows = {row.operation_id: row for row in load_bind_rows(REPO_ROOT)}
     mismatched = {
         operation.op
         for operation in operations(access_app)

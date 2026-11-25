@@ -5,3 +5,19 @@
 # C01 C02 C03 C08 C17 C23. C21 không áp (thân không mang id); C16 không áp (thân không có chuỗi người nhập).
 # Hai lịch `publish_unsent_notifications`, `trim_notifications` tự đòi J01, J06; `notify` không phải task nên
 # J09, J10 của nó là test đặt tên theo việc (`test_notify__J09`, `test_notify__J10`), không vào bảng này.
+
+[[endpoint]]
+op = "notifications_list"
+type = "Đ*"
+
+[[endpoint]]
+op = "notifications_mark_read"
+type = "G*"
+
+[[endpoint]]
+op = "notifications_mark_all_read"
+type = "G*"
+
+[[endpoint]]
+op = "notifications_accept_invite"
+type = "G*"

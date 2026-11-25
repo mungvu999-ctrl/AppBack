@@ -19,7 +19,6 @@ from packages.core.errors import ERRORS
 from tools.charter import BindRow, load_bind_rows
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-BIND_PATH: Final = REPO_ROOT / "docs" / "charter" / "BE-BIND.md"
 
 OPERATION_ID_RE: Final = re.compile(r"[a-z][a-z0-9]*(_[a-z0-9]+)*")
 ERROR_CODE_RE: Final = re.compile(r"[A-Z][A-Z0-9_]{2,63}")
@@ -36,7 +35,7 @@ SCAN_PACKAGES: Final = ("packages", "apps.api", "apps.worker")
 @pytest.fixture(scope="module")
 def bind_rows() -> list[BindRow]:
     """Các dòng hợp đồng của BE-BIND."""
-    return load_bind_rows(BIND_PATH)
+    return load_bind_rows(REPO_ROOT)
 
 
 @pytest.fixture(scope="module")
@@ -62,7 +61,7 @@ def test_operation_ids_are_snake_case_and_unique(real_operations: list[Operation
 
 def test_paths_match_bind_rows(real_operations: list[Operation], bind_rows: list[BindRow]) -> None:
     """K06: đường và method của thao tác có trong BE-BIND phải đúng dòng đó."""
-    rows = {row.operation_id: row for row in bind_rows if row.operation_id is not None}
+    rows = {row.operation_id: row for row in bind_rows}
     for operation in real_operations:
         row = rows.get(operation.op)
         if row is None:
@@ -72,7 +71,7 @@ def test_paths_match_bind_rows(real_operations: list[Operation], bind_rows: list
 
 def test_permission_keys_match_bind_rows(real_operations: list[Operation], bind_rows: list[BindRow]) -> None:
     """BE-00 §5: `Operation.permission_key` phải khớp cột "Khoá" của BE-BIND."""
-    rows = {row.operation_id: row for row in bind_rows if row.operation_id is not None}
+    rows = {row.operation_id: row for row in bind_rows}
     for operation in real_operations:
         row = rows.get(operation.op)
         if row is None:
@@ -82,9 +81,7 @@ def test_permission_keys_match_bind_rows(real_operations: list[Operation], bind_
 
 def test_public_routes_are_allowed(real_operations: list[Operation], bind_rows: list[BindRow]) -> None:
     """Mặc định mọi route được bảo vệ; công khai chỉ cho Loại C, R, P, B, S và ba route lõi."""
-    allowed = CORE_PUBLIC_OPS | {
-        row.operation_id for row in bind_rows if row.operation_id is not None and row.case_type in PUBLIC_CASE_TYPES
-    }
+    allowed = CORE_PUBLIC_OPS | {row.operation_id for row in bind_rows if row.case_type in PUBLIC_CASE_TYPES}
     public = {operation.op for operation in real_operations if not operation.protected}
     assert public <= allowed, sorted(public - allowed)
 

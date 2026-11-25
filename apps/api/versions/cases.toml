@@ -4,6 +4,30 @@
 
 [[endpoint]]
 op = "versions_restore_version"
+type = "GV"
+lock = "layer.edit"
+logged = true
 # Nhật ký `có` (C18) không tự suy ra cho GV; C14 đã nằm trong tập của GV.
 extra = ["C18"]
 waive = { C16 = "thân chỉ có floorId và baseVersion, không có chuỗi người nhập" }
+
+[[endpoint]]
+op = "versions_read_version"
+type = "Đ"
+lock = "thành viên"
+
+[[endpoint]]
+op = "versions_list_versions"
+type = "Đ"
+lock = "thành viên"
+
+[[endpoint]]
+op = "versions_read_snapshot"
+type = "Đ"
+lock = "thành viên"
+
+[[endpoint]]
+op = "versions_label_version"
+type = "G"
+lock = "layer.edit"
+logged = true

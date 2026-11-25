@@ -2,3 +2,13 @@
 #
 # `templates_list_templates` (Đ) và `templates_create_template` (G) không cần khai gì:
 # case của Loại đã đủ, tính từ metadata + BE-BIND.
+
+[[endpoint]]
+op = "templates_list_templates"
+type = "Đ"
+lock = "thành viên"
+
+[[endpoint]]
+op = "templates_create_template"
+type = "G"
+lock = "layer.edit"

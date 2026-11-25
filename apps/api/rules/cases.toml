@@ -5,5 +5,13 @@
 
 [[endpoint]]
 op = "rules_replace_config"
+type = "GV"
+lock = "ruleset.edit"
+logged = true
 extra = ["C18"]
 waive = { C16 = "thân chỉ có mã luật, khoá ngưỡng và số; không có chuỗi người nhập" }
+
+[[endpoint]]
+op = "rules_read_config"
+type = "Đ"
+lock = "thành viên"

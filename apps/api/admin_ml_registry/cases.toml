@@ -9,5 +9,29 @@
 
 [[endpoint]]
 op = "ml_upload_version"
+type = "A"
+lock = "admin"
+logged = true
 # Loại A không tự đòi C16; `metadata` mang `label` (chuỗi người nhập, gửi NFD phải đọc lại ra NFC).
 extra = ["C16"]
+
+[[endpoint]]
+op = "ml_list_families"
+type = "A"
+lock = "admin"
+
+[[endpoint]]
+op = "ml_activate_version"
+type = "A"
+lock = "admin"
+logged = true
+
+[[endpoint]]
+op = "ml_list_versions"
+type = "A"
+lock = "admin"
+
+[[endpoint]]
+op = "ml_read_version"
+type = "A"
+lock = "admin"

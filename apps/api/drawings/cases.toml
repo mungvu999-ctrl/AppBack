@@ -11,22 +11,60 @@
 
 [[endpoint]]
 op = "drawings_init_upload"
+type = "T-init"
+lock = "floor.upload"
+logged = true
 # C16: `fileName` người nhập, gửi NFD phải đọc lại ra NFC. C18: #5 ghi nhật ký FLOOR_UPLOAD.
 extra = ["C16", "C18"]
 
 [[endpoint]]
 op = "drawings_complete_upload"
+type = "T-complete"
+lock = "floor.upload"
+logged = true
+outside = true
 # C18: #7 ghi nhật ký FLOOR_UPLOAD_COMPLETE. Thân chỉ có `uploadId`, không có chuỗi người nhập.
 extra = ["C18"]
 
 [[endpoint]]
 op = "drawings_rerun_upload"
+type = "G"
+lock = "floor.upload"
+outside = true
 # N51 (K-06): thân rỗng, không chuỗi người nhập → miễn C16. C10 "+ngoài" (xếp
 # `pipeline.orchestrate.start`): hai test riêng `…__C10_queue_once`, `…__C10_no_key_replay`.
 waive = { C16 = "thân rỗng, không có chuỗi người nhập để chuẩn hoá NFC" }
 
 [[endpoint]]
 op = "drawings_cancel_upload"
+type = "G"
+lock = "floor.upload"
+outside = true
 # N53 (K-24): thân rỗng → miễn C16. C10 "+ngoài" (cắm cờ huỷ Redis + phát `Progress` sau commit): hai test riêng
 # `…__C10_same_key_replays`, `…__C10_double_click_without_key`.
 waive = { C16 = "thân rỗng, không có chuỗi người nhập để chuẩn hoá NFC" }
+
+[[endpoint]]
+op = "drawings_upload_chunk"
+type = "T-chunk"
+lock = "floor.upload"
+
+[[endpoint]]
+op = "drawings_read_progress"
+type = "Đ"
+lock = "thành viên"
+
+[[endpoint]]
+op = "drawings_list_latest_uploads"
+type = "Đ"
+lock = "thành viên"
+
+[[endpoint]]
+op = "drawings_list_pipeline_runs"
+type = "Đ"
+lock = "thành viên"
+
+[[endpoint]]
+op = "drawings_page_thumbnails"
+type = "Đ"
+lock = "floor.upload"

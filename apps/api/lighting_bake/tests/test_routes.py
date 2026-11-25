@@ -1,4 +1,4 @@
-"""N42 `POST …/lighting-bakes`, N43 `GET …/latest`, N44 `GET …/files/{file_name}` (LB-01, CASE §2.3).
+"""N42 `POST …/lighting-bakes`, N43 `GET …/latest`, N44 `GET …/files/{file_name}` (LB-01, cổng case).
 
 Postgres, kho local và broker thật (K23). Case chung C04 C05 C12 C13 C25 ở `test_common.py`.
 """

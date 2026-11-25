@@ -1,4 +1,4 @@
-"""J-case và M-case của task `ml.infer.walls.segment` (BE-00 §7 "Test task", CASE §4, §6).
+"""J-case và M-case của task `ml.infer.walls.segment` (BE-00 §7 "Test task", cổng case).
 
 Dịch vụ **thật**: Redis của Testcontainers, worker Celery thật nghe `ml.infer`, kho đĩa
 `local_storage`, `onnxruntime` chạy model tí hon thật (K23) — không mock broker, kho hay

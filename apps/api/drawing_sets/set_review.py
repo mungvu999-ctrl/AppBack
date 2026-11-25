@@ -205,7 +205,7 @@ async def replace_views(
     """N59 — lưu bản duyệt nếu `base_version` còn khớp; lượt lặp của chính người ghi → 200 không đổi gì (C09b).
 
     Lỗi: 404 bộ; 409 `DRAWING_SET_CONFIRMED`/`DRAWING_SET_NOT_READY`; 422 `VALIDATION` `field` `body.views.<i>.<khoá>`;
-    409 `VERSION_CONFLICT` (`remoteChanges: []`) khi base cũ. Không ghi nhật ký (revision là dấu vết, BE-BIND).
+    409 `VERSION_CONFLICT` (`remoteChanges: []`) khi base cũ. Không ghi nhật ký (revision là dấu vết).
     """
     drawing_set = await load_set(db, project_id=project_id, set_id=set_id)
     _check_status(drawing_set)

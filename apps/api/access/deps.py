@@ -7,7 +7,7 @@ người ngoài trước mọi 403, BE-00 §4, K08), không qua module này.
 
 Vai chỉ lấy từ `current_principal` (ảnh chụp DB/cache của B1-01), không từ claim,
 header hay thân request (K05, K34). Mỗi cổng phơi `permission_key` qua
-`permission_dependency` để quét route so với cột "Khoá" của BE-BIND.
+`permission_dependency` để quét route so với `lock` ở `cases.toml`.
 """
 
 from collections.abc import Callable
@@ -21,8 +21,8 @@ from packages.core.error_codes import FORBIDDEN
 from packages.domain.permissions import ROLES, SYSTEM_SCOPED_KEYS, can
 
 ROLE_KEY_PREFIX: Final = "role:"
-"""Khoá của `require_role` khác admin: ngoài từ vựng cột "Khoá" của BE-BIND, nên route
-có dòng BE-BIND dùng nó làm `test_permission_keys_match_bind_rows` hỏng."""
+"""Khoá của `require_role` khác admin: ngoài từ vựng `lock` ở `cases.toml`, nên route
+có dòng hợp đồng dùng nó làm `test_permission_keys_match_bind_rows` hỏng."""
 
 type RoleGate = Callable[[Principal], None]
 
@@ -50,7 +50,7 @@ def require_role(*roles: str) -> RoleGate:
 
     Không đối số hay vai lạ → `ValueError` lúc khai (fail-closed). Thứ tự vai không
     quan trọng. `require_role("admin")` mang khoá `admin`; tập khác mang
-    `role:<vai sắp xếp, nối bằng ,>` — không khớp dòng BE-BIND nào.
+    `role:<vai sắp xếp, nối bằng ,>` — không khớp dòng hợp đồng nào.
     """
     allowed = frozenset(roles)
     if not allowed:

@@ -3,8 +3,8 @@
     python -m tools.contract.check [--build-dir DIR]
 
 Đọc `tools/contract/APPFRONT_SHA`; biến môi trường `APPFRONT_DIR`, `CONTRACT_NODE_DIR`,
-`CONTRACT_SAMPLES_DIR` (mẫu golden), `CONTRACT_REQUIRE_ALL=1` (người điều phối đặt từ M3);
-BE-BIND và `changes/` qua `tools.charter`; thao tác đã mount qua `operations()` của B0-06.
+`CONTRACT_SAMPLES_DIR` (mẫu golden); dòng hợp đồng (`docs/contracts/openapi.json` + `cases.toml` của module)
+và `changes/` qua `tools.charter`; thao tác đã mount qua `operations()` của B0-06.
 
 In tám kiểm theo thứ tự, mỗi kiểm `đạt` / `hỏng` / `không áp dụng` kèm lý do, rồi chi tiết
 của kiểm hỏng; thoát 1 khi có kiểm hỏng, runner hỏng hay mẫu hỏng. "Không áp dụng" chỉ khi
@@ -39,10 +39,8 @@ from tools.contract.samples import EventSample, HttpSample, SampleError, bad_dat
 from tools.verify.steps import STATUS_FAIL, STATUS_NA, STATUS_OK
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[2]
-BIND_FILE: Final = REPO_ROOT / "docs" / "charter" / "BE-BIND.md"
 SHA_FILE: Final = Path(__file__).resolve().parent / "APPFRONT_SHA"
 SAMPLES_ENV: Final = "CONTRACT_SAMPLES_DIR"
-REQUIRE_ALL_ENV: Final = "CONTRACT_REQUIRE_ALL"
 
 H1_EXEMPT: Final = frozenset({"health_live", "health_ready", "files_read_object", "lighting_bake_download_file"})
 """Miễn H1 **đóng** (B0-07 [2], K06): thêm tên vào đây là trái hiến chương."""
@@ -58,7 +56,7 @@ H5_OWNER: Final = "B4-01"
 
 @dataclass(frozen=True, slots=True)
 class Mounted:
-    """Một thao tác đã mount — đủ để so với dòng BE-BIND (K06)."""
+    """Một thao tác đã mount — đủ để so với dòng hợp đồng (K06)."""
 
     op: str
     method: str
@@ -87,9 +85,9 @@ class Inputs:
     require_all: bool = False
 
 
-def contract_rows(bind_file: Path = BIND_FILE) -> dict[str, BindRow]:
-    """Dòng BE-BIND §1, §2 theo `operationId`; dòng v2 không có `operationId` nên tự rơi ra."""
-    return {row.operation_id: row for row in load_bind_rows(bind_file) if row.operation_id is not None}
+def contract_rows(repo: Path = REPO_ROOT) -> dict[str, BindRow]:
+    """Dòng hợp đồng của `repo` theo tên thao tác (`tools.charter.load_bind_rows`)."""
+    return {row.operation_id: row for row in load_bind_rows(repo)}
 
 
 def mounted_operations() -> list[Mounted]:
@@ -107,7 +105,7 @@ def gather_inputs() -> Inputs:
         merged=frozenset(merged_prompts(REPO_ROOT)),
         samples=http,
         events=events,
-        require_all=os.environ.get(REQUIRE_ALL_ENV) == "1",
+        require_all=True,
     )
 
 
@@ -134,43 +132,40 @@ def schema_modules(build_dir: Path) -> list[str]:
 
 
 def check_map(shapes: Mapping[str, str], rows: Mapping[str, BindRow]) -> CheckResult:
-    """Bản đồ đủ: mỗi dòng BE-BIND không v2 có mục, không mục nào ngoài BE-BIND và miễn."""
-    problems = [f"{op}: dòng BE-BIND không có mục trong schema-map.ts" for op in sorted(rows.keys() - shapes.keys())]
-    problems += [f"{op}: mục thừa, không có dòng BE-BIND" for op in sorted(shapes.keys() - rows.keys() - H1_EXEMPT)]
-    return verdict("Bản đồ đủ", problems, f"{len(shapes)} mục / {len(rows)} dòng BE-BIND không v2")
+    """Bản đồ đủ: mỗi dòng hợp đồng có mục, không mục nào ngoài dòng hợp đồng và miễn."""
+    problems = [f"{op}: dòng hợp đồng không có mục trong schema-map.ts" for op in sorted(rows.keys() - shapes.keys())]
+    problems += [f"{op}: mục thừa, không có dòng hợp đồng" for op in sorted(shapes.keys() - rows.keys() - H1_EXEMPT)]
+    return verdict("Bản đồ đủ", problems, f"{len(shapes)} mục / {len(rows)} dòng hợp đồng")
 
 
 def _unknown_mounts(inputs: Inputs) -> list[str]:
-    """Thao tác đã mount mà không thuộc BE-BIND (không v2) hay miễn, hoặc lệch đường (K06)."""
+    """Thao tác đã mount mà không có dòng hợp đồng hay miễn, hoặc lệch đường (K06)."""
     problems = []
     for mounted in inputs.mounted:
         row = inputs.rows.get(mounted.op)
         if row is None and mounted.op not in H1_EXEMPT:
-            problems.append(f"{mounted.op}: đã mount mà không có dòng BE-BIND (không v2) hay miễn (K06)")
+            problems.append(
+                f"{mounted.op}: đã mount mà không có dòng hợp đồng hay miễn (K06) — cần `type` ở cases.toml của "
+                "module và thao tác trong docs/contracts/openapi.json (`run.sh openapi`)"
+            )
         elif row is not None and (mounted.method, mounted.path) != (row.method, row.path):
             where = f"{mounted.method} {mounted.path}"
-            problems.append(f"{mounted.op}: mount ở {where}, BE-BIND ghi {row.method} {row.path} (K06)")
+            problems.append(f"{mounted.op}: mount ở {where}, openapi.json ghi {row.method} {row.path} (K06)")
     return problems
 
 
 def _unmounted(inputs: Inputs) -> list[str]:
-    """Dòng BE-BIND phải mount mà chưa: chủ đã hợp nhất, hay `CONTRACT_REQUIRE_ALL=1`."""
+    """Dòng hợp đồng chưa mount: `openapi.json` còn ghi thao tác mà app không còn route (lượt thật luôn đòi đủ)."""
+    if not inputs.require_all:
+        return []
     mounted = {item.op for item in inputs.mounted}
-    problems = []
-    for op, row in inputs.rows.items():
-        if op in mounted:
-            continue
-        if inputs.require_all:
-            problems.append(f"{op}: chưa mount ({REQUIRE_ALL_ENV}=1)")
-        elif row.owner in inputs.merged:
-            problems.append(f"{op}: chủ {row.owner} đã hợp nhất (changes/{row.owner}.md) mà chưa mount")
-    return problems
+    return [f"{op}: có trong docs/contracts/openapi.json mà chưa mount" for op in inputs.rows if op not in mounted]
 
 
 def check_mounted(inputs: Inputs) -> CheckResult:
-    """Thao tác đã mount khớp BE-BIND, và mọi thao tác phải có đã mount."""
+    """Thao tác đã mount khớp dòng hợp đồng, và mọi dòng hợp đồng đã mount."""
     problems = _unknown_mounts(inputs) + _unmounted(inputs)
-    return verdict("Thao tác đã mount", problems, f"{len(inputs.mounted)} đã mount / {len(inputs.rows)} dòng BE-BIND")
+    return verdict("Thao tác đã mount", problems, f"{len(inputs.mounted)} đã mount / {len(inputs.rows)} dòng hợp đồng")
 
 
 def _missing_success(samples: Sequence[HttpSample], shapes: Mapping[str, str], inputs: Inputs) -> list[str]:
@@ -179,7 +174,7 @@ def _missing_success(samples: Sequence[HttpSample], shapes: Mapping[str, str], i
     problems = []
     for mounted in inputs.mounted:
         row = inputs.rows.get(mounted.op)
-        # Không dòng BE-BIND (miễn) hay không có mục bản đồ: kiểm "bản đồ đủ" và "đã mount" đã báo.
+        # Không dòng hợp đồng (miễn) hay không có mục bản đồ: kiểm "bản đồ đủ" và "đã mount" đã báo.
         if row is None or row.case_type == STREAM_TYPE or shapes.get(mounted.op, "empty") == "empty":
             continue
         if mounted.op not in covered:
@@ -188,7 +183,7 @@ def _missing_success(samples: Sequence[HttpSample], shapes: Mapping[str, str], i
 
 
 def _progress_branches(samples: Sequence[HttpSample], inputs: Inputs) -> list[str]:
-    """`drawings_read_progress` đã mount phải có mẫu 2xx cho đủ 4 nhánh `status` (BE-BIND §4)."""
+    """`drawings_read_progress` đã mount phải có mẫu 2xx cho đủ 4 nhánh `status`."""
     if PROGRESS_OP not in {item.op for item in inputs.mounted}:
         return []
     seen = {
@@ -197,7 +192,7 @@ def _progress_branches(samples: Sequence[HttpSample], inputs: Inputs) -> list[st
         if sample.operation_id == PROGRESS_OP and 200 <= sample.status < 300 and isinstance(sample.body, dict)
     }
     missing = [branch for branch in PROGRESS_BRANCHES if branch not in seen]
-    return [f"{PROGRESS_OP}: thiếu mẫu 2xx nhánh {', '.join(missing)} (BE-BIND §4)"] if missing else []
+    return [f"{PROGRESS_OP}: thiếu mẫu 2xx nhánh {', '.join(missing)}"] if missing else []
 
 
 def check_h1(

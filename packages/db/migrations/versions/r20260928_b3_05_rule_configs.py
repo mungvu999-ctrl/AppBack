@@ -4,7 +4,7 @@ Revision ID: r20260928_b3_05
 Revises: r20260928_b2_07
 Create Date: 2026-09-28
 
-Bảng `rule_configs` (B3-05 [5], BE-BIND N21/N22): expand thuần, một bảng mới với một FK
+Bảng `rule_configs` (B3-05 [5], hợp đồng N21/N22): expand thuần, một bảng mới với một FK
 `ON DELETE CASCADE` về `projects`. Hằng số chép tay từ `packages/db/models/rules.py`, không nhập module model.
 Tên constraint bọc `op.f(...)` để quy ước của `Base.metadata` không ghép tiền tố lần hai.
 

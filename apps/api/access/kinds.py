@@ -1,4 +1,4 @@
-"""Bảng mã `kind` của `activity_log` — 31 hằng, một cho mỗi dòng BE-BIND có Nhật ký `có`.
+"""Bảng mã `kind` của `activity_log` — 31 hằng, một cho mỗi dòng hợp đồng có `logged = true`.
 
 Chủ route **nhập hằng** từ đây khi gọi `record_activity` (E), không viết chuỗi tay:
 sai chính tả một `kind` sẽ vượt qua kiểm `ActivityKind` của `record_activity` mà
@@ -89,5 +89,5 @@ KIND_OPERATIONS: Final[MappingProxyType[ActivityKind, str]] = MappingProxyType(
         ActivityKind.DRAWING_SET_DELETE: "drawing_sets_delete_set",
     }
 )
-"""hằng `kind` → `operationId` BE-BIND. `USER_INVITE` ghi một dòng mỗi người mời
+"""hằng `kind` → tên thao tác hợp đồng. `USER_INVITE` ghi một dòng mỗi người mời
 (vẫn cùng một `op` `users_invite_users`)."""

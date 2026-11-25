@@ -6,8 +6,10 @@
 1. `docs/charter/BE-00.md` — hiến chương: stack, ranh giới import, quy ước dây W1–W24, lỗi, xác thực, migration, việc nền, cổng verify.
 2. `docs/charter/BE-KFM.md` — lỗi agent hay mắc (K01–K34); khối [9] của prompt trích lại phần liên quan.
 3. `docs/charter/ENV.md` — môi trường đã đo (mount, biến môi trường, trần chạy song song).
-4. `docs/charter/CASE.md` §2.3 — thuật toán `case_gate.py` (nguồn của case bắt buộc).
-5. `docs/charter/BE-BIND.md`, `docs/charter/HOP-DONG-MOI.md` — hợp đồng FE, chỉ đọc phần khối [2] của prompt trỏ tới.
+4. `tools/case_gate.py` — nguồn duy nhất của case bắt buộc theo Loại (bảng `_LOAI_CANDIDATES`, `_FIXED_EXTRA`).
+5. Bảng thao tác hợp đồng (MAIN-RED): đường và tên ở `docs/contracts/openapi.json`; Loại, khoá,
+   nhật ký ở `apps/api/<module>/cases.toml` của chính module — route mới phải có mục `[[endpoint]]` với `op`, `type`
+   (và `lock`, `logged = true`, `outside = true` khi có), khuôn ở docstring `tools/charter.py`.
 
 Mâu thuẫn giữa prompt và hiến chương → làm theo hiến chương, ghi vào "Lệch khỏi prompt" của báo cáo.
 
@@ -21,8 +23,8 @@ bash tools/verify/run.sh <việc>
 
 | Việc | Làm gì | Ai chạy |
 |---|---|---|
-| `verify [--steps 1,2,4]` | 8 bước (BE-00 §12) trong container Linux. **Một lượt một lúc trên cả máy**: lượt sau tự xếp hàng ở khoá cổng (`tools/verify/gate_lock.sh`, in "khoá cổng: chờ…") — ~8,4 GiB/lượt, hai lượt chồng từng làm treo Docker. **Không tự viết vòng chờ** `docker ps \| grep verify`: cứ gọi `run.sh`, nó tự chờ đúng lượt (PERF-11) | trước khi báo xong; đầy đủ hay chỉ bước/test đích theo đánh giá phạm vi kiểm (`docs/RULE-CODE.md` R-33b) |
-| `verify --fast` | **cổng nhanh**: ruff, lint-imports, mypy cache ấm, pytest các **tệp test bị ảnh hưởng** so với `main` (đồ thị import + fixture, PERF-04), độ phủ đơn vị bị chạm, bước 6/7/8 chỉ khi đầu vào đổi, không 5b | mỗi lần sửa; `verify` đầy đủ **chỉ trước merge** (PERF-03) |
+| `verify [--steps 1,2,4]` | 8 bước (BE-00 §12) trong container Linux. **Một lượt một lúc trên cả máy**: lượt sau tự xếp hàng ở khoá cổng (`tools/verify/gate_lock.sh`, in "khoá cổng: chờ…") — ~8,4 GiB/lượt, hai lượt chồng từng làm treo Docker. **Không tự viết vòng chờ** `docker ps \| grep verify`: cứ gọi `run.sh`, nó tự chờ đúng lượt (PERF-11) | **không chạy đầy đủ trên máy**: cổng đầy đủ là CI của PR trên GitHub Actions (`docs/RULE-CODE.md` R-33b); chỉ dùng `--steps` cho bước đích, hay chạy đầy đủ khi chủ dự án yêu cầu |
+| `verify --fast` | **cổng nhanh**: ruff, lint-imports, mypy cache ấm, pytest các **tệp test bị ảnh hưởng** so với `main` (đồ thị import + fixture, PERF-04), độ phủ đơn vị bị chạm, bước 6/7/8 chỉ khi đầu vào đổi, không 5b | mỗi lần sửa và **trước khi báo xong** (R-33); cổng đầy đủ do CI của PR chạy, không chạy trên máy (R-33b) |
 | `lock` | `uv lock` (không `--upgrade`), chép `uv.lock` ra worktree | worker khi thêm thư viện ngoài bảng BE-00 §13.1 |
 | `shell` | bash trong container, để gỡ lỗi (`run.sh shell < lệnh.sh` chạy không tương tác). `--fast` và `shell` giữ khoá cổng **dùng chung**: chạy cùng nhau được, không chạy cạnh cổng đầy đủ — đừng giữ shell tương tác lâu, nó chặn cổng của phiên khác | worker |
 | `hold -- <lệnh>` | chạy lệnh trên host khi giữ khoá cổng một mình (dựng ảnh web f14, build nặng), xếp hàng chung với `verify` | mọi phiên |

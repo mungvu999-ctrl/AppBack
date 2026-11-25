@@ -1,15 +1,38 @@
-# Bảng case bắt buộc thêm/miễn của module tầng (B2-03 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm/miễn của module tầng (B2-03 [8], cổng case).
 #
-# `floors_list_floors` (Đ) không cần khai gì: case của Loại đã đủ, tính từ metadata + BE-BIND.
-# `floors_create_floor`, `floors_patch_spatial_floor` (G) cũng không cần khai gì.
+# `floors_list_floors` (Đ) không cần `extra`/`waive`: case của Loại đã đủ, tính từ metadata + `type`/`lock` khai bên dưới.
+# `floors_create_floor`, `floors_patch_spatial_floor` (G) cũng không cần `extra`/`waive`.
 
 [[endpoint]]
 op = "floors_delete_floor"
+type = "G"
+lock = "layer.edit"
+logged = true
 # DELETE không có thân, không có chuỗi người nhập → không có case NFD để kiểm.
 waive = { C16 = "DELETE không có thân, không có chuỗi người nhập" }
 
 [[endpoint]]
 op = "floors_reorder_floors"
+type = "G"
+lock = "layer.edit"
+logged = true
 # Thân chỉ có mảng id tầng, không có chuỗi người nhập; #13 là case thêm cố định của [8].
 extra = ["C14"]
 waive = { C16 = "thân chỉ có id tầng, không có chuỗi người nhập" }
+
+[[endpoint]]
+op = "floors_create_floor"
+type = "G"
+lock = "layer.edit"
+logged = true
+
+[[endpoint]]
+op = "floors_list_floors"
+type = "Đ"
+lock = "thành viên"
+
+[[endpoint]]
+op = "floors_patch_spatial_floor"
+type = "G"
+lock = "layer.edit"
+logged = true

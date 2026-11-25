@@ -1,0 +1,9 @@
+# Thao tác của module telemetry: Loại, khoá, nhật ký cho cổng case (`tools/charter.py`).
+
+[[endpoint]]
+op = "telemetry_read_feature_flags"
+type = "Đ*"
+
+[[endpoint]]
+op = "telemetry_ingest_batch"
+type = "B"

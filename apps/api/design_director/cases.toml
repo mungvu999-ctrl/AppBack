@@ -1,8 +1,15 @@
-# Case thêm của AI chọn phong cách (AID-01, CASE.md §2.3). Case chung C04 C05 C12 C13 C25 do
+# Case thêm của AI chọn phong cách (AID-01, cổng case). Case chung C04 C05 C12 C13 C25 do
 # `apps/api/core/tests/test_common.py` chạy. Lịch `sweep_design_concepts` tự bị đòi J01, J06.
 
 [[endpoint]]
 op = "design_director_select_concept"
+type = "G"
+lock = "project.settings.edit"
 # C14: hai lượt chọn cùng kiểu song song → cả hai 202 cùng một concept, một dòng, một task.
 extra = ["C14"]
 waive = { C16 = "thân không có chuỗi người nhập" }
+
+[[endpoint]]
+op = "design_director_read_state"
+type = "Đ"
+lock = "thành viên"

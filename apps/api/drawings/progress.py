@@ -1,4 +1,4 @@
-"""Nguồn duy nhất của `Progress` (BE-BIND §4, bảng "Nguồn trạng thái").
+"""Nguồn duy nhất của `Progress` (bảng "Nguồn trạng thái").
 
 Luật nằm ở **một** hàm thuần `progress_of`: #8 và luồng S1 gọi `progress_wire` (một lượt
 tải, một truy vấn), còn N7 dựng cả trang bằng **một** truy vấn rồi gọi thẳng `progress_of`
@@ -18,7 +18,7 @@ from packages.core.instants import to_wire
 from packages.db.models.drawings import PipelineRunRow, UploadRow
 
 LAST_STEP: Final = "qualityCheck"
-"""Bước hiển thị của lượt đã xong: FE vẽ mọi bước "xong" khi `completed` (BE-BIND §4)."""
+"""Bước hiển thị của lượt đã xong: FE vẽ mọi bước "xong" khi `completed`."""
 
 FIRST_STEP: Final = "preprocess"
 """Bước hiển thị khi chưa có gì chạy: `pending` và upload `rejected` đều đứng ở đây."""
@@ -45,7 +45,7 @@ def progress_of(
     ended_at: datetime | None,
     queue_ahead: int | None = None,
 ) -> dict[str, object]:
-    """Bảng "Nguồn trạng thái" của BE-BIND §4, từ giá trị cột sang dict khoá dây.
+    """Bảng "Nguồn trạng thái", từ giá trị cột sang dict khoá dây.
 
     Hàm thuần: người gọi đã có sẵn các cột (một truy vấn cho cả trang ở N7) thì không phải
     vào DB lần nữa. `run_*` là `None` khi lượt tải chưa có lượt chạy nào.

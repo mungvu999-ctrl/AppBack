@@ -1,4 +1,4 @@
-"""Bảng `activity_log` — nhật ký mọi thao tác có cột "Nhật ký: có" ở BE-BIND (C18, W6).
+"""Bảng `activity_log` — nhật ký mọi thao tác có `logged = true` ở `cases.toml` (C18, W6).
 
 `actor_id` **không** có FK tới `users`: một dòng nhật ký phải sống lâu hơn người
 dùng bị xoá mềm (và lâu hơn `system:pipeline`, không phải một hàng `users`), nên

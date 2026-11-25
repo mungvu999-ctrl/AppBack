@@ -1,147 +1,89 @@
-"""Đọc `docs/charter/BE-BIND.md` và `changes/` — nguồn dữ liệu dùng chung.
+"""Đọc bảng thao tác hợp đồng và `changes/` — nguồn dữ liệu dùng chung của các cổng.
 
-`load_bind_rows` và `merged_prompts` được B0-01 cài **một lần**; B0-06, B0-07,
-B0-09 gọi lại, không viết parser riêng (BE-01 [2]).
+Một thao tác hợp đồng (`BindRow`) ghép từ hai nơi, không có bảng viết tay thứ ba:
+
+- `docs/contracts/openapi.json` (người điều phối sinh bằng `run.sh openapi`): method, đường, tên thao tác;
+- `apps/api/<module>/cases.toml`, mục `[[endpoint]]` của chính module: `type` (Loại, bắt buộc để có dòng),
+  `lock` (khoá quyền, vắng = `—`), `logged` (có ghi nhật ký, vắng = không), `outside` (`+ngoài`, vắng = không).
+
+`load_bind_rows` và `merged_prompts` cài **một lần** ở đây; case_gate, contract và test gọi lại, không viết
+bộ đọc riêng (BE-01 [2]).
 """
 
 from __future__ import annotations
 
+import json
 import re
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-_ROW_RE = re.compile(r"^`(?P<method>[A-Z]+) (?P<path>/\S*)`$")
-_SEP_CHARS = set("-: \t")
-_EMPTY_CELL = {"—", "-", ""}
+OPENAPI_FILE = Path("docs") / "contracts" / "openapi.json"
+CASES_GLOB = "apps/api/*/cases.toml"
+NO_LOCK = "—"
 
 
 @dataclass(frozen=True, slots=True)
 class BindRow:
-    """Một dòng của bảng hợp đồng BE-BIND (§1 hoặc §2)."""
+    """Một thao tác hợp đồng: đường từ `openapi.json`, Loại/khoá/nhật ký từ `cases.toml` của module."""
 
-    row_id: str
     method: str
     path: str
-    operation_id: str | None
+    operation_id: str
     case_type: str
     outside: bool
     lock: str
     logged: bool
-    owner: str
 
 
-def _is_table_line(line: str) -> bool:
-    return line.strip().startswith("|")
+def _openapi_routes(spec_file: Path) -> dict[str, tuple[str, str]]:
+    """Tên thao tác → (METHOD, đường) của mọi thao tác trong `openapi.json`.
 
-
-def _is_separator_line(line: str) -> bool:
-    stripped = line.strip()
-    if not stripped.startswith("|"):
-        return False
-    return all(c in _SEP_CHARS or c == "|" for c in stripped)
-
-
-def _split_cells(line: str) -> list[str]:
-    body = line.strip()
-    if body.startswith("|"):
-        body = body[1:]
-    if body.endswith("|"):
-        body = body[:-1]
-    return [cell.strip() for cell in body.split("|")]
-
-
-def _find_col(headers: list[str], *, prefix: str) -> int:
-    for i, h in enumerate(headers):
-        if h == prefix or h.startswith(prefix):
-            return i
-    raise ValueError(f"thiếu cột bắt đầu bằng {prefix!r} trong bảng {headers!r}")
-
-
-def _parse_method_path(cell: str) -> tuple[str, str]:
-    m = _ROW_RE.match(cell)
-    if not m:
-        raise ValueError(f"cột Đường v1 sai khuôn: {cell!r}")
-    method = m.group("method")
-    if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
-        raise ValueError(f"method lạ: {method!r} trong {cell!r}")
-    path = m.group("path").split("?", 1)[0]
-    return method, path
-
-
-def _parse_case_type(cell: str) -> tuple[str, bool]:
-    text = cell.replace("\\*", "*").strip()
-    if text.endswith("+ngoài"):
-        return text[: -len("+ngoài")].strip(), True
-    return text, False
-
-
-def _strip_markdown(cell: str) -> str:
-    return cell.strip().strip("*`").strip()
-
-
-def _parse_table(lines: list[str]) -> list[BindRow]:
-    headers = _split_cells(lines[0])
-    if "Đường v1" not in headers or "operationId" not in headers:
-        return []
-
-    col_id = _find_col(headers, prefix="#")
-    col_path = _find_col(headers, prefix="Đường v1")
-    col_op = _find_col(headers, prefix="operationId")
-    col_type = _find_col(headers, prefix="Loại")
-    col_lock = _find_col(headers, prefix="Khoá")
-    col_logged = _find_col(headers, prefix="Nhật ký")
-    col_owner = _find_col(headers, prefix="Chủ")
-
-    rows: list[BindRow] = []
-    for raw in lines[2:]:
-        cells = _split_cells(raw)
-        if len(cells) != len(headers):
-            raise ValueError(f"số cột lệch header ({len(cells)} != {len(headers)}): {raw!r}")
-
-        method, path = _parse_method_path(cells[col_path])
-        op_cell = _strip_markdown(cells[col_op])
-        operation_id = None if op_cell in _EMPTY_CELL else op_cell
-        case_type, outside = _parse_case_type(cells[col_type])
-        owner = _strip_markdown(cells[col_owner])
-
-        rows.append(
-            BindRow(
-                row_id=cells[col_id].strip(),
-                method=method,
-                path=path,
-                operation_id=operation_id,
-                case_type=case_type,
-                outside=outside,
-                lock=_strip_markdown(cells[col_lock]),
-                logged=cells[col_logged].strip() == "có",
-                owner=owner,
-            )
-        )
-    return rows
-
-
-def load_bind_rows(path: str | Path) -> list[BindRow]:
-    """Đọc mọi bảng hợp đồng (§1, §2, …) trong `path`, gộp thành một danh sách.
-
-    Bảng được nhận diện qua header có cả `Đường v1` và `operationId`; các bảng
-    khác trong file (§3-§5) bị bỏ qua. Dòng sai khuôn (số cột lệch, method lạ,
-    method+path không đúng dạng `` `METHOD /path` ``) → `ValueError`.
+    FastAPI ghi `operationId` = tên hàm route + đường (ký tự ngoài chữ/số thành `_`) + `_` + method; cắt đuôi
+    đó ra tên thao tác. `operationId` không đúng khuôn (ai đó đổi cách sinh id) → `ValueError`.
     """
-    text = Path(path).read_text(encoding="utf-8")
-    lines = text.splitlines()
+    spec = json.loads(spec_file.read_text(encoding="utf-8"))
+    routes: dict[str, tuple[str, str]] = {}
+    for path, item in spec["paths"].items():
+        for method, operation in item.items():
+            suffix = re.sub(r"\W", "_", path) + "_" + method
+            operation_id = operation["operationId"]
+            if not operation_id.endswith(suffix) or operation_id == suffix:
+                raise ValueError(f"operationId sai khuôn FastAPI ở {method.upper()} {path}: {operation_id!r}")
+            routes[operation_id.removesuffix(suffix)] = (method.upper(), path)
+    return routes
 
-    rows: list[BindRow] = []
-    i = 0
-    while i < len(lines):
-        if _is_table_line(lines[i]) and i + 1 < len(lines) and _is_separator_line(lines[i + 1]):
-            j = i + 2
-            while j < len(lines) and _is_table_line(lines[j]):
-                j += 1
-            rows.extend(_parse_table(lines[i:j]))
-            i = j
-        else:
-            i += 1
-    return rows
+
+def load_bind_rows(repo: str | Path) -> list[BindRow]:
+    """Thao tác hợp đồng của `repo`, xếp theo tên thao tác.
+
+    Có dòng khi mục `[[endpoint]]` khai `type` **và** `openapi.json` có thao tác đó. Mục không `type` chỉ là
+    thêm/miễn case; mục có `type` mà `openapi.json` chưa có (route mới, chưa sinh lại) không ra dòng — cổng hợp
+    đồng báo "đã mount mà không có dòng hợp đồng". Một thao tác khai `type` hai lần → `ValueError`.
+    """
+    root = Path(repo)
+    routes = _openapi_routes(root / OPENAPI_FILE)
+    typed: dict[str, dict[str, object]] = {}
+    for cases_file in sorted(root.glob(CASES_GLOB)):
+        for entry in tomllib.loads(cases_file.read_text(encoding="utf-8")).get("endpoint", []):
+            if "type" not in entry:
+                continue
+            if entry["op"] in typed:
+                raise ValueError(f"{entry['op']}: khai `type` hai lần (lần hai ở {cases_file.as_posix()})")
+            typed[entry["op"]] = entry
+    return [
+        BindRow(
+            method=routes[op][0],
+            path=routes[op][1],
+            operation_id=op,
+            case_type=str(entry["type"]),
+            outside=bool(entry.get("outside", False)),
+            lock=str(entry.get("lock", NO_LOCK)),
+            logged=bool(entry.get("logged", False)),
+        )
+        for op, entry in sorted(typed.items())
+        if op in routes
+    ]
 
 
 def merged_prompts(repo: str | Path) -> set[str]:

@@ -1,4 +1,4 @@
-# Bảng case bắt buộc thêm của task và lịch điều phối bước (B5-06c [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm của task và lịch điều phối bước (B5-06c [8], cổng case).
 # `tools/case_gate.py` tự đòi J01, J06 cho mọi task/lịch; danh sách dưới là phần [8] đòi thêm.
 
 [[task]]

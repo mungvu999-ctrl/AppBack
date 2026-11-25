@@ -4,7 +4,7 @@ Revision ID: r20261025_share_links
 Revises: r20261024_fe3d_roof
 Create Date: 2026-10-25
 
-Expand thuần (BE-00 §6.1): bảng mới `share_links` cho BE-BIND #47-#49 (liên kết chia sẻ có hạn,
+Expand thuần (BE-00 §6.1): bảng mới `share_links` cho hợp đồng #47-#49 (liên kết chia sẻ có hạn,
 thu hồi được). Không đụng bảng cũ nên không mang `# contract:`.
 """
 

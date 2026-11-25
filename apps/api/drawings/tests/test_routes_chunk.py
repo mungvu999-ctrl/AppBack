@@ -1,4 +1,4 @@
-"""Case của #6 `drawings_upload_chunk` (CASE §2.2 T-chunk: C01 C02 C06 C08 U10).
+"""Case của #6 `drawings_upload_chunk` (case T-chunk: C01 C02 C06 C08 U10).
 
 Không C21: thân `{chunk, chunkIndex}` không lặp id nào của đường. Kho là `local_storage`
 thật (cùng gốc với app nhờ `api_env`), nên mỗi test đọc lại object vừa ghi chứ không tin

@@ -79,7 +79,7 @@ def conflict(**overrides: Any) -> dict[str, Any]:
 
 
 def progress(status: str, **extra: Any) -> dict[str, Any]:
-    """`ProgressSchema` (BE-BIND §4) của một upload."""
+    """`ProgressSchema` của một upload."""
     return {"id": UPLOAD_ID, "progressPercent": 0, "status": status, "step": "preprocess", **extra}
 
 

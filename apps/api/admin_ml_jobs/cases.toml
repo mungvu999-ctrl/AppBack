@@ -1,0 +1,35 @@
+# Thao tác của module admin_ml_jobs: Loại, khoá, nhật ký cho cổng case (`tools/charter.py`).
+
+[[endpoint]]
+op = "ml_list_jobs"
+type = "A"
+lock = "admin"
+
+[[endpoint]]
+op = "ml_create_job"
+type = "A"
+lock = "admin"
+logged = true
+outside = true
+
+[[endpoint]]
+op = "ml_read_job"
+type = "A"
+lock = "admin"
+
+[[endpoint]]
+op = "ml_cancel_job"
+type = "A"
+lock = "admin"
+logged = true
+outside = true
+
+[[endpoint]]
+op = "ml_list_job_metrics"
+type = "A"
+lock = "admin"
+
+[[endpoint]]
+op = "ml_list_job_logs"
+type = "A"
+lock = "admin"

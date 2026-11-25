@@ -52,7 +52,7 @@ from packages.storage.port import ObjectStorage
 _log: Final = logging.getLogger(__name__)
 
 STEP: Final = LAST_STEP
-"""Tên bước `qualityCheck`; cùng một hằng với FE xem là bước cuối (BE-BIND §4)."""
+"""Tên bước `qualityCheck`; cùng một hằng với FE xem là bước cuối."""
 
 QualityOutcome = Literal["completed", "skipped"]
 """Kết quả một lượt giao: đã đóng lượt, hay bỏ qua (lượt muộn, bị thay, chưa ghi lớp, giao lặp)."""

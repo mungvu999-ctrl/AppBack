@@ -1,4 +1,4 @@
-"""`streams_open_progress` (S1) — S01-S09 trên route thật (B4-01 [8]; CASE §5).
+"""`streams_open_progress` (S1) — S01-S09 trên route thật (B4-01 [8]; cổng case).
 
 Mọi test đi qua app thật: Postgres, hai Redis và cookie luồng do chính
 `POST /api/auth/refresh` cấp (K23 cấm mock, S09 đòi đúng đường đó). Nhà cung cấp giả ở

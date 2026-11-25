@@ -1,4 +1,4 @@
-"""N47 `GET …/design-concept`, N48 `POST …/design-concept` (AID-01, CASE §2.3).
+"""N47 `GET …/design-concept`, N48 `POST …/design-concept` (AID-01, cổng case).
 
 Postgres và broker thật (K23). Case chung C04 C05 C12 C13 C25 ở `test_common.py`.
 """

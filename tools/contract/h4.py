@@ -12,7 +12,7 @@ from types import ModuleType
 from typing import Any, Final
 
 EXPECTED_RULE_COUNT: Final = 25
-"""BE-BIND §5: 25 mã luật. FE đổi con số này là việc của hiến chương, không của harness."""
+"""25 mã luật. FE đổi con số này là việc của hiến chương, không của harness."""
 REQUIRED_NAMES: Final = ("RULE_CODES", "THRESHOLD_SPECS")
 
 

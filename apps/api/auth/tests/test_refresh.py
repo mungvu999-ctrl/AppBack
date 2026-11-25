@@ -1,4 +1,4 @@
-"""`POST /api/auth/refresh` (BE-BIND #3, BE-00 §5 thuật toán refresh; CASE loại R)."""
+"""`POST /api/auth/refresh` (hợp đồng #3, BE-00 §5 thuật toán refresh; CASE loại R)."""
 
 import asyncio
 import logging

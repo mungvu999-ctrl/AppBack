@@ -1,8 +1,16 @@
-# Bảng case bắt buộc thêm/miễn của module cài đặt dự án (B2-02 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm/miễn của module cài đặt dự án (B2-02 [8], cổng case).
 #
-# `settings_read_settings` (Đ) không cần khai gì. N6 là GV: C01 C02 C03 C06 C07 C08 C09 C09b C14 C16 C17
-# tự tính từ metadata; C18 (Nhật ký) BE-BIND ghi `có` nên thêm tay.
+# `settings_read_settings` (Đ) không cần `extra`/`waive`. N6 là GV: C01 C02 C03 C06 C07 C08 C09 C09b C14 C16 C17
+# tự tính từ metadata; C18 (Nhật ký, `logged = true`) nên thêm tay.
 
 [[endpoint]]
 op = "settings_replace_settings"
+type = "GV"
+lock = "project.settings.edit"
+logged = true
 extra = ["C18"]
+
+[[endpoint]]
+op = "settings_read_settings"
+type = "Đ"
+lock = "thành viên"

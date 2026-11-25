@@ -1,4 +1,4 @@
-# Bảng case bắt buộc thêm của task kiểm chất lượng pipeline (B5-07 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm của task kiểm chất lượng pipeline (B5-07 [8], cổng case).
 # `tools/case_gate.py` tự đòi J01, J06; danh sách dưới là phần [8] đòi thêm (chỉ case J, NO-294).
 
 [[task]]

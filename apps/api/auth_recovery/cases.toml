@@ -1,4 +1,4 @@
-# Case bắt buộc thêm/miễn của auth_recovery (CASE.md §2.3).
+# Case bắt buộc thêm/miễn của auth_recovery (cổng case).
 #
 # `auth_preview_invitation` (N10b, UIFIX-B2) là route công khai Loại C, nhưng thân chỉ có
 # `token` do máy chủ phát (base64url, không phải chữ người gõ) — không có chuỗi nào cần chuẩn
@@ -6,4 +6,17 @@
 
 [[endpoint]]
 op = "auth_preview_invitation"
+type = "C"
 waive = { C16 = "thân chỉ có token máy chủ phát, không có chuỗi người nhập" }
+
+[[endpoint]]
+op = "auth_request_password_reset"
+type = "C"
+
+[[endpoint]]
+op = "auth_confirm_password_reset"
+type = "C"
+
+[[endpoint]]
+op = "auth_accept_invitation"
+type = "C"

@@ -235,7 +235,7 @@ def test_permanent_error_codes_follow_the_registry_pattern(code: str) -> None:
 
 
 def test_registered_tasks_leaves_out_tasks_declared_in_tests() -> None:
-    """Sổ task là đầu vào của cổng case: nó chỉ được phụ thuộc mã sản phẩm (CASE §2.3).
+    """Sổ task là đầu vào của cổng case: nó chỉ được phụ thuộc mã sản phẩm.
 
     Khẳng định **vắng mặt** task của module test, không khẳng định sổ rỗng: mọi prompt
     khai `define_task`/`@periodic` đều làm sổ thật khác rỗng (BE-00 §7 "Dọn rác").

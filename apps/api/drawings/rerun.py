@@ -9,7 +9,7 @@ không giữ kết nối Postgres khi gọi MinIO) → giao dịch cuối khoá 
 mọi điều kiện rồi `start_run`. Hai lượt bấm đôi: lượt sau thấy lượt chạy `pending` → 409.
 
 Không ghi nhật ký hoạt động: lượt tải đã có dòng `floor.upload_complete`; chạy lại là việc
-máy của cùng lượt tải (BE-BIND N51 cột Nhật ký "—").
+máy của cùng lượt tải (`drawings_rerun_upload` không `logged`).
 """
 
 from sqlalchemy import select

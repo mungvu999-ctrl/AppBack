@@ -7076,7 +7076,8 @@
                 "fallbackWallModel",
                 "fallbackObjectModel",
                 "fallbackTextModel",
-                "geometrySuspect"
+                "geometrySuspect",
+                "roofUnreviewed"
               ],
               "type": "string"
             },

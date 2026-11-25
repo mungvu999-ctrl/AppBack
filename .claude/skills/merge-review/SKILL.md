@@ -57,6 +57,7 @@ bash tools/verify/run.sh verify --fast    # trên máy: chỉ test bị ảnh h�
 ```
 - Nhánh chưa có PR, hay CI chưa chạy xong trên SHA đầu nhánh → chưa đủ bằng chứng, không `APPROVE`.
 - Job CI đỏ, hay `--fast` thoát khác 0 → `REQUEST CHANGES`, trích job/bước hỏng.
+- Job CI `skipped` vì PR chỉ đổi tài liệu (job `changes` của `ci.yml` quyết) tính là đạt; `skipped` vì lý do khác thì không.
 - Bước ghi "không áp dụng" phải đúng luật BE-00 §12 (prompt chủ chưa hợp nhất), nếu
   không thì là "hỏng".
 - Độ phủ mỗi gói bị chạm và tổng đều ≥ 90% dòng **và** ≥ 90% nhánh: đọc từ job pytest/coverage của CI, không chép số

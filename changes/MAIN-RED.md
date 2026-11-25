@@ -18,5 +18,9 @@ chat: "oke làm đi, đơn giản mà thực dụng là tốt nhất" — vì v�
   R-33/R-33b, `CLAUDE.md`, skill `merge-review` §3 — trên máy chỉ `verify --fast`, cổng đầy đủ là CI của PR.
 
 ## Nợ và việc chưa làm
-- NO-569: `CLAUDE.md` mục đọc trước 1–3 và skill `merge-review` còn trỏ `docs/charter/BE-00.md`, `BE-KFM.md`, `ENV.md`, `docs/RULE.md`
+- NO-580: `CLAUDE.md` mục đọc trước 1–3 và skill `merge-review` còn trỏ `docs/charter/BE-00.md`, `BE-KFM.md`, `ENV.md`, `docs/RULE.md`
   (đã xoá, chủ dự án chưa quyết thay bằng gì); mã còn trích `BE-00 §…`, `HOP-DONG-MOI §…` và số dòng cũ (`#8`, `N47`) không còn bảng tra.
+- NO-581 (P2, mở; chủ: skill `merge-review` / người điều phối): `type`, `lock`, `logged`, `outside` của thao tác trước nằm ở bảng chỉ
+  người điều phối sửa, nay ở `cases.toml` của module — worker có thể đổi `type` (giảm tập case bắt buộc) hay `lock` cùng lúc với mã
+  mà cổng vẫn xanh. Hướng đóng: skill `merge-review` thêm luật "diff đổi `type`/`lock`/`logged`/`outside` của mục `[[endpoint]]` đã
+  có = đổi hợp đồng, phải có lý do trong `changes/`".

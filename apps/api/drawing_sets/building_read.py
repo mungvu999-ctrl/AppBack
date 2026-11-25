@@ -15,11 +15,13 @@ shortcut: số tầng người duyệt sửa ở N59 (`storey_no`) chưa vào đ
 """
 
 import asyncio
+import logging
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Final
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,9 +29,10 @@ from apps.api.drawing_sets.analysis import page_readings
 from apps.api.drawing_sets.service import DEADLINE_S, RETRY_AFTER_S
 from apps.api.drawing_sets.set_read import FULL_PAGE, load_set
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
-from packages.db.models.drawing_sets import DrawingSetViewRow
+from packages.db.models.drawing_sets import DrawingSetRow, DrawingSetViewRow
 from packages.domain.drawing_set import HouseView, SectionView
-from packages.domain.drawing_set.building import BuildingProposal, propose_building
+from packages.domain.drawing_set.building import BuildingProposal
+from packages.domain.drawing_set.decisions import Decisions, decide
 from packages.domain.drawing_set.set_analysis import (
     NOT_PLAN_SURE,
     Box,
@@ -40,8 +43,20 @@ from packages.domain.drawing_set.set_analysis import (
 )
 from packages.storage.port import ObjectStorage
 
-__all__ = ["DEADLINE_S", "RETRY_AFTER_S", "read_building"]
+__all__ = [
+    "DEADLINE_S",
+    "FROZEN_VERSION",
+    "RETRY_AFTER_S",
+    "BuildingInputs",
+    "load_inputs",
+    "propose",
+    "read_building",
+]
 
+_log: Final = logging.getLogger(__name__)
+
+FROZEN_VERSION: Final = 1
+"""`schemaVersion` của bản đề xuất đóng băng trong `building.confirmed` (N60 ghi, route đọc kiểm)."""
 _ANALYSED: Final = frozenset({"review", "confirmed"})
 """Trạng thái mà bộ đã có hình và kết quả đọc trang."""
 _READ_CONCURRENCY: Final = 4
@@ -61,6 +76,14 @@ class _ViewSource:
     crop: Mapping[str, float]
     kind: str
     kind_confidence: float
+
+
+@dataclass(frozen=True)
+class BuildingInputs:
+    """Đầu vào của một lần tính đề xuất: hình chưa bị loại theo `ord` và quyết định của người duyệt (nếu có)."""
+
+    sources: tuple[_ViewSource, ...]
+    decisions: Decisions | None
 
 
 async def _load_views(db: AsyncSession, set_id: str) -> list[_ViewSource]:
@@ -104,12 +127,13 @@ def _box(crop: Mapping[str, float], size: tuple[int, int]) -> Box:
     return x0, y0, x0 + crop["width_ratio"] * width, y0 + crop["height_ratio"] * height
 
 
-def _propose(sources: Sequence[_ViewSource], readings: Mapping[_Page, PageReading]) -> BuildingProposal:
-    """Phần tốn CPU, đồng bộ (chạy trong `_BUILDERS`): chia chữ của trang cho từng hình rồi `propose_building`.
+def _propose(inputs: BuildingInputs, readings: Mapping[_Page, PageReading]) -> BuildingProposal:
+    """Phần tốn CPU, đồng bộ (chạy trong `_BUILDERS`): chia chữ của trang cho từng hình rồi `decide`.
 
     Chữ thuộc hình nhỏ nhất chứa tâm hộp chữ (`assign_texts`, như lúc máy phân tích), nên hình lồng nhau trên một
     trang không nhận trùng chữ.
     """
+    sources = inputs.sources
     drawn: dict[str, tuple[tuple[Text, ...], tuple[int, int]]] = {}
     for page, reading in readings.items():
         group = [source for source in sources if source.page == page]
@@ -118,7 +142,8 @@ def _propose(sources: Sequence[_ViewSource], readings: Mapping[_Page, PageReadin
             drawn[source.view_id] = texts, (max(1, round(box[2] - box[0])), max(1, round(box[3] - box[1])))
     plans = [source for source in sources if source.kind == "plan"]
     sure = [source for source in sources if source.kind_confidence >= NOT_PLAN_SURE]
-    return propose_building(
+    return decide(
+        inputs.decisions,
         [HouseView(source.view_id, *drawn[source.view_id], index) for index, source in enumerate(plans)],
         [
             SectionView(*drawn[source.view_id])
@@ -129,24 +154,72 @@ def _propose(sources: Sequence[_ViewSource], readings: Mapping[_Page, PageReadin
     )
 
 
-async def read_building(
-    db: AsyncSession, storage: ObjectStorage, *, project_id: str, set_id: str
-) -> BuildingProposal | None:
-    """Đề xuất ngôi nhà của một bộ; `None` khi bộ chưa qua phân tích (chưa có hình và kết quả đọc).
+def stored_decisions(drawing_set: DrawingSetRow) -> Decisions | None:
+    """Quyết định của người duyệt lưu trong `building.decisions`; `None` khi chưa ai gửi.
 
-    Bộ không có, đã xoá hay của dự án khác → 404 `resource:"drawingSet"`. Đọc + giải quá `DEADLINE_S` → 503
-    `DEPENDENCY_UNAVAILABLE`.
+    JSONB không còn đúng hình dạng thì ném `ValidationError` (500): thà hỏng ồn ào còn hơn xác nhận bằng quyết định
+    đọc thiếu.
     """
-    status = (await load_set(db, project_id=project_id, set_id=set_id)).status
-    sources = await _load_views(db, set_id) if status in _ANALYSED else None
-    await db.rollback()
-    if sources is None:
+    raw = (drawing_set.building or {}).get("decisions")
+    return None if raw is None else Decisions.model_validate(raw)
+
+
+def _frozen(drawing_set: DrawingSetRow) -> BuildingProposal | None:
+    """Bản đề xuất đóng băng của bộ đã xác nhận; `None` khi bộ chưa xác nhận hoặc chưa từng đóng băng.
+
+    Bản lưu khác `FROZEN_VERSION`, hoặc không còn khớp mô hình hiện tại (mã mới thêm trường), cũng trả `None` kèm một
+    dòng log: route đọc khi đó tính lại, chứ không trả 500 mãi mãi cho một bộ đã xác nhận.
+    """
+    stored = (drawing_set.building or {}).get("confirmed") if drawing_set.status == "confirmed" else None
+    if stored is None:
         return None
-    pages = sorted({source.page for source in sources})
+    try:
+        if stored["schemaVersion"] != FROZEN_VERSION:
+            raise ValueError(f"schemaVersion {stored['schemaVersion']}")
+        return BuildingProposal.model_validate(stored["proposal"])
+    except (KeyError, TypeError, ValueError, ValidationError) as exc:
+        _log.warning("set_building_frozen_unreadable", extra={"set_id": drawing_set.id, "error": type(exc).__name__})
+        return None
+
+
+async def load_inputs(db: AsyncSession, drawing_set: DrawingSetRow) -> BuildingInputs:
+    """Mọi thứ của DB mà đề xuất cần (hình chưa bị loại, quyết định đã lưu), chép ra trước khi trả kết nối."""
+    return BuildingInputs(tuple(await _load_views(db, drawing_set.id)), stored_decisions(drawing_set))
+
+
+async def propose(storage: ObjectStorage, project_id: str, set_id: str, inputs: BuildingInputs) -> BuildingProposal:
+    """Đọc kết quả đọc của các trang rồi tính đề xuất kèm quyết định; không đụng DB.
+
+    Đọc + giải quá `DEADLINE_S` → 503 `DEPENDENCY_UNAVAILABLE`, không trả nửa kết quả.
+    """
+    pages = sorted({source.page for source in inputs.sources})
     try:
         async with asyncio.timeout(DEADLINE_S):
             readings = await _read_pages(storage, project_id, set_id, pages)
             # quá hạn không dừng được luồng giải đang chạy; nó tự xong và chỉ chiếm một chỗ của `_BUILDERS`.
-            return await asyncio.get_running_loop().run_in_executor(_BUILDERS, _propose, sources, readings)
+            return await asyncio.get_running_loop().run_in_executor(_BUILDERS, _propose, inputs, readings)
     except TimeoutError as exc:
         raise DEPENDENCY_UNAVAILABLE.error(retry_after=RETRY_AFTER_S) from exc
+
+
+async def read_building(
+    db: AsyncSession, storage: ObjectStorage, *, project_id: str, set_id: str
+) -> tuple[BuildingProposal, Decisions | None] | None:
+    """Đề xuất ngôi nhà của một bộ kèm quyết định đã lưu; `None` khi bộ chưa qua phân tích.
+
+    Bộ đã xác nhận và có bản đóng băng (`building.confirmed`, N60 ghi) → trả đúng bản đó, không tính lại: mã mới
+    triển khai sau lúc xác nhận không được làm đề xuất khác cái người dùng đã nhận. Bộ không có, đã xoá hay của dự án
+    khác → 404 `resource:"drawingSet"`.
+    """
+    drawing_set = await load_set(db, project_id=project_id, set_id=set_id)
+    if drawing_set.status not in _ANALYSED:
+        await db.rollback()
+        return None
+    frozen = _frozen(drawing_set)
+    if frozen is not None:
+        found = frozen, stored_decisions(drawing_set)
+        await db.rollback()
+        return found
+    inputs = await load_inputs(db, drawing_set)
+    await db.rollback()
+    return await propose(storage, project_id, set_id, inputs), inputs.decisions

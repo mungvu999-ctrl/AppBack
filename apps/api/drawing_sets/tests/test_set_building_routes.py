@@ -104,7 +104,10 @@ async def test_drawing_sets_read_building__C01(
     )
     assert proposal["conflicts"] == []
     unsure = [hit for hit in proposal["violations"] if hit["code"] == "M-18"]
-    assert unsure == [{"code": "M-18", "level": "warning", "floorRefs": [roof_plan], "values": ["convention"]}]
+    key = f"M-18|{roof_plan}|convention"
+    assert unsure == [
+        {"key": key, "code": "M-18", "level": "warning", "floorRefs": [roof_plan], "values": ["convention"]}
+    ]
     await db_session.refresh(seeded.drawing_set)
     assert seeded.drawing_set.revision == 0
 

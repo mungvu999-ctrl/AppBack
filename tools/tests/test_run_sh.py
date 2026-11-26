@@ -331,3 +331,49 @@ def test_verify__no_stack_means_own_containers(worktree: Path, tmp_path: Path, e
     """Stack không chạy, hay `VERIFY_SHARED_STACK=off`: không biến nào → test dựng container như trước."""
     shared, _ = _run_with_stack(worktree, tmp_path, **env_extra)
     assert shared == {}
+
+
+def _changed(root: Path, tmp_path: Path, *args: str) -> set[str]:
+    """`run.sh verify <args>` với `docker` giả; trả tập đường `VERIFY_CHANGED` mà cổng trao cho container."""
+    bin_dir = tmp_path / "bin"
+    out = tmp_path / "changed"
+    _fake_command(bin_dir, "docker", f'printf "%s" "$VERIFY_CHANGED" > "{out}"')
+    result = subprocess.run(  # noqa: S603 — bash + run.sh của repo tạm
+        [BASH, str(root / "tools" / "verify" / "run.sh"), "verify", *args],
+        env={**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    return set(out.read_text(encoding="utf-8").splitlines())
+
+
+def test_verify_fast__stacked_branch_compares_with_its_pushed_parent(worktree: Path, tmp_path: Path) -> None:
+    """PERF-13: cổng nhanh của nhánh xếp chồng chỉ thấy phần của chính nó, kể cả sau khi nó đã được đẩy.
+
+    Cổng đầy đủ vẫn so với `main` nên thấy cả tệp của lát trước.
+    """
+    git = [GIT, "-C", str(worktree), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+    subprocess.run([*git, "branch", "-M", "main"], check=True)  # noqa: S603 — lệnh cố định trên thư mục tạm
+    subprocess.run([*git, "checkout", "-q", "-b", "feature/child"], check=True)  # noqa: S603 — như trên
+    for name, pushed_as in (("parent.txt", "feature/parent"), ("child.txt", "feature/child")):
+        (worktree / name).write_text("x\n", encoding="utf-8")
+        (worktree / f"more-{name}").write_text("x\n", encoding="utf-8")  # lát nào cũng lớn hơn nhánh gộp thêm bên dưới
+        subprocess.run([*git, "add", name, f"more-{name}"], check=True)  # noqa: S603 — như trên
+        subprocess.run([*git, "commit", "-q", "-m", name], check=True)  # noqa: S603 — như trên
+        subprocess.run([*git, "update-ref", f"refs/remotes/origin/{pushed_as}", "HEAD"], check=True)  # noqa: S603
+
+    slices = {"parent.txt", "child.txt", "side.txt"}
+    assert _changed(worktree, tmp_path, "--fast") & slices == {"child.txt"}
+    assert _changed(worktree, tmp_path) & slices == {"parent.txt", "child.txt"}
+
+    # Gộp thêm một nhánh đã đẩy khác: hai gốc ngang hàng, cổng nhanh lấy gốc cho ít tệp đổi nhất (lát trước).
+    subprocess.run([*git, "checkout", "-q", "-b", "feature/side", "main"], check=True)  # noqa: S603 — như trên
+    (worktree / "side.txt").write_text("x\n", encoding="utf-8")
+    subprocess.run([*git, "add", "side.txt"], check=True)  # noqa: S603 — như trên
+    subprocess.run([*git, "commit", "-q", "-m", "side"], check=True)  # noqa: S603 — như trên
+    subprocess.run([*git, "update-ref", "refs/remotes/origin/feature/side", "HEAD"], check=True)  # noqa: S603
+    subprocess.run([*git, "checkout", "-q", "feature/child"], check=True)  # noqa: S603 — như trên
+    subprocess.run([*git, "merge", "-q", "--no-ff", "-m", "gộp", "feature/side"], check=True)  # noqa: S603 — như trên
+    assert _changed(worktree, tmp_path, "--fast") & slices == {"child.txt", "side.txt"}

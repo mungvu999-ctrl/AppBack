@@ -4,7 +4,7 @@ Không dòng nào tồn tại cho tới lần ghi đầu (`revision = 1`); `apps
 trả mặc định `revision 0` khi chưa có dòng. `last_writer_id` (`sub` người ghi, K05, không FK vì
 người có thể bị xoá) và `last_body_sha256` cho phép nhận ra một lượt ghi lặp (C09b).
 `scene_style` (FE3D-B2): phong cách cảnh 3D của dự án, NULL = FE dùng mặc định của nó.
-`detect_furniture` (QT-FURN-TOGGLE): lượt pipeline có dựng đồ đạc AI không; mặc định tắt (chỉ tường, cửa, phòng).
+`detect_furniture` (QT-FURN-TOGGLE): lượt pipeline có dựng đồ đạc AI không; mặc định bật (BENCH3D-FURN-ON).
 `separate_units` (UX-R2 K34): các tầng là những căn hộ riêng, không chồng thành một toà nhà.
 
 CHECK ở đây là tầng phòng thủ cuối; nơi báo lỗi cho người dùng là `apps/api/project_settings` (422).
@@ -13,7 +13,7 @@ CHECK ở đây là tầng phòng thủ cuối; nơi báo lỗi cho người dù
 from decimal import Decimal
 from typing import Final
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, ForeignKey, Integer, Numeric, Text, false, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, ForeignKey, Integer, Numeric, Text, text, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from packages.db.base import Base, TimestampMixin
@@ -36,7 +36,7 @@ class ProjectSettingsRow(Base, TimestampMixin):
     confidence_threshold: Mapped[Decimal] = mapped_column(Numeric(4, 3))
     default_scale_mm_per_px: Mapped[Decimal] = mapped_column(Numeric(12, 6))
     scene_style: Mapped[str | None] = mapped_column(Text, default=None)
-    detect_furniture: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    detect_furniture: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     separate_units: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     last_writer_id: Mapped[str] = mapped_column(Text)
     last_body_sha256: Mapped[str] = mapped_column(Text)

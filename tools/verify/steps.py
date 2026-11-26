@@ -74,7 +74,7 @@ def _popen(cmd: list[str], **kw: Any) -> subprocess.Popen[bytes]:
 
 
 def _changed_files() -> list[str]:
-    """Các đường tương đối bị đổi so với `main` (dòng của `VERIFY_CHANGED`, `run.sh` tính)."""
+    """Các đường tương đối bị đổi so với gốc so sánh `run.sh` chọn (`main`; cổng nhanh nhánh xếp chồng: lát trước)."""
     return [line.strip() for line in os.environ.get("VERIFY_CHANGED", "").splitlines() if line.strip()]
 
 

@@ -234,7 +234,7 @@ def test_golden_parity(name: str) -> None:
         if got.level_m is not None:
             assert got.level_m == pytest.approx(exp["level_m"], abs=0.01)
     by_view = {f["floor_no"]: f for f in known["floors"] if f["floor_no"] is not None}
-    # Tầng trên cùng: mẫu vàng không có chiều cao, ở đây luôn có 3,3 m ở 0,4 "assumed".
+    # Tầng trên cùng: mẫu vàng không có chiều cao; ở đây không có thang cốt nên là 3,3 m ở 0,4 "assumed".
     assert heights[-1].to_number is None
     assert heights[-1].flags == ("assumed",)
     assert len(heights) - 1 == len(known["storey_heights"])
@@ -412,3 +412,18 @@ def test_fill_defaults_takes_plausible_rung_above() -> None:
     assert floors[2] == FloorLevel(3.0, "section", 0.55)
     _, heights = solve_heights(plans)  # không có thang: vẫn mặc định
     assert (heights[0].source, heights[0].confidence) == ("default", 0.4)
+
+
+@pytest.mark.parametrize(("rung", "height"), [(5.99, None), (6.0, 2.4), (6.9, 3.3), (8.2, 4.6), (8.21, None)])
+def test_top_storey_height_from_plausible_rung_above(rung: float, height: float | None) -> None:
+    """NHA-04: tầng trên cùng cao tới bậc thang phía trên sàn (đỉnh tường / sàn mái đọc trên mặt cắt) khi bậc cách
+    2,4-4,6 m — nguồn "section" ở 0,55; bậc ngoài dải thì giữ mặc định 3,3 m ở 0,4 "assumed"."""
+    _, heights = solve_heights(_plans([0.0], [3.6]), _sides(0.0, 3.6, rung))
+    default = StoreyHeight(2, None, 3.3, "default", 0.4, ("assumed",))
+    assert heights[-1] == (default if height is None else StoreyHeight(2, None, height, "section", 0.55))
+
+
+def test_top_storey_height_prefers_rung_near_default_over_lowest() -> None:
+    """Hai bậc trong dải (cốt lanh tô +2,7 và sàn mái +3,3 trên sàn): chọn như `_fill_defaults` — bậc gần 3,3 m."""
+    _, heights = solve_heights(_plans([0.0], [3.6]), _sides(0.0, 3.6, 6.3, 6.9))
+    assert heights[-1] == StoreyHeight(2, None, 3.3, "section", 0.55)

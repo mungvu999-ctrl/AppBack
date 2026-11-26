@@ -66,3 +66,83 @@ export const HouseProposalStrictSchema = z
     message: 'công tắc tắt thì floors và runIds rỗng',
     path: ['floors'],
   });
+
+/**
+ * Thân 200 của `GET /api/projects/{project_id}/drawing-sets/{set_id}/building` (NHA-06a).
+ *
+ * FE chưa có schema cho route này (NHA-06c); bản strict này là hợp đồng của cổng cho tới lúc đó. Tầng dùng lại
+ * `HouseFloorProposalStrictSchema` (`floorId` ở đây là mã hình của bộ). Mỗi trường mái là một giá trị kèm độ tin,
+ * nguồn và các hình nó được đọc ra; trường tuỳ chọn vắng chứ không `null` (W2). Công tắc tắt hoặc bộ chưa qua phân
+ * tích thì không có `proposal`.
+ */
+const BUILDING_SOURCES = [
+  'reviewer',
+  'plan+section',
+  'roofPlan',
+  'section',
+  'elevation',
+  'plan',
+  'convention',
+  'default',
+] as const;
+
+const MeasuredStrictSchema = z
+  .object({
+    value: z.union([z.number(), z.string().min(1)]),
+    confidence: unit,
+    source: z.enum(BUILDING_SOURCES),
+    viewIds: z.array(z.string().min(1)),
+  })
+  .strict();
+
+const RoofSpecStrictSchema = z
+  .object({
+    levelRef: z.string().min(1),
+    form: MeasuredStrictSchema,
+    pitchDeg: MeasuredStrictSchema,
+    quarterTurns: MeasuredStrictSchema,
+    eaveElevationMm: MeasuredStrictSchema.optional(),
+    overhangMm: MeasuredStrictSchema,
+    ridgeElevationMm: MeasuredStrictSchema.optional(),
+    parapetMm: MeasuredStrictSchema.optional(),
+    material: MeasuredStrictSchema.optional(),
+  })
+  .strict();
+
+const BuildingConflictStrictSchema = z
+  .object({
+    key: z.string().min(1),
+    field: z.enum(['elevationMm', 'pitchDeg']),
+    candidates: z.array(MeasuredStrictSchema).min(2),
+    chosenSource: z.enum(BUILDING_SOURCES).optional(),
+  })
+  .strict();
+
+const RuleHitStrictSchema = z
+  .object({
+    code: z.string().regex(/^[TM]-\d{2}$/),
+    level: z.enum(['error', 'warning', 'hint']),
+    floorRefs: z.array(z.string().min(1)),
+    values: z.array(z.union([z.number(), z.string().min(1)])),
+  })
+  .strict();
+
+export const SetBuildingStrictSchema = z
+  .object({
+    enabled: z.boolean(),
+    proposal: z
+      .object({
+        unitSystem: MeasuredStrictSchema,
+        floors: z.array(HouseFloorProposalStrictSchema),
+        roofs: z.array(RoofSpecStrictSchema),
+        conflicts: z.array(BuildingConflictStrictSchema),
+        violations: z.array(RuleHitStrictSchema),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .refine((b) => b.enabled || b.proposal === undefined, {
+    message: 'công tắc tắt thì không có proposal',
+    path: ['proposal'],
+  });

@@ -530,7 +530,7 @@ def _heights(
     chain_ok: Mapping[int, bool],
 ) -> list[StoreyHeight]:
     """Chiều cao mọi cặp tầng đánh số liền nhau (thiếu đúng một tầng mà thang chia được thì chiều cao tầng
-    dưới tới tầng thiếu), rồi tầng trên cùng (mặc định 3,3 m ở 0,4)."""
+    dưới tới tầng thiếu). Tầng trên cùng do `_top_height` thêm sau `_fill_defaults`."""
     mezz = tuple(lv for m in mezz_idx if (lv := levels[m].level_m) is not None)
     out = []
     for (na, ia), (nb, ib) in pairwise(numbered):
@@ -540,10 +540,17 @@ def _heights(
             continue
         ends = (na, levels[ia], chain_ok.get(ia, False)), (nb, levels[ib], chain_ok.get(ib, False))
         out.append(_height(*ends, _skips_mezzanine((ia, ib), levels, mezz_idx), mezz, ladder))
-    if numbered:
-        top = numbered[-1][0]
-        out.append(StoreyHeight(top, None, DEFAULT_HEIGHT_M, "default", _CONF_DEFAULT, ("assumed",)))
     return out
+
+
+def _top_height(number: int, level: FloorLevel, ladder: Ladder) -> StoreyHeight:
+    """Chiều cao tầng trên cùng (NHA-04): bậc thang hợp lý phía trên sàn — đỉnh tường / sàn mái đọc trên mặt
+    cắt, cách 2,4-4,6 m, chọn như `_fill_defaults` (nhiều mặt cắt hơn, rồi gần 3,3 m: cốt lanh tô không thắng
+    sàn mái) → nguồn "section" ở 0,55, lớp trên vẫn hỏi. Không có cốt sàn hay không có bậc → 3,3 m ở 0,4
+    "assumed". Mái đặt ở cốt sàn + chiều cao này, nên số giả định làm cả mái sai cao độ."""
+    if level.level_m is not None and (rungs := _plausible_rungs(level.level_m, ladder, band=_LOOSE)):
+        return StoreyHeight(number, None, round(rungs[0] - level.level_m, 3), "section", _CONF_RUNG_HEIGHT)
+    return StoreyHeight(number, None, DEFAULT_HEIGHT_M, "default", _CONF_DEFAULT, ("assumed",))
 
 
 def _fill_defaults(
@@ -571,7 +578,8 @@ def solve_heights(
     sides: Sequence[Sequence[float]] = (),
     chain: Sequence[tuple[float, float, bool]] | None = None,
 ) -> tuple[tuple[FloorLevel, ...], tuple[StoreyHeight, ...]]:
-    """Cốt sàn mỗi tầng (cùng thứ tự đầu vào) và chiều cao các cặp tầng đánh số liền nhau.
+    """Cốt sàn mỗi tầng (cùng thứ tự đầu vào) và chiều cao các cặp tầng đánh số liền nhau, rồi tầng trên cùng
+    (`to_number=None`: tới bậc thang phía trên sàn nếu có, không thì mặc định — `_top_height`).
 
     `storeys` theo thứ tự bộ bản vẽ, mỗi số tầng một mặt bằng. Lửng không vào quy hoạch động nhưng
     cốt của nó làm khoảng cao bị nó chia thành hợp lý; nó không cắt cặp tầng.
@@ -598,6 +606,9 @@ def solve_heights(
     floors = [levels[i] for i in range(len(storeys))]
     heights = _heights(numbered, floors, mezz_idx, ladder, chain_ok)
     _fill_defaults(numbered, floors, heights, ladder)
+    if numbered:  # sau `_fill_defaults`: cốt tầng trên cùng có thể vừa được lấp từ thang
+        top, index = numbered[-1]
+        heights.append(_top_height(top, floors[index], ladder))
     return tuple(floors), tuple(heights)
 
 

@@ -632,6 +632,10 @@ def test_sections_make_levels_and_heights_two_source() -> None:
     assert [(f.height_mm, f.height_source, f.height_confidence) for f in got[:2]] == [(3300, "plan+section", 0.93)] * 2
     assert not got[0].questions
     assert not got[1].questions
+    # NHA-04: tầng trên cùng hết mặc định khi mặt cắt có bậc phía trên sàn (+9.900); một nguồn nên vẫn hỏi.
+    assert (alone[2].height_mm, alone[2].height_source) == (3300, "default")
+    assert (got[2].height_mm, got[2].height_source, got[2].height_confidence) == (3300, "section", 0.55)
+    assert "HEIGHT_ASSUMED" in got[2].questions
 
 
 def test_sections_fill_a_plan_without_level_marks() -> None:

@@ -12,6 +12,9 @@ Luật:
    máy xếp khác mặt bằng với độ tin < 0,8 bị hỏi `NOT_A_PLAN`; từ 0,8 trở lên coi là chắc, không hỏi.
  * Chỉ hình máy xếp mặt bằng vào bài toán số tầng; câu hỏi tầng giữ `STOREY_UNSURE`/`STOREY_CONFLICT`/
    `NOT_A_PLAN` (cốt và chiều cao là việc của N52 sau khi dựng, không hỏi ở màn duyệt).
+ * Mặt cắt máy xếp chắc (>= `NOT_PLAN_SURE`) và đọc được từ `_SIDE_MIN_LEVELS` cốt là nguồn cốt thứ hai của cả bộ
+   (NHA-04): không cần người đánh dấu. Nó không đổi số tầng nhưng đổi cốt/chiều cao, và qua đó có thể hạ độ
+   tin tầng và sinh `STOREY_CONFLICT` cho hai hình cùng một tầng (NO-590). Mặt đứng chưa vào (`_SIDE_KINDS`).
  * Trang chưa đọc chữ (OCR hỏng/hết giờ) hay hình không có chữ: loại "other", độ tin 0, câu hỏi `NO_TEXT`.
  * Loại `cover` của K-14 không có trên dây: ra "other" (lý do giữ trong `machine`).
 """
@@ -28,8 +31,10 @@ from packages.domain.drawing_set.proposal import (
     STOREY_UNSURE,
     FloorProposal,
     HouseView,
+    SectionView,
     solve_house,
 )
+from packages.domain.drawing_set.sections import side_levels
 from packages.domain.drawing_set.storeys import StoreyLabel
 from packages.domain.drawing_set.title_block import TitleBlock, read_title_block
 from packages.domain.drawing_set.titles import Kind, pick_title
@@ -39,6 +44,14 @@ NOT_PLAN_SURE: Final = 0.8
 VIEW_MIN_AREA: Final = 0.01
 """Khung nhỏ hơn 1 % trang bị bỏ: bằng `CROP_MIN_AREA` của #5 (`apps/api/drawings/schemas.py`, gói domain không
 nhập `apps`) — khung máy nhỏ hơn thì người duyệt lưu lại qua N59 sẽ bị 422."""
+_SIDE_KINDS: Final = frozenset({"section"})
+"""Loại hình mà chữ tự vào `solve_house(sections=…)` khi độ tin >= `NOT_PLAN_SURE` (NHA-04); hình chưa chắc không
+vào: cốt đọc nhầm từ một mặt bằng sẽ thành bậc thang giả. **Chưa có `elevation`**: đo trên 50 tờ (changes/NHA-04.md)
+mặt đứng duy nhất ra thang cốt là số kích thước bị đọc thành cốt, và nó đè một cốt mặt bằng đúng (DS-836, NO-572)."""
+_SIDE_MIN_LEVELS: Final = 3
+"""Số cốt khác nhau tối thiểu để một mặt cắt máy tự chọn được vào thang: hai cốt thì đường khớp dọc của
+`side_levels` luôn đi qua cả hai, không loại được số đọc nhầm (DS-836: thang (4.1, 7.0) đè cốt mặt bằng 3.58 đúng).
+Dòng mặt cắt người dùng tự đánh dấu (N52) vẫn nhận từ hai cốt như cũ."""
 _STOREY_QUESTIONS: Final = frozenset({STOREY_UNSURE, STOREY_CONFLICT, NOT_A_PLAN})
 _WIRE_KIND: Final[dict[PageKind, Kind]] = {
     "plan": "plan",
@@ -133,6 +146,13 @@ def assign_texts(boxes: Sequence[Box], texts: Sequence[Text]) -> list[tuple[Text
     return [tuple(items) for items in out]
 
 
+def is_ladder_section(kind: str, confidence: float, texts: Sequence[Text], size: tuple[int, int]) -> bool:
+    """Hình này có là nguồn cốt thứ hai của cả bộ không: mặt cắt chắc loại và đọc được đủ số cốt (NHA-04)."""
+    if kind not in _SIDE_KINDS or confidence < NOT_PLAN_SURE:
+        return False
+    return len(side_levels(texts, size)) >= _SIDE_MIN_LEVELS
+
+
 def _area_ratio(box: Box, size: tuple[int, int]) -> float:
     """Diện tích khung (phần nằm trong trang) theo diện tích trang."""
     width = min(box[2], size[0]) - max(box[0], 0.0)
@@ -216,18 +236,33 @@ def _with_storey(guess: ViewGuess, floor: FloorProposal) -> ViewGuess:
     )
 
 
-def guess_views(pages: Sequence[PageReading]) -> list[ViewGuess]:
-    """Đề xuất cho mọi hình của bộ (theo thứ tự trang rồi khung); tầng giải chung một lần cho cả bộ.
+def solve_set(pages: Sequence[PageReading]) -> tuple[list[ViewGuess], dict[int, FloorProposal]]:
+    """`guess_views` kèm đề xuất cả nhà của từng mặt bằng (khoá = chỉ số hình trong danh sách đề xuất).
 
-    Không ném lỗi với đầu vào hợp lệ (trang rỗng, không chữ, không khung). Khổ trang phải dương.
+    Cốt và chiều cao `solve_house` tính ra không lên `ViewGuess` (màn duyệt chưa hỏi chúng), nên thước bộ hồ sơ
+    (`tools/bench/muc3/predict.py`, NHA-00) không đo được nếu chỉ có `guess_views`. Bộ không có mặt bằng → `{}`.
     """
     views = [view for index, page in enumerate(pages) for view in _views(index, page)]
     blocks = [_block(read_title_block(page.texts)) if page.read else {} for page in pages]
     guesses = [_guess(view, pages[view.page].size, blocks[view.page]) for view in views]
     plans = [(i, view) for i, (view, guess) in enumerate(zip(views, guesses, strict=True)) if guess.kind == "plan"]
     if not plans:
-        return guesses
-    house = solve_house([HouseView(f"v{i}", view.texts, view.size, i) for i, view in plans])
-    for (i, _view), floor in zip(plans, house.floors, strict=True):
+        return guesses, {}
+    sides = [
+        SectionView(view.texts, view.size)
+        for view, guess in zip(views, guesses, strict=True)
+        if is_ladder_section(guess.kind, guess.kind_confidence, view.texts, view.size)
+    ]
+    house = solve_house([HouseView(f"v{i}", view.texts, view.size, i) for i, view in plans], sections=sides)
+    floors = {i: floor for (i, _view), floor in zip(plans, house.floors, strict=True)}
+    for i, floor in floors.items():
         guesses[i] = _with_storey(guesses[i], floor)
-    return guesses
+    return guesses, floors
+
+
+def guess_views(pages: Sequence[PageReading]) -> list[ViewGuess]:
+    """Đề xuất cho mọi hình của bộ (theo thứ tự trang rồi khung); tầng giải chung một lần cho cả bộ.
+
+    Không ném lỗi với đầu vào hợp lệ (trang rỗng, không chữ, không khung). Khổ trang phải dương.
+    """
+    return solve_set(pages)[0]

@@ -216,16 +216,21 @@ def _decide(views: Sequence[PlanView]) -> str:
 
 
 def _storeys(views: Sequence[PlanView], conv: str) -> dict[str, int]:
-    """{mã: số tầng theo tên dưới quy ước `conv`} cho mặt bằng có số."""
+    """{mã: số tầng theo tên dưới quy ước `conv`} cho mặt bằng có số.
+
+    Cách đếm Mỹ chỉ lùi tầng mà `_written_floor` đã cộng một vì thứ tự tiếng Anh (`floor_ordinal`): tên hai ngôn ngữ
+    `TẦNG 2 / SECOND FLOOR PLAN` lấy số từ phần tiếng Việt nên giữ nguyên.
+    """
     out: dict[str, int] = {}
     for v in views:
         t = _written_floor(v)
         if t is None:
             continue
         n = _norm(v)
+        ordinal = v.title is not None and v.title.numbering == "floor_ordinal"
         if conv == "tret_plus_tang1" and re.search(r"\bTANG\s*0?\d", n) and not re.search(_GROUND_WORD, n):
             t += 1
-        elif conv == "us_english" and _ENG.search(n):
+        elif conv == "us_english" and ordinal and _ENG.search(n):
             t -= 1
         out[v.view_id] = t
     return out

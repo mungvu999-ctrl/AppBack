@@ -334,6 +334,16 @@ def test_main_floor_sets_the_north_american_count() -> None:
     assert solve(*british)[2].number == 3
 
 
+@pytest.mark.parametrize("ground", ["MAIN FLOOR PLAN", "FIRST FLOOR PLAN"])
+def test_bilingual_titles_keep_the_vietnamese_count(ground: str) -> None:
+    """Merge-review PR 123 lượt 2: tên hai ngôn ngữ do phần tiếng Việt quyết định số tầng (`numbering` là `tang`),
+    nên cách đếm Mỹ không lùi thêm một tầng: `TẦNG 2 / SECOND FLOOR PLAN` vẫn là tầng 2, không trùng tầng 1."""
+    views = [plan("v00", f"TẦNG 1 / {ground}"), plan("v01", "TẦNG 2 / SECOND FLOOR PLAN")]
+    assert [c.number for c in solve(*views)] == [1, 2]
+    with_levels = [plan("v00", f"TẦNG 1 / {ground}", 0.0), plan("v01", "TẦNG 2 / SECOND FLOOR PLAN", 3.3)]
+    assert [(c.number, c.conflict) for c in solve(*with_levels)] == [(1, ()), (2, ())]
+
+
 def test_project_and_stair_lines_do_not_vote() -> None:
     # F2a: dòng mô tả công trình không phải tên hình -> không ai thành tầng 1 tự tin.
     note = ("CONG TRINH: NHA PHO 1 TRET 2 LAU",)

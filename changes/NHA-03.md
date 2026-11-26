@@ -16,6 +16,11 @@ Nhánh dựng trên `feature/nha-06a-building-read` (đầu PR 120): cần thư�
   của thiết kế §5: một dòng ở `storeys.py`, vì từ khoá mới làm hai đường đánh số lệch nhau. Test:
   `test_storeys.py::test_main_floor_sets_the_north_american_count`. Finding 2 (P3) ghim bằng hai dòng `_TITLES`,
   xem NO-597.
+- **Vòng sửa sau merge-review lượt 2** (P3 mới, `storeys._storeys`): tên hai ngôn ngữ `TẦNG 1 / MAIN FLOOR PLAN` +
+  `TẦNG 2 / SECOND FLOOR PLAN` ra trùng tầng 1 sau vòng sửa trên (cách đếm Mỹ lùi cả tầng mà phần tiếng Việt đã
+  quyết định). Với `TẦNG 1 / FIRST FLOOR PLAN` lỗi này có từ trước lát. Nay chỉ lùi tầng mà `_written_floor` đã cộng
+  một vì thứ tự tiếng Anh (`numbering == "floor_ordinal"`). Test:
+  `test_storeys.py::test_bilingual_titles_keep_the_vietnamese_count` (hai ca, đều đỏ trước khi sửa).
 
 ## Lệch khỏi kế hoạch đã duyệt
 
@@ -67,6 +72,10 @@ Chẩn đoán trên **tập dev** (không nhìn tập test), 78 hình có đáp 
   Review `ecc:python-reviewer`: không CRITICAL/HIGH; một LOW chưa sửa — `_decide` quét cả hình loại khác mặt bằng, nên
   mặt cắt tên `… MAIN LEVEL` cũng bật `us_english` (lỗ sẵn có của `FIRST FLOOR`, có cốt thì `_level_ok` sửa lại). Lát
   chạm `packages/domain/**` (sàn cứng R-33b): CI phải chạy lại trên SHA mới trước khi gộp.
+- Vòng sửa sau merge-review lượt 2 (cây làm việc trên `88f3db67`, 2026-11-26): `verify --fast` so với `main`, 63 tệp
+  test, 2 123 đạt; bước 1, 2, 3, 4, 5, 8 — **đạt**, mã thoát 0; bước 5b, 6, 7 — **chưa chạy**. Thước NHA-00: 50 tệp dự
+  đoán trùng từng byte với vòng trước. Review `ecc:python-reviewer`: không CRITICAL/HIGH/MEDIUM; LOW chưa sửa: chưa có
+  ca test cho `LẦU 1 / FIRST FLOOR` (cũng thôi lùi tầng), điều kiện `_ENG.search` nay thừa nhưng vô hại.
 
 ## Nợ và việc chưa làm
 
@@ -79,3 +88,8 @@ Chẩn đoán trên **tập dev** (không nhìn tập test), 78 hình có đáp 
   nhầm nhãn cốt / ghi chú thành tên hình (merge-review PR 123, finding 2): `MAIN FLOOR` đứng một mình (nhãn cốt trên
   mặt cắt Bắc Mỹ) được đọc là mặt bằng tầng trệt, `SEE SECTIONS` / `WALL SECTIONS` là tên hình mặt cắt, như
   `GROUND FLOOR` và `SEE SECTION A-A` từ trước; hành vi hiện tại ghim ở `_TITLES`. Chủ: lát riêng. P3. Mở.
+- NO-609 — `storeys._decide` dò từ khoá quy ước (`FIRST FLOOR`, `MAIN FLOOR`/`MAIN LEVEL`, chữ trệt) trên mọi hình
+  được giữ làm `PlanView`, kể cả hình loại khác mặt bằng có độ tin thấp: mặt cắt tên `SECTION A-A MAIN LEVEL` trong bộ
+  có `SECOND FLOOR PLAN` và không có chữ trệt cũng bật `us_english` (merge-review PR 123 lượt 2). Có cốt thì
+  `_level_ok` sửa lại; không có cốt thì tầng bị hỏi (độ tin dưới 0,7). Lỗ có sẵn với `FIRST FLOOR`. Sửa: chỉ xét hình
+  `kind == "plan"`. Chủ: lát riêng. P3. Mở.

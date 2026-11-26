@@ -117,7 +117,8 @@ def roof_rects(outline_mm: Sequence[XY]) -> RoofRects | RoofRefusal:
     """Các chữ nhật mái phủ đường bao, hoặc lý do không dựng được.
 
     Gần chữ nhật (>= 0,96 khung bao) → một mặt phủ cả khung. Còn lại → nắn cạnh về lưới hai trục rồi lấy các chữ nhật
-    cực đại; từ chối `poor_fit` khi chúng phủ thiếu hoặc thừa quá 2 % diện tích đường bao (hình xiên, cong), `complex`
+    cực đại; từ chối `poor_fit` khi chúng phủ thiếu hoặc thừa quá 2 % diện tích đường bao (hình xiên, cong) hoặc không
+    liền một khối (M-08), `complex`
     khi lưới quá dày hoặc cần quá số mặt một mái chứa được.
     """
     polygon = shapely.Polygon(outline_mm) if len(outline_mm) >= 3 else shapely.Polygon()
@@ -135,6 +136,9 @@ def roof_rects(outline_mm: Sequence[XY]) -> RoofRects | RoofRefusal:
             return "complex"
         boxes = _maximal_boxes(us, vs, framed)
         cover = shapely.union_all([shapely.box(*box) for box in boxes])
+        # M-08: các mặt phải liền một khối; cổ hẹp hơn `_SNAP_MM` bị lưới nuốt, để lại hai khối rời mà vẫn phủ đủ 98 %.
+        if not isinstance(cover, shapely.Polygon):
+            return "poor_fit"
         if max(framed.difference(cover).area, cover.difference(framed).area) > _MAX_MISFIT * framed.area:
             return "poor_fit"
         if len(boxes) > _MAX_RECTS:

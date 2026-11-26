@@ -215,10 +215,20 @@ def test_small_bump_is_left_uncovered() -> None:
             (4000, 9000),
             (0, 9000),
         ],
+        [  # M-08: hai khối 10 m nối bằng cổ dày 80 mm; lưới nuốt cổ, hai chữ nhật rời nhau dù phủ thiếu chỉ 0,5 %
+            (0, 0),
+            (22000, 0),
+            (22000, 10000),
+            (12000, 10000),
+            (12000, 80),
+            (10000, 80),
+            (10000, 10000),
+            (0, 10000),
+        ],
     ],
 )
 def test_shapes_rectangles_cannot_cover_are_refused(outline: list[XY]) -> None:
-    """Phủ thiếu hoặc thừa quá 2 % diện tích đường bao → `poor_fit` ("mái hình phức tạp, hãy vẽ tay")."""
+    """Phủ thiếu hoặc thừa quá 2 % diện tích, hoặc các mặt không liền một khối → `poor_fit` ("hãy vẽ tay")."""
     assert roof_rects(outline) == "poor_fit"
 
 

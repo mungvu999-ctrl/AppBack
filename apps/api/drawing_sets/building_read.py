@@ -21,11 +21,11 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Final
 
-from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.drawing_sets.analysis import page_readings
+from apps.api.drawing_sets.assembly import FROZEN_VERSION, frozen_proposal
 from apps.api.drawing_sets.service import DEADLINE_S, RETRY_AFTER_S
 from apps.api.drawing_sets.set_read import FULL_PAGE, load_set
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
@@ -55,8 +55,6 @@ __all__ = [
 
 _log: Final = logging.getLogger(__name__)
 
-FROZEN_VERSION: Final = 1
-"""`schemaVersion` của bản đề xuất đóng băng trong `building.confirmed` (N60 ghi, route đọc kiểm)."""
 _ANALYSED: Final = frozenset({"review", "confirmed"})
 """Trạng thái mà bộ đã có hình và kết quả đọc trang."""
 _READ_CONCURRENCY: Final = 4
@@ -170,16 +168,7 @@ def _frozen(drawing_set: DrawingSetRow) -> BuildingProposal | None:
     Bản lưu khác `FROZEN_VERSION`, hoặc không còn khớp mô hình hiện tại (mã mới thêm trường), cũng trả `None` kèm một
     dòng log: route đọc khi đó tính lại, chứ không trả 500 mãi mãi cho một bộ đã xác nhận.
     """
-    stored = (drawing_set.building or {}).get("confirmed") if drawing_set.status == "confirmed" else None
-    if stored is None:
-        return None
-    try:
-        if stored["schemaVersion"] != FROZEN_VERSION:
-            raise ValueError(f"schemaVersion {stored['schemaVersion']}")
-        return BuildingProposal.model_validate(stored["proposal"])
-    except (KeyError, TypeError, ValueError, ValidationError) as exc:
-        _log.warning("set_building_frozen_unreadable", extra={"set_id": drawing_set.id, "error": type(exc).__name__})
-        return None
+    return frozen_proposal(drawing_set.building, drawing_set.id) if drawing_set.status == "confirmed" else None
 
 
 async def load_inputs(db: AsyncSession, drawing_set: DrawingSetRow) -> BuildingInputs:

@@ -205,12 +205,12 @@ def _has(views: Sequence[PlanView], pattern: str) -> bool:
 
 def _decide(views: Sequence[PlanView]) -> str:
     """Quy ước do tên hình nêu: "trệt" và "tầng/lầu 1" trên HAI hình khác nhau -> "tret_plus_tang1" (một tên
-    nêu cả hai, "TẦNG 1 (TRỆT)", là tầng trệt và không bật quy ước: soát mã F1); first floor không có
-    ground -> "us_english"."""
+    nêu cả hai, "TẦNG 1 (TRỆT)", là tầng trệt và không bật quy ước: soát mã F1); first floor hoặc main
+    floor/level (trệt kiểu Mỹ/Canada, `titles._GROUND`) mà không có ground -> "us_english"."""
     marks = [(bool(re.search(_GROUND_WORD, n)), bool(re.search(_FIRST_WORD, n))) for n in map(_norm, views)]
     if any(g and not f for g, f in marks) and any(f and not g for g, f in marks):
         return "tret_plus_tang1"
-    if _has(views, r"\bFIRST\s+FLOOR") and not any(g for g, _ in marks):
+    if _has(views, r"\bFIRST\s+FLOOR|\bMAIN\s+(?:FLOOR|LEVEL)\b") and not any(g for g, _ in marks):
         return "us_english"
     return "unchanged"
 

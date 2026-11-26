@@ -163,6 +163,10 @@ _TITLES = [
     ("MẶT BẰNG TẦNG TRỆT - MAIN FLOOR PLAN", "plan", "ground", None, "plain"),
     ("MẶT CẮT A-A / SECTION A-A", "section", None, None, "plain"),
     ("MẶT ĐỨNG CHÍNH - FRONT ELEVATION", "elevation", None, None, "plain"),
+    # Ghim NO-597: nhãn cốt `MAIN FLOOR` đứng một mình và ghi chú `SEE SECTIONS` vẫn thành tên hình, cùng lớp nhầm
+    # sẵn có với `GROUND FLOOR` và `SEE SECTION A-A`.
+    ("MAIN FLOOR", "plan", "ground", None, "plain"),
+    ("SEE SECTIONS", "section", None, None, "plain"),
 ]
 
 

@@ -9,6 +9,13 @@ Nhánh dựng trên `feature/nha-06a-building-read` (đầu PR 120): cần thư�
 - `tests/test_titles.py`: 17 dòng tên hình mới (3 đỏ trước khi sửa: `MAIN FLOOR PLAN`, `MAIN LEVEL FLOOR PLAN`,
   `BUILDING SECTIONS`; phần còn lại ghim hành vi sẵn có: `UPPER/LOWER FLOOR`, `LEVEL n`, `CROSS/LONGITUDINAL SECTION`,
   `… ELEVATIONS`, tiêu đề lẫn hai ngôn ngữ) và 5 chuỗi không được thành tên hình.
+- **Vòng sửa sau merge-review PR 123** (`docs/reviews/2026-11-26-feature-nha-03-title-keywords.md`, finding 1, P2):
+  `storeys._decide` coi `MAIN FLOOR` / `MAIN LEVEL` không kèm chữ trệt kiểu Anh là dấu hiệu cách đếm Mỹ/Canada
+  (`us_english`), như `FIRST FLOOR`. Trước vòng này bộ `MAIN FLOOR PLAN` + `SECOND FLOOR PLAN` ra tầng 1 và tầng 3,
+  không kèm câu hỏi; nay ra 1 và 2, không có cốt để kiểm thì độ tin dưới 0,7 (phải hỏi). Lệch phạm vi "chỉ `titles.py`"
+  của thiết kế §5: một dòng ở `storeys.py`, vì từ khoá mới làm hai đường đánh số lệch nhau. Test:
+  `test_storeys.py::test_main_floor_sets_the_north_american_count`. Finding 2 (P3) ghim bằng hai dòng `_TITLES`,
+  xem NO-597.
 
 ## Lệch khỏi kế hoạch đã duyệt
 
@@ -53,8 +60,13 @@ Chẩn đoán trên **tập dev** (không nhìn tập test), 78 hình có đáp 
   **chưa chạy** (cổng nhanh không chạy).
 - Review: `ecc:python-reviewer` — không CRITICAL; 1 HIGH và 2 MEDIUM đều về `LEVEL n`, xử lý bằng cách rút `LEVEL n`
   khỏi lát (NO-597); LOW về số dòng test trong ghi chú đã sửa. Không chạy `security-reviewer`: không có đầu vào mới.
-- Phạm vi kiểm: fast — **chưa đủ để merge**. Lát chạm `packages/domain/**` (sàn cứng R-33b): phải `run.sh verify`
-  đầy đủ (CI) trước `/merge-review`.
+- Phạm vi kiểm: fast + CI. Cổng đầy đủ (CI `ci.yml`, run 45815447539) **đạt** 20/20 job trên `3c2ba523`, bản trước vòng
+  sửa.
+- Vòng sửa sau merge-review (cây làm việc trên `3c2ba523`, 2026-11-26): `verify --fast` mã thoát 0, cùng các bước như
+  trên — **đạt**; bước 5b, 6 — **chưa chạy**. Thước NHA-00 chạy lại: 50 tệp dự đoán trùng từng byte với vòng trước.
+  Review `ecc:python-reviewer`: không CRITICAL/HIGH; một LOW chưa sửa — `_decide` quét cả hình loại khác mặt bằng, nên
+  mặt cắt tên `… MAIN LEVEL` cũng bật `us_english` (lỗ sẵn có của `FIRST FLOOR`, có cốt thì `_level_ok` sửa lại). Lát
+  chạm `packages/domain/**` (sàn cứng R-33b): CI phải chạy lại trên SHA mới trước khi gộp.
 
 ## Nợ và việc chưa làm
 
@@ -63,5 +75,7 @@ Chẩn đoán trên **tập dev** (không nhìn tập test), 78 hình có đáp 
   rồi co về 24 Mpx làm chữ tên hình quá nhỏ) hoặc của sản phẩm (OCR trên trang lớn; thiết kế §2.A mục 4 "đọc lớp chữ
   PDF vector"). Chủ: lát riêng sau NHA-03. P2. Mở.
 - NO-597 — `LEVEL n` trong tên mặt bằng chưa thành số tầng (xem "Lệch khỏi kế hoạch"). Cần: phân biệt nhãn cốt với số
-  tầng trên cả đường OCR, thêm cách đếm vào `storeys.py`, và ít nhất một bộ hồ sơ dùng `LEVEL n` trong bộ đo. Chủ: lát
-  riêng. P3. Mở.
+  tầng trên cả đường OCR, thêm cách đếm vào `storeys.py`, và ít nhất một bộ hồ sơ dùng `LEVEL n` trong bộ đo. Cùng lớp
+  nhầm nhãn cốt / ghi chú thành tên hình (merge-review PR 123, finding 2): `MAIN FLOOR` đứng một mình (nhãn cốt trên
+  mặt cắt Bắc Mỹ) được đọc là mặt bằng tầng trệt, `SEE SECTIONS` / `WALL SECTIONS` là tên hình mặt cắt, như
+  `GROUND FLOOR` và `SEE SECTION A-A` từ trước; hành vi hiện tại ghim ở `_TITLES`. Chủ: lát riêng. P3. Mở.

@@ -319,6 +319,21 @@ def test_unchecked_convention_asks() -> None:
     assert all(c.confidence < 0.7 for c in got)
 
 
+def test_main_floor_sets_the_north_american_count() -> None:
+    """NHA-03 (merge-review PR 123): `MAIN FLOOR` là trệt kiểu Mỹ/Canada nên `SECOND FLOOR` là tầng 2, không phải 3."""
+    views = [plan("v00", "MAIN FLOOR PLAN"), plan("v01", "SECOND FLOOR PLAN")]
+    assert normalise_convention(views)[0] == "us_english"
+    got = solve(*views)
+    assert [c.number for c in got] == [1, 2]
+    assert got[1].confidence < 0.7  # không có cốt để kiểm quy ước: phải hỏi
+    got = solve(plan("v00", "MAIN LEVEL FLOOR PLAN", 0.0), plan("v01", "SECOND FLOOR PLAN", 3.2))
+    assert [(c.number, c.conflict) for c in got] == [(1, ()), (2, ())]
+    # Có chữ trệt kiểu Anh trong bộ thì vẫn đếm kiểu Anh: `SECOND FLOOR` là tầng 3.
+    british = [plan("v00", "GROUND FLOOR PLAN"), plan("v01", "MAIN FLOOR PLAN"), plan("v02", "SECOND FLOOR PLAN")]
+    assert normalise_convention(british)[0] == "unchanged"
+    assert solve(*british)[2].number == 3
+
+
 def test_project_and_stair_lines_do_not_vote() -> None:
     # F2a: dòng mô tả công trình không phải tên hình -> không ai thành tầng 1 tự tin.
     note = ("CONG TRINH: NHA PHO 1 TRET 2 LAU",)

@@ -137,3 +137,12 @@ duyệt kế hoạch sửa ngày 2026-11-26. Test viết trước mã, mỗi đi
 - NO-608 — Thiếu test mức route cho 422 `building.conflicts` và chuỗi chọn nguồn → xác nhận; bậc 100–300 mm ở góc
   trong cho thêm một mặt mái thừa (finding 14); trùng định nghĩa `RoofForm`, 85°, `_GUESSED_SOURCES`, docstring cũ,
   `caplog` trỏ sai tên logger (finding 15). Chủ: vòng dọn sau. P3. Mở.
+- NO-610 — Trần 500 đỉnh của `roof_rects` đứng sau `roof_outline`: bước dựng đường bao (`make_valid`, `union_all`, hai
+  lượt `buffer` của shapely) vẫn chạy trên đường bao phòng không có trần số điểm, trong lúc tác vụ ráp giữ khoá
+  (merge-review PR 121 lượt 2; `packages/vision/roofs/rects.py:34-54`). Phần này là mã C của shapely nên nhẹ hơn phép
+  tìm trục chính nhiều, chưa đo. Sửa: trần số đỉnh từng phòng ở `build_roof` hoặc đầu `roof_outline`. Chủ: lát riêng.
+  P3. Mở.
+- NO-611 — `open_air_room` bỏ cả phòng mang tên ghép kết thúc bằng từ khoá tiếng Anh (`WC + BALCONY`,
+  `Bedroom / Terrace`) khỏi đường bao mái, dù một phần của nó ở trong nhà (merge-review PR 121 lượt 2;
+  `packages/domain/drawing_set/assembly.py:34`). Mái co lại hoặc ra `ROOF_SHAPE_COMPLEX`, người dùng thấy và vẽ tay
+  được. Sửa đúng cần tách phòng ghép, không chỉ đổi mẫu tên. Chủ: lát riêng. P3. Mở.

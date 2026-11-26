@@ -1,23 +1,47 @@
-# Bảng case bắt buộc thêm/miễn của module dự án (B2-01 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm/miễn của module dự án (B2-01 [8], cổng case).
 #
 # `projects_list_projects` (Đ*), `projects_read_project` (Đ), `projects_update_project` (G)
-# không cần khai gì: case của Loại đã đủ, tính từ metadata + cột BE-BIND.
+# không cần `extra`/`waive`: case của Loại đã đủ, tính từ metadata + `type`/`lock` khai bên dưới.
 
 [[endpoint]]
 op = "projects_create_project"
+type = "G*"
+lock = "project.create"
+logged = true
 # G* không tự đòi C07/C16/C18 (chỉ G mới có ba chú thích này); #25 có Khoá thật
 # (`project.create`), thân có chuỗi người nhập, và có Nhật ký — thêm tay theo B2-01 [2] §8.
 extra = ["C07", "C16", "C18"]
 
 [[endpoint]]
 op = "projects_delete_project"
+type = "G"
+lock = "admin"
+logged = true
 waive = { C16 = "DELETE không có thân" }
 
 [[endpoint]]
 op = "projects_list_summaries"
+type = "Đ*"
 # Đ* không tự đòi C02; N1 có query `cursor`/`limit` nên cần kiểm thân/tham số sai kiểu.
 extra = ["C02"]
 
 [[endpoint]]
 op = "projects_cancel_create_project"
+type = "G"
+lock = "thành viên"
 waive = { C16 = "DELETE không có thân" }
+
+[[endpoint]]
+op = "projects_list_projects"
+type = "Đ*"
+
+[[endpoint]]
+op = "projects_read_project"
+type = "Đ"
+lock = "thành viên"
+
+[[endpoint]]
+op = "projects_update_project"
+type = "G"
+lock = "project.settings.edit"
+logged = true

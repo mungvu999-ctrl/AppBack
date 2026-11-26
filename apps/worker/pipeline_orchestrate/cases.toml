@@ -1,6 +1,6 @@
-# Bảng case bắt buộc thêm của task bắt đầu pipeline (B5-06a [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm của task bắt đầu pipeline (B5-06a [8], cổng case).
 # `tools/case_gate.py` tự đòi J01, J06; danh sách dưới là phần [8] đòi thêm, gồm U01, U02, U04,
-# U06 của task tiền xử lý (CASE.md §2.2 "U… nằm trong task tiền xử lý"; NO-294).
+# U06 của task tiền xử lý (U nằm trong task tiền xử lý; NO-294).
 
 [[task]]
 fn = "orchestrate_pipeline_start"

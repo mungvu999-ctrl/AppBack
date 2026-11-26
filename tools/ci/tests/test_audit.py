@@ -1,4 +1,4 @@
-"""Test `tools.ci.audit` — CASE §2.3 [8] "audit-allowlist": hết hạn/thiếu lý do → hỏng; hợp lệ → đạt."""
+"""Test `tools.ci.audit` — [8] "audit-allowlist": hết hạn/thiếu lý do → hỏng; hợp lệ → đạt."""
 
 from __future__ import annotations
 

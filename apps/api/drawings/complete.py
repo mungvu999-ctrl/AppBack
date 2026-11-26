@@ -57,11 +57,11 @@ PDF_PAGE_MAX: Final = 20
 """Trần số trang của một PDF bản vẽ (W14); quá trần → 422 `VALIDATION` **không** `field`."""
 
 PDF_TAIL_BYTES: Final = 1024
-"""`%%EOF` của PDF nằm trong 1 KiB cuối (CASE §3 U07)."""
+"""`%%EOF` của PDF nằm trong 1 KiB cuối (case U07)."""
 
 _END_MARKERS: Final = {"png": b"IEND", "jpeg": b"\xff\xd9", "pdf": b"%%EOF"}
 _JPEG_SKIP: Final = 2
-"""`FF D9` chỉ tính là dấu kết thúc khi nằm **sau** hai byte SOI (CASE §3 U07)."""
+"""`FF D9` chỉ tính là dấu kết thúc khi nằm **sau** hai byte SOI (case U07)."""
 
 
 @dataclass(frozen=True, slots=True)

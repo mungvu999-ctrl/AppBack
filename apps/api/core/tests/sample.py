@@ -7,7 +7,7 @@ chỉ khác ở chỗ route là route mẫu.
 
 Route mẫu **không** nằm dưới `apps/api/<module>/router.py` nên không bị `create_app`
 dò vào app thật, và đường của chúng (`/api/sample/...`) không khớp thao tác nào của
-BE-BIND nên không sinh vết case giả.
+bảng hợp đồng nên không sinh vết case giả.
 """
 
 import asyncio
@@ -217,7 +217,7 @@ async def sample_gated_create(body: ItemBody, request: Request) -> ItemOut:
 
 
 def grant_stub() -> None:
-    """Bản ghi đè cho mọi dependency quyền trong test chung (CASE §2.1)."""
+    """Bản ghi đè cho mọi dependency quyền trong test chung (cổng case)."""
 
 
 @router.post("/conflict")

@@ -1,24 +1,65 @@
-# Bảng case bắt buộc thêm của module quản trị người dùng (B1-05 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm của module quản trị người dùng (B1-05 [8], cổng case).
 #
-# #39, #40 (A, trả mảng), #41 (C14 cố định), #43, #45 không cần khai gì; #44 có C11 cố định
+# #39, #40 (A, trả mảng), #41 (C14 cố định), #43, #45 không cần `extra`/`waive`; #44 có C11 cố định
 # và C10 riêng (`+ngoài`) do metadata tự đòi.
 
 [[endpoint]]
 op = "users_list_users"
+type = "A"
+lock = "user.manage"
 # Response là object bọc danh sách `{total, users}` nên metadata không tự tính C15.
 extra = ["C15"]
 
 [[endpoint]]
 op = "users_disable_user"
+type = "A"
+lock = "user.manage"
+logged = true
 # Hai admin vô hiệu nhau song song (khoá tập admin, BE-00 §5).
 extra = ["C14"]
 
 [[endpoint]]
 op = "users_invite_users"
+type = "A"
+lock = "user.manage"
+logged = true
+outside = true
 # Thân có email người nhập: khác hoa thường thì trùng người `pending` có sẵn; NFD (không ASCII) → 422.
 extra = ["C16"]
 
 [[endpoint]]
 op = "users_delete_user"
+type = "A"
+lock = "user.manage"
+logged = true
 # Hai admin xoá nhau song song (khoá tập admin, BE-00 §5).
 extra = ["C14"]
+
+[[endpoint]]
+op = "users_list_memberships"
+type = "A"
+lock = "user.manage"
+
+[[endpoint]]
+op = "users_list_activity"
+type = "A"
+lock = "user.manage"
+
+[[endpoint]]
+op = "users_change_role"
+type = "A"
+lock = "user.manage"
+logged = true
+
+[[endpoint]]
+op = "users_enable_user"
+type = "A"
+lock = "user.manage"
+logged = true
+
+[[endpoint]]
+op = "users_resend_invitation"
+type = "A"
+lock = "user.manage"
+logged = true
+outside = true

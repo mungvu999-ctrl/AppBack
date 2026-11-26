@@ -38,7 +38,7 @@ class _FakeRequest:
 
 
 def test_permission_dependency_exposes_key() -> None:
-    """`Operation.permission_key` đọc đúng thuộc tính này (CASE §2.3)."""
+    """`Operation.permission_key` đọc đúng thuộc tính này (cổng case)."""
     assert permission_key_of(deny_sample) == "sample.manage"
     assert deny_sample in registered()
 
@@ -53,13 +53,13 @@ def test_permission_key_of_plain_callable_is_none() -> None:
 
 
 def test_permission_dependency_rejects_empty_key() -> None:
-    """Khoá rỗng không khớp được cột nào của BE-BIND."""
+    """Khoá rỗng không khớp được `lock` nào ở `cases.toml`."""
     with pytest.raises(ValueError, match="không được rỗng"):
         permission_dependency("")
 
 
 def test_any_role_is_the_bind_dash() -> None:
-    """Route bảo vệ không có cổng quyền nào mang khoá `—` đúng như cột BE-BIND."""
+    """Route bảo vệ không có cổng quyền nào mang khoá `—` đúng như `lock` vắng ở `cases.toml`."""
     assert ANY_ROLE == "—"
 
 

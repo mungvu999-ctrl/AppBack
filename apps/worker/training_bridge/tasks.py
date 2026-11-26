@@ -111,7 +111,7 @@ async def run_training_heartbeat(
 ) -> None:
     """Một nhịp tim: `queued` → `running`, `running|cancelling` → mốc nhịp + `current_epoch`.
 
-    `current_epoch` chỉ tiến (`max`): thứ tự giao không được bảo đảm (CASE §4 J02) nên một
+    `current_epoch` chỉ tiến (`max`): thứ tự giao không được bảo đảm (case J02) nên một
     nhịp cũ tới sau không được kéo tiến trình lùi. `epoch` ngoài `0…epochs` là payload hỏng.
     """
     async with session_scope(sessionmaker) as db:

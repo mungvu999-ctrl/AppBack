@@ -1,14 +1,21 @@
-# Bảng case bắt buộc thêm/miễn của module thành viên dự án (B2-02 [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm/miễn của module thành viên dự án (B2-02 [8], cổng case).
 #
 # G (+ngoài) tự đòi C01 C02 C03 C06 C07 C08 C16 C17 C18 (và C10 riêng); phần khai ở đây là phần thêm.
 
 [[endpoint]]
 op = "members_add_member"
+type = "G"
+lock = "project.settings.edit"
+logged = true
+outside = true
 # Hạn mức 60/giờ/người (C11); hai lượt cùng email song song (C14).
 extra = ["C11", "C14"]
 
 [[endpoint]]
 op = "members_remove_member"
+type = "G"
+lock = "project.settings.edit"
+logged = true
 waive = { C16 = "DELETE không có thân" }
 # Hai người sửa duy nhất gỡ lẫn nhau (C14).
 extra = ["C14"]

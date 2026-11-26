@@ -1,4 +1,4 @@
-"""Tách tên test case theo CASE §2.3 (NO-337): nguồn duy nhất cho `tools/case_gate.py` và bộ ghi
+"""Tách tên test case theo cổng case (NO-337): nguồn duy nhất cho `tools/case_gate.py` và bộ ghi
 golden `packages/testing/golden/recorder.py` (R-07).
 
 Thuần `re`, không nhập gì nội bộ — nằm ở tầng thấp để gói test lẫn công cụ nhập xuôi chiều, không
@@ -25,7 +25,7 @@ class CaseTestName(NamedTuple):
 
 
 def split_case_test_name(name: str) -> CaseTestName | None:
-    """Tách `test_<op>__<case>[_…|[…]]` hay `test_common__<case>[<op>]` (CASE §2.3); `None` khi không khớp.
+    """Tách `test_<op>__<case>[_…|[…]]` hay `test_common__<case>[<op>]` (cổng case); `None` khi không khớp.
 
     Mẫu chung xét trước: `test_common__C04[op]` cũng khớp mẫu riêng với op="common".
     """

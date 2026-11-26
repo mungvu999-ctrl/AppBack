@@ -1,4 +1,4 @@
-"""Bảng `notifications`: thông báo của một người (B4-02 [5], BE-BIND #19-#22).
+"""Bảng `notifications`: thông báo của một người (B4-02 [5], hợp đồng #19-#22).
 
 - `dedupe_key` UNIQUE: `notify` chèn `ON CONFLICT DO NOTHING`, nên lượt giao lại của task không sinh dòng thứ hai (J10).
 - `stream_id` là id mục Redis Stream đã phát; `NULL` = chưa biết đã phát chưa (lịch quét bù ghi nó, K32).

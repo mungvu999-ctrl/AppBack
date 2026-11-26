@@ -1,4 +1,4 @@
-# Bảng case bắt buộc thêm của task ghi kết quả pipeline (B5-06b [8], CASE.md §2.3).
+# Bảng case bắt buộc thêm của task ghi kết quả pipeline (B5-06b [8], cổng case).
 # `tools/case_gate.py` tự đòi J01, J06; danh sách dưới là phần [8] đòi thêm.
 
 [[task]]

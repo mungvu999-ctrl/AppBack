@@ -1,4 +1,4 @@
-"""J-case và M-case của task `ml.infer.text.read` (BE-00 §7 "Test task", CASE §4, §6).
+"""J-case và M-case của task `ml.infer.text.read` (BE-00 §7 "Test task", cổng case).
 
 Dịch vụ **thật**: Redis của Testcontainers, worker Celery thật nghe `ml.infer`, kho đĩa
 `local_storage`, bộ dò của wheel và model rec tí hon chạy thật (K23). `step_done` đi tới

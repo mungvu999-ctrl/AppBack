@@ -6,6 +6,7 @@ HTTP ở `test_routes_layer.py` (`__C01_readiness_*`).
 
 from collections.abc import Mapping
 from dataclasses import replace
+from typing import Literal, get_args
 
 import pytest
 from pydantic import ValidationError
@@ -20,10 +21,12 @@ from apps.api.spatial_read.readiness import (
     scale_snapshot_of,
     scale_state_of,
 )
+from apps.api.spatial_read.wire import ReadinessReason
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
 from packages.core.object_keys import model_prefix
 from packages.domain.spatial import ScaleAcceptance, SpatialLayer
+from packages.domain.spatial.model import Roof
 from packages.ml_contracts.families import MODEL_FAMILIES, ModelFamily
 from packages.ml_contracts.payloads import ModelRef
 from packages.testing.factories.pipeline_orchestrate import classic_ref
@@ -593,3 +596,88 @@ def test_notices_of__drops_malformed_items_silently_and_never_raises_geometry_su
     assert notices_of({}, UNREVIEWED) == ()
     out = readiness_of(run=_run(summary={**CLEAN, "noticeChecks": "broken"}), scale_source="human", layer=UNREVIEWED)
     assert (out.state, out.reasons, out.notices) == ("ready", (), None)
+
+
+# --------------------------------------------------------------------------- NHA-07b: mái máy dựng chưa duyệt (M-10)
+
+
+def _roofed(layer: SpatialLayer, *, source: Literal["ai", "human"], reviewed: bool) -> SpatialLayer:
+    """`layer` thêm một mái của nguồn `source`, đã duyệt hay chưa."""
+    roof = Roof(
+        id="RF-0000000000R1",
+        level_id=LEVEL_ID,
+        nodes=({"type": "roof"},),
+        confidence=0.6,
+        source=source,
+        reviewed=reviewed,
+    )
+    return layer.model_copy(update={"roofs": (roof,)})
+
+
+@pytest.mark.parametrize(
+    ("layer", "run", "state", "reasons"),
+    [
+        pytest.param(
+            _roofed(REVIEWED, source="ai", reviewed=False), _run(), "needsReview", ("roofUnreviewed",), id="ai"
+        ),
+        pytest.param(_roofed(REVIEWED, source="human", reviewed=True), _run(), "ready", (), id="approved"),
+        pytest.param(_roofed(REVIEWED, source="human", reviewed=False), _run(), "ready", (), id="hand-drawn"),
+        pytest.param(
+            _roofed(REVIEWED, source="ai", reviewed=False), None, "notEvaluated", ("roofUnreviewed",), id="no-run"
+        ),
+    ],
+)
+def test_ai_roof_must_be_reviewed_before_the_floor_is_ready(
+    layer: SpatialLayer, run: RunFacts | None, state: str, reasons: tuple[str, ...]
+) -> None:
+    """M-10: tầng có mái máy dựng chưa duyệt không `ready`; người duyệt (mái thành `human`, `reviewed`) thì `ready`.
+
+    Mái người vẽ tay chưa duyệt không tính: luật chỉ chặn đầu ra của máy. Là dữ kiện của tầng nên báo cả khi chưa
+    có lượt chạy, như `scaleUnresolved`.
+    """
+    out = readiness_of(run=run, scale_source="human", layer=layer)
+    assert (out.state, out.reasons) == (state, reasons)
+
+
+def test_one_ai_roof_among_reviewed_ones_is_enough() -> None:
+    """Nhiều mái: chỉ cần một mái máy dựng chưa duyệt là tầng chưa `ready`."""
+    approved = _roofed(REVIEWED, source="human", reviewed=True).roofs[0]
+    machine = _roofed(REVIEWED, source="ai", reviewed=False).roofs[0].model_copy(update={"id": "RF-0000000000R2"})
+    layer = REVIEWED.model_copy(update={"roofs": (approved, machine)})
+    assert readiness_of(run=_run(), scale_source="human", layer=layer).reasons == ("roofUnreviewed",)
+
+
+def test_section_only_run_stays_ready_even_with_an_ai_roof() -> None:
+    """Dòng mặt cắt (`sectionOnly`) không có mặt bằng để dựng mái: vẫn `ready` như trước, luật M-10 không xét."""
+    layer = _roofed(REVIEWED, source="ai", reviewed=False)
+    out = readiness_of(run=_run(summary=SECTION_ONLY), scale_source="human", layer=layer)
+    assert (out.state, out.reasons) == ("ready", ())
+
+
+def test_roof_reason_comes_last_on_the_wire() -> None:
+    """Lý do mới đứng sau mọi lý do cũ: thứ tự cũ của dây không đổi."""
+    layer = _roofed(UNREVIEWED, source="ai", reviewed=False)
+    out = readiness_of(run=_run(summary=CRITICAL, classic=MODEL_FAMILIES), scale_source="pipeline", layer=layer)
+    assert out.reasons == (
+        "scaleUnresolved",
+        "criticalIssues",
+        "fallbackWallModel",
+        "fallbackObjectModel",
+        "fallbackTextModel",
+        "roofUnreviewed",
+    )
+
+
+def test_wire_enum_lists_exactly_the_reasons_the_rule_can_give() -> None:
+    """Enum trên dây = đúng bảy lý do hàm sinh ra; thêm lý do mà quên một phía thì test này đỏ (FE giải enum chặt)."""
+    assert sorted(get_args(ReadinessReason)) == sorted(
+        [
+            "scaleUnresolved",
+            "criticalIssues",
+            "geometrySuspect",
+            "fallbackWallModel",
+            "fallbackObjectModel",
+            "fallbackTextModel",
+            "roofUnreviewed",
+        ]
+    )

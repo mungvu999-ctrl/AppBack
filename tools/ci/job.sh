@@ -308,7 +308,7 @@ job_contract() {
 # changes — PR chỉ đổi tài liệu thì tám job cổng bỏ qua (ci.yml, fail-closed)
 # ---------------------------------------------------------------------------
 
-# Đường KHÔNG là đầu vào của cổng. Trừ `docs/charter/` (case_gate, contract đọc BE-BIND.md, BE-00.md)
+# Đường KHÔNG là đầu vào của cổng. Trừ `docs/charter/` (đã xoá; giữ luật để fail-closed nếu thư mục quay lại)
 # và `docs/contracts*` (bước 7, 8). Một đường ngoài danh sách → chạy đủ cổng.
 _is_docs_only_path() {
   case "$1" in

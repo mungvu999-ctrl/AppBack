@@ -2,7 +2,7 @@
 
 Mỗi chủ module tự đăng ký việc dọn rác của mình bằng `@periodic`; beat của
 `apps/worker` đọc `beat_schedule()`. Hàm lịch **không tham số** và mang tên duy
-nhất toàn repo, vì cổng case gắn `test_<tên hàm>__J01` vào đúng một hàm (CASE §2.3).
+nhất toàn repo, vì cổng case gắn `test_<tên hàm>__J01` vào đúng một hàm.
 
 Dò module bằng `pkgutil` một cấp thay vì bảng khai tay: thêm module mới không phải
 sửa file của gói này.

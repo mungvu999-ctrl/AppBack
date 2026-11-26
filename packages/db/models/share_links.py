@@ -1,4 +1,4 @@
-"""Bảng `share_links`: liên kết chỉ đọc cho người ngoài dự án (BE-BIND #47-#49).
+"""Bảng `share_links`: liên kết chỉ đọc cho người ngoài dự án (hợp đồng #47-#49).
 
 `token` là chuỗi ngẫu nhiên `secrets.token_urlsafe(32)`; hạn (`expires_at`) và thu hồi
 (`revoked_at`) do máy chủ quyết, FE chỉ hiển thị `status` máy chủ trả.

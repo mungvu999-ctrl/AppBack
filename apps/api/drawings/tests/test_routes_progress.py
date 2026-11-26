@@ -1,7 +1,7 @@
 """Case của #8 `drawings_read_progress` (Đ: C01 C06 C08 C17).
 
 C01 có **bốn** hậu tố: cổng H1 đòi mẫu 2xx cho đủ bốn nhánh `pending`, `running`,
-`completed`, `failed` của `Progress` (BE-BIND §4, `tools/contract/check.py`). Bốn nhánh ấy
+`completed`, `failed` của `Progress` (`tools/contract/check.py`). Bốn nhánh ấy
 dựng bằng `runs.start_run` + `runs.record_step` thật chứ không vá cột: luật trạng thái chỉ
 có một nguồn.
 """
@@ -164,7 +164,7 @@ async def test_drawings_read_progress__C17(
 async def test_progress_of_rejected_upload_reports_code(
     api_client: httpx.AsyncClient, db_session: AsyncSession, sync_bus_reset: None
 ) -> None:
-    """Lượt tải bị #7 từ chối → `failed` mang chính `rejected_code` (BE-BIND §4)."""
+    """Lượt tải bị #7 từ chối → `failed` mang chính `rejected_code`."""
     stage = await make_stage(db_session)
     upload = await make_upload(
         db_session,

@@ -1,4 +1,4 @@
-"""`POST /api/auth/logout` (BE-BIND #4; CASE loại P): idempotent, luôn xoá hai cookie."""
+"""`POST /api/auth/logout` (hợp đồng #4; CASE loại P): idempotent, luôn xoá hai cookie."""
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession

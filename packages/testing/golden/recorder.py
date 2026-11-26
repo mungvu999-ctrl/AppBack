@@ -3,7 +3,7 @@
 Observer của `API_RESPONSE_OBSERVERS` (B0-06), gắn bởi `packages/testing/fixtures/golden.py`.
 Chỉ ghi khi đủ cả ba:
 
-- tên test tách được theo CASE §2.3 (`test_<op>__<case>[_<hậu tố>]`, `test_common__<case>[<op>]`);
+- tên test tách được theo cổng case (`test_<op>__<case>[_<hậu tố>]`, `test_common__<case>[<op>]`);
 - (method, đường) của request khớp **đúng** thao tác `<op>` của tên, theo `operations()`;
 - status < 500 và không phải `text/event-stream` (luồng không được đọc ở đây; test luồng gọi
   `record_stream_event` với khung đã nhận).
@@ -62,7 +62,7 @@ def samples_root() -> Path | None:
 
 
 def split_test_name(name: str) -> tuple[str, str, str] | None:
-    """`(op, case, gốc tên file)` theo CASE §2.3, hay `None` khi tên không phải test case.
+    """`(op, case, gốc tên file)` theo cổng case, hay `None` khi tên không phải test case.
 
     Tách bằng `packages.core.case_names.split_case_test_name` (nguồn duy nhất, R-07).
     Hậu tố (`_missing`, `[tham-số]`) thành `<case>_<hậu tố>`, chỉ giữ ký tự an toàn cho tên file.

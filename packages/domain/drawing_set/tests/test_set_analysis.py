@@ -20,6 +20,7 @@ from packages.domain.drawing_set.set_analysis import (
     ViewGuess,
     assign_texts,
     guess_views,
+    solve_set,
 )
 
 _DATA: Final = Path(__file__).parent / "data" / "page_kind" / "views.json"
@@ -134,6 +135,79 @@ def test_plan_titles_give_storeys() -> None:
     assert all(g.storey_confidence is not None for g in guesses)
     assert guesses[1].title_text == "MẶT BẰNG TẦNG 2"
     assert [g.page for g in guesses] == [0, 1, 2]
+
+
+def test_solve_set_returns_house_floors_of_plans_only() -> None:
+    """`solve_set` trả đúng đề xuất của `guess_views`, kèm đề xuất cả nhà chỉ cho hình máy xếp mặt bằng."""
+    pages = [plan_page("MẶT BẰNG TẦNG 1"), PageReading((800, 600)), plan_page("MẶT BẰNG TẦNG 2")]
+    guesses, floors = solve_set(pages)
+    assert guesses == guess_views(pages)
+    assert sorted(floors) == [0, 2]
+    assert [floors[i].storey_no for i in (0, 2)] == [1, 2]
+    assert solve_set([PageReading((800, 600))])[1] == {}
+
+
+def _levelled_plan(title: str, mark: str) -> PageReading:
+    """Trang mặt bằng có tên tầng và một cốt sàn."""
+    page = plan_page(title)
+    return PageReading(page.size, (), [*page.texts, line(mark, (1500, 500, 1620, 530))])
+
+
+def _side_page(title: str, levels: int = 4) -> PageReading:
+    """Trang mặt cắt/mặt đứng: `levels` cốt thẳng hàng dọc (cốt cao hơn nằm cao hơn trên trang) và tên hình."""
+    marks = [("±0.000", 1000.0), ("+3.300", 670.0), ("+6.600", 340.0), ("+9.900", 10.0)][:levels]
+    texts = [line(text, (1500, y - 15, 1620, y + 15)) for text, y in marks]
+    return PageReading((2000, 1200), (), [*texts, line(title, (600, 1100, 1400, 1180))])
+
+
+@pytest.mark.parametrize(
+    ("kind", "confidence", "level_source", "top_height_source"),
+    [
+        ("section", NOT_PLAN_SURE, "plan+section", "section"),
+        ("section", NOT_PLAN_SURE - 0.01, "plan", "default"),
+        ("elevation", 1.0, "plan", "default"),
+        ("roof", 1.0, "plan", "default"),
+    ],
+)
+def test_sure_sections_feed_the_level_ladder(
+    kind: str, confidence: float, level_source: str, top_height_source: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NHA-04: mặt cắt máy xếp chắc (>= 0,8) tự vào thang cốt của cả bộ, không cần người đánh dấu — cốt thành hai
+    nguồn, tầng trên cùng hết chiều cao mặc định. Dưới ngưỡng, hay loại hình khác (kể cả mặt đứng: số kích thước
+    trên mặt đứng bị đọc thành cốt, NO-572), thì như cũ."""
+    from packages.domain.drawing_set import set_analysis
+    from packages.domain.drawing_set.page_kind import PageKindResult
+
+    def classify(texts: Any, size: Any, **kwargs: Any) -> PageKindResult:
+        """Trang có tên "HÌNH BÊN" nhận loại và độ tin của ca thử; trang khác phân loại thật."""
+        if any(t.text == "HÌNH BÊN" for t in texts):
+            return PageKindResult(kind, confidence, "TITLE_ONLY", ())  # type: ignore[arg-type]
+        return classify_page(texts, size, **kwargs)
+
+    monkeypatch.setattr(set_analysis, "classify_page", classify)
+    plans = [_levelled_plan("MẶT BẰNG TẦNG 1", "±0.000"), _levelled_plan("MẶT BẰNG TẦNG 2", "+3.300")]
+    _, floors = solve_set([*plans, _side_page("HÌNH BÊN"), _side_page("HÌNH BÊN")])
+    assert [floors[i].elevation_mm for i in (0, 1)] == [0, 3300]
+    assert [floors[i].elevation_source for i in (0, 1)] == [level_source] * 2
+    assert floors[1].height_source == top_height_source
+
+
+@pytest.mark.parametrize(("levels", "source"), [(3, "plan+section"), (2, "plan")])
+def test_auto_section_needs_three_levels(levels: int, source: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mặt cắt máy tự chọn chỉ vào thang khi đọc được từ ba cốt: đường khớp qua hai cốt không loại được số đọc nhầm."""
+    from packages.domain.drawing_set import set_analysis
+    from packages.domain.drawing_set.page_kind import PageKindResult
+
+    def classify(texts: Any, size: Any, **kwargs: Any) -> PageKindResult:
+        """Trang "HÌNH BÊN" là mặt cắt chắc; trang khác phân loại thật."""
+        if any(t.text == "HÌNH BÊN" for t in texts):
+            return PageKindResult("section", 1.0, "TITLE_ONLY", ())
+        return classify_page(texts, size, **kwargs)
+
+    monkeypatch.setattr(set_analysis, "classify_page", classify)
+    plans = [_levelled_plan("MẶT BẰNG TẦNG 1", "±0.000"), _levelled_plan("MẶT BẰNG TẦNG 2", "+3.300")]
+    _, floors = solve_set([*plans, _side_page("HÌNH BÊN", levels), _side_page("HÌNH BÊN", levels)])
+    assert [floors[i].elevation_source for i in (0, 1)] == [source] * 2
 
 
 def test_plan_without_storey_in_title_is_asked() -> None:

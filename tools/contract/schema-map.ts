@@ -1,9 +1,9 @@
 /**
  * Bản đồ `operationId → schema FE` mà H1 dùng để giải response 2xx (B0-07 [2]).
  *
- * Mỗi dòng không phải v2 của BE-BIND §1 (kể cả S1, S2) và §2 có **đúng một** mục;
- * `check.py` hỏng khi thiếu hay thừa mục ("bản đồ đủ"). Hợp đồng cũ lấy theo cột
- * "Schema FE" của BE-BIND, hợp đồng mới theo cột Response của HOP-DONG-MOI §2–§8.
+ * Mỗi dòng hợp đồng (`tools/charter.py`, kể cả S1, S2) có **đúng một** mục;
+ * `check.py` hỏng khi thiếu hay thừa mục ("bản đồ đủ"). Hợp đồng cũ lấy schema FE sẵn có,
+ * hợp đồng mới theo cột Response của HOP-DONG-MOI §2–§8.
  * Module nhập thẳng file (`@/api/schemas/<file>`, HOP-DONG-MOI §9), không qua
  * `export *` của `index.ts`, trừ các schema cũ vốn khai **trong** `index.ts`.
  *
@@ -39,7 +39,7 @@ function array(module: string, exportName: string): SchemaMapEntry {
 }
 
 export const SCHEMA_MAP: Readonly<Record<string, SchemaMapEntry>> = {
-  /* -- BE-BIND §1, hợp đồng cũ -------------------------------------------- */
+  /* -- Hợp đồng cũ -------------------------------------------------------- */
 
   // #1. Response đăng nhập không có thân: FE bỏ qua thân (`src/api/client.ts:590-597`,
   // `postWithoutBody` ở `:695-704`) và lấy phiên bằng refresh (`src/lib/auth/session.ts`
@@ -97,7 +97,7 @@ export const SCHEMA_MAP: Readonly<Record<string, SchemaMapEntry>> = {
   streams_open_progress: object(INDEX, 'ProgressSchema'), // S1
   streams_open_notifications: object('@/api/schemas/notifications', 'NotificationSchema'), // S2
 
-  /* -- BE-BIND §2, hợp đồng mới (HOP-DONG-MOI §2–§8) ----------------------- */
+  /* -- Hợp đồng mới (HOP-DONG-MOI §2–§8) --------------------------------- */
 
   projects_list_summaries: object('@/api/schemas/projectSummaries', 'ProjectSummaryPageSchema'), // N1
   members_add_member: object(INDEX, 'UserSchema'), // N3 (response `UserSchema` cũ)
@@ -152,6 +152,8 @@ export const SCHEMA_MAP: Readonly<Record<string, SchemaMapEntry>> = {
   design_director_select_concept: object('@/api/schemas/designConcept', 'DesignConceptSchema'), // N48 (AID-01)
   // N52 (HS-03). Schema FE cố ý không `.strict()` (bảng phụ): giải bằng bản strict riêng của harness (L4-N07, W16).
   drawing_sets_read_house_proposal: object('./strict/houseProposal', 'HouseProposalStrictSchema'),
+  // NHA-06a: FE chưa có schema cho route này (NHA-06c), nên giải bằng bản strict của harness.
+  drawing_sets_read_building: object('./strict/houseProposal', 'SetBuildingStrictSchema'),
   projects_cancel_create_project: object(INDEX, 'ProjectSchema'), // N40
   // N54–N61 (K-32a): schema FE strict (L4-N07), giải thẳng bằng schema của FE.
   drawing_sets_create_set: object(DRAWING_SET, 'DrawingSetSchema'), // N54 (201)

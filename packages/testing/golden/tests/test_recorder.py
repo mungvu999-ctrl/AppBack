@@ -212,7 +212,7 @@ def test_both_plugin_orders_register_one_recorder(golden_first: bool) -> None:
     ],
 )
 def test_split_test_name_follows_case_gate(name: str, expected: tuple[str, str, str] | None) -> None:
-    """Tên test tách đúng như `split_case_test_name` (CASE §2.3); hậu tố chỉ giữ ký tự an toàn cho tên file."""
+    """Tên test tách đúng như `split_case_test_name` (cổng case); hậu tố chỉ giữ ký tự an toàn cho tên file."""
     assert recorder.split_test_name(name) == expected
 
 

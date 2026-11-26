@@ -1,4 +1,14 @@
-# Bảng case bắt buộc của module khuôn thuộc tính (B2-07 [8], CASE.md §2.3).
+# Bảng case bắt buộc của module khuôn thuộc tính (B2-07 [8], cổng case).
 #
-# `templates_list_templates` (Đ) và `templates_create_template` (G) không cần khai gì:
-# case của Loại đã đủ, tính từ metadata + BE-BIND.
+# `templates_list_templates` (Đ) và `templates_create_template` (G) không cần `extra`/`waive`:
+# case của Loại đã đủ, tính từ metadata + `type`/`lock` khai bên dưới.
+
+[[endpoint]]
+op = "templates_list_templates"
+type = "Đ"
+lock = "thành viên"
+
+[[endpoint]]
+op = "templates_create_template"
+type = "G"
+lock = "layer.edit"

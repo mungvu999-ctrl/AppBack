@@ -1,4 +1,4 @@
-"""J-case của task `ml.infer.drawing_set.read` (K-32a PR(3), BE-00 §7 "Test task", CASE §2.3).
+"""J-case của task `ml.infer.drawing_set.read` (K-32a PR(3), BE-00 §7 "Test task", cổng case).
 
 Kho đĩa `local_storage` thật, ảnh trang tổng hợp (ba tấm giấy xám), bộ tách khung thật; bộ đọc chữ là bộ giả
 cố định (OCR thật đã có test riêng ở `apps/ml/text`). Hàm task mỏng chạy bằng `.apply()` (không worker), thông

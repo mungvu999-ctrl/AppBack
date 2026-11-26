@@ -1,4 +1,4 @@
-"""Hai route luồng SSE: S1 tiến độ, S2 thông báo (BE-BIND S1, S2; B4-01 [2], [6], [7]).
+"""Hai route luồng SSE: S1 tiến độ, S2 thông báo (hợp đồng S1, S2; B4-01 [2], [6], [7]).
 
 Cả hai **công khai** theo B0-06 [7] (Loại S): không `Authorization: Bearer`, xác thực
 bằng cookie luồng `appback_stream` cộng `check_session`. GET không đòi `Origin` (K31):
@@ -111,7 +111,7 @@ async def membership_checked_by_provider() -> None:
     Route Loại S không có `Principal` từ Bearer nên `require_project` của B2-01 dùng không
     được ở đây. Thành viên được kiểm thật trong `StreamAccessPolicy.authorize` của B2-04 —
     cả lúc mở luồng (S06) lẫn mỗi `STREAM_RECHECK_S` sau đó (S07). Dependency này chỉ để
-    `Operation.permission_key` khớp cột "Khoá" của BE-BIND (BE-00 §5, `apps/api/core/openapi.py`).
+    `Operation.permission_key` khớp `lock` ở `cases.toml` (BE-00 §5, `apps/api/core/openapi.py`).
     """
 
 

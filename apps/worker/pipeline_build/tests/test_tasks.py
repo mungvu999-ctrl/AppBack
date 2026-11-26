@@ -1,4 +1,4 @@
-"""Task `pipeline.build.run` (B5-05 [6] "Task", [8] "Task"; CASE §4 J01, J03, J06, J08, J10).
+"""Task `pipeline.build.run` (B5-05 [6] "Task", [8] "Task"; case J01, J03, J06, J08, J10).
 
 Task cùng hàng `pipeline.cpu` với thông điệp nó gửi (`pipeline.orchestrate.step_done`) nên
 kiểm bằng `task.apply(args=[…])` (BE-00 §7 "Test task"), không dựng worker thật; hàng đọc

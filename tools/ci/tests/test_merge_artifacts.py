@@ -1,4 +1,4 @@
-"""Test `tools.ci.merge_artifacts` — CASE §2.3 [8] "merge_artifacts": gộp junit + vết, kiểm đủ artifact."""
+"""Test `tools.ci.merge_artifacts` — [8] "merge_artifacts": gộp junit + vết, kiểm đủ artifact."""
 
 from __future__ import annotations
 

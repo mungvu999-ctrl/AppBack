@@ -1,4 +1,4 @@
-"""`POST /api/auth/login` (BE-BIND #1, B1-01 [6], [8]; CASE loại C)."""
+"""`POST /api/auth/login` (hợp đồng #1, B1-01 [6], [8]; CASE loại C)."""
 
 import asyncio
 import logging

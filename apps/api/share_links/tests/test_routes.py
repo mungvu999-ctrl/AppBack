@@ -112,7 +112,7 @@ async def test_share_link_expired_and_unknown_token(
 
 
 # ---------------------------------------------------------------------------
-# Case theo tên (CASE.md §2.2): N39 export (Đ), #47 list (Đ), #48 create (G), #49 revoke (G), N38 open (C)
+# Case theo tên (cổng case): N39 export (Đ), #47 list (Đ), #48 create (G), #49 revoke (G), N38 open (C)
 # ---------------------------------------------------------------------------
 
 

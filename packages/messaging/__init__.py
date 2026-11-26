@@ -2,7 +2,7 @@
 
 Mặt công khai của gói gom ở đây vì hai bên gọi nó theo hai cách: mã nghiệp vụ nhập
 `packages.messaging.<module>`, còn `tools/case_gate.py` đọc **thuộc tính của gói**
-`packages.messaging.registered_tasks` để dựng sổ task (CASE §2.3).
+`packages.messaging.registered_tasks` để dựng sổ task (cổng case).
 """
 
 from packages.messaging.celery_app import (

@@ -1,0 +1,67 @@
+# NHA-03 — từ khoá tên hình kiểu Anh/Mỹ/Canada
+
+Thiết kế: `docs/thiet-ke-bo-ho-so.md` §2.A mục 2, §5 (lát NHA-03). Người dùng duyệt GATE 1 ngày 2026-11-26.
+Nhánh dựng trên `feature/nha-06a-building-read` (đầu PR 120): cần thước đo của NHA-00, không nhánh nào sau đó chạm
+`titles.py`.
+
+- `packages/domain/drawing_set/titles.py`: `MAIN FLOOR` / `MAIN LEVEL` là tầng trệt; `SECTIONS` số nhiều là mặt cắt;
+  `MAIN`, `LEVEL` vào `_VOCAB` để bước sửa lỗi OCR không đụng tới. Ba dòng mã.
+- `tests/test_titles.py`: 17 dòng tên hình mới (3 đỏ trước khi sửa: `MAIN FLOOR PLAN`, `MAIN LEVEL FLOOR PLAN`,
+  `BUILDING SECTIONS`; phần còn lại ghim hành vi sẵn có: `UPPER/LOWER FLOOR`, `LEVEL n`, `CROSS/LONGITUDINAL SECTION`,
+  `… ELEVATIONS`, tiêu đề lẫn hai ngôn ngữ) và 5 chuỗi không được thành tên hình.
+
+## Lệch khỏi kế hoạch đã duyệt
+
+- **`BASEMENT`, `ATTIC`, `LEVEL n` đứng một mình không thành tên hình** (kế hoạch: `BASEMENT`/`ATTIC` một mình là mặt
+  bằng). Lý do: cùng chữ đó là tên phòng trong mặt bằng và nhãn cốt trên mặt cắt; `pick_title` nhận mọi dòng
+  `parse_title` đọc được, nên sẽ lấy nhầm tên phòng làm tên hình. Có chữ `FLOOR`/`PLAN` đi kèm thì vẫn nhận như cũ.
+- **`LEVEL n` chưa được đọc thành số tầng** (kế hoạch: đếm như `TẦNG n`). Bản đầu có làm, lượt review chỉ ra ba lỗi:
+  trên đường OCR `_snap` bỏ dấu `'` nên cốt `LEVEL 10'-0"` thành "tầng 10"; ghi chú `FINISHED FLOOR LEVEL 2` thành mặt
+  bằng tầng 2; `storeys.py` (`_RELAXED`, `_FIRST_WORD`) không biết cách đếm này nên hai đường đánh số lệch nhau. Sửa
+  đúng phải đụng `storeys.py` (ngoài phạm vi "chỉ `titles.py`") và không có bộ nào dùng `LEVEL n` để đo → NO-597.
+- Không thêm tiếng Pháp: chưa có bộ tiếng Pháp nào để đo, thiết kế §6 câu 6 chưa được chọn.
+
+## Số trước/sau — không đổi, và vì sao
+
+Thước NHA-00, cùng đệm (`F:/runs/dwglab/muc3-nha00/readings`, 50 tờ của 51 bộ), đáp án `truth_v3`, đúng/tổng đáp án.
+Trước = sau ở mọi ô; 50 tệp dự đoán trùng từng byte (`diff -rq`).
+
+| Nhóm | Loại hình | Số tầng | Bộ đúng hết |
+|---|---|---|---|
+| sạch, dev (8 bộ) | 16/78 | 2/20 | 1/8 |
+| sạch, test (16 bộ) | 22/104 | 3/40 | 0/16 |
+| đã lộ, dev (9 bộ) | 37/102 | 10/27 | 0/9 |
+| đã lộ, test (18 bộ) | 92/186 | 27/48 | 1/18 |
+
+Chẩn đoán trên **tập dev** (không nhìn tập test), 78 hình có đáp án của nhóm sạch:
+
+- Đưa thẳng tên hình đáp án (`title_raw`) vào `parse_title` của nhánh gốc: đúng loại hình ở mọi hình tiếng Anh, đúng
+  cả nhãn tầng (`GROUND/FIRST/SECOND/THIRD FLOOR PLAN`, `BASEMENT FLOOR PLAN`, `ROOF PLAN`, `… ELEVATION`,
+  `SECTION A-A`). Tập dev không có tên hình nào dùng từ khoá của lát này.
+- Trên đường sản phẩm: 16 đúng; **38 có khung nhưng không đọc ra tên** (`ViewGuess.title_text` rỗng); **23 không có
+  khung khớp**; 1 lấy nhầm tên hình bên cạnh. OCR chỉ trả 9-33 dòng chữ mỗi tờ quốc tế (6-12 hình/tờ), có tờ không
+  có dòng nào đọc được thành tên hình.
+- Kết luận: ghi chú "nhóm sạch thấp vì tên hình tiếng nước ngoài" ở `changes/NHA-00.md` là chẩn đoán sai. Chỗ mất là
+  chữ tên hình không tới được bộ đọc tên và việc tách hình, không phải từ khoá. Lát này vì vậy chỉ có giá trị với hồ
+  sơ dùng `MAIN FLOOR` hay `SECTIONS` (chưa có trong bộ đo) và được kiểm bằng test đơn vị, không bằng thước.
+
+## Phạm vi kiểm
+
+- `bash tools/verify/run.sh verify --fast` (2026-11-26, cây làm việc trên `1cc66a63`, mã thoát 0): bước 0 làm ấm
+  node_modules, 1 ruff format, 2 ruff check, 3 mypy --strict, 4 lint-imports, 5 pytest bị ảnh hưởng (chạy cả bộ; độ phủ
+  đơn vị `apps/api/drawing_sets`, `packages/domain`, `tools`), 7 hợp đồng H1/H3/H4/H5, 8 openapi — **đạt**. Bước 5b, 6 —
+  **chưa chạy** (cổng nhanh không chạy).
+- Review: `ecc:python-reviewer` — không CRITICAL; 1 HIGH và 2 MEDIUM đều về `LEVEL n`, xử lý bằng cách rút `LEVEL n`
+  khỏi lát (NO-597); LOW về số dòng test trong ghi chú đã sửa. Không chạy `security-reviewer`: không có đầu vào mới.
+- Phạm vi kiểm: fast — **chưa đủ để merge**. Lát chạm `packages/domain/**` (sàn cứng R-33b): phải `run.sh verify`
+  đầy đủ (CI) trước `/merge-review`.
+
+## Nợ và việc chưa làm
+
+- NO-596 — Nhóm bộ quốc tế mất loại hình ở khâu đọc chữ và tách hình, không ở từ khoá: 38/78 hình dev sạch có khung
+  mà không có tên, 23/78 không có khung. Gốc chưa rõ: có thể là giới hạn của bộ đo (tờ CAD đổi ra ảnh giả quét 150 dpi
+  rồi co về 24 Mpx làm chữ tên hình quá nhỏ) hoặc của sản phẩm (OCR trên trang lớn; thiết kế §2.A mục 4 "đọc lớp chữ
+  PDF vector"). Chủ: lát riêng sau NHA-03. P2. Mở.
+- NO-597 — `LEVEL n` trong tên mặt bằng chưa thành số tầng (xem "Lệch khỏi kế hoạch"). Cần: phân biệt nhãn cốt với số
+  tầng trên cả đường OCR, thêm cách đếm vào `storeys.py`, và ít nhất một bộ hồ sơ dùng `LEVEL n` trong bộ đo. Chủ: lát
+  riêng. P3. Mở.

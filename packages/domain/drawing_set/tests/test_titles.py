@@ -141,6 +141,28 @@ _TITLES = [
     ("MẶT BẰNG CHI TIẾT WC", "plan", None, None, "plain"),
     ("PERSPECTIVE VIEW", "other", None, None, "other"),
     ("PHỐI CẢNH 3D", "other", None, None, "other"),
+    # NHA-03 — tên hình kiểu Anh/Mỹ/Canada (thiết kế §2.A mục 2).
+    ("MAIN FLOOR PLAN", "plan", "ground", None, "plain"),
+    ("MAIN LEVEL FLOOR PLAN", "plan", "ground", None, "plain"),
+    # UPPER/LOWER không nói tầng mấy (nhà hai tầng hay bán hầm): mặt bằng, để người duyệt chọn tầng.
+    ("UPPER FLOOR PLAN", "plan", None, None, "plain"),
+    ("LOWER FLOOR PLAN", "plan", None, None, "plain"),
+    # LEVEL n chưa được đọc thành số tầng (NO-597): cùng chữ đó là nhãn cốt ("FINISHED FLOOR LEVEL 2",
+    # "LEVEL 10'-0") và `storeys.py` chưa biết cách đếm này. Mặt bằng, để người duyệt chọn tầng.
+    ("LEVEL 2 FLOOR PLAN", "plan", None, None, "plain"),
+    ("FINISHED FLOOR LEVEL 2", "plan", None, None, "plain"),
+    ("SECOND FLOOR PLAN LEVEL 3", "plan", 2, "floor_ordinal", "plain"),
+    ("ATTIC FLOOR PLAN", "plan", "attic", None, "plain"),
+    ("BUILDING SECTIONS", "section", None, None, "plain"),
+    ("CROSS SECTION", "section", None, None, "plain"),
+    ("LONGITUDINAL SECTION B", "section", None, None, "plain"),
+    ("LEFT SIDE ELEVATION", "elevation", None, None, "plain"),
+    ("EXTERIOR ELEVATIONS", "elevation", None, None, "plain"),
+    # Tiêu đề lẫn hai ngôn ngữ: phần tiếng Việt quyết định số tầng (TẦNG 2 và SECOND FLOOR lệch nhau một tầng).
+    ("MẶT BẰNG TẦNG 2 / SECOND FLOOR PLAN", "plan", 2, "tang", "plain"),
+    ("MẶT BẰNG TẦNG TRỆT - MAIN FLOOR PLAN", "plan", "ground", None, "plain"),
+    ("MẶT CẮT A-A / SECTION A-A", "section", None, None, "plain"),
+    ("MẶT ĐỨNG CHÍNH - FRONT ELEVATION", "elevation", None, None, "plain"),
 ]
 
 
@@ -153,9 +175,16 @@ def test_parse_title(text: str, kind: str, storey: object, numbering: object, va
     assert info.norm == fold(text)
 
 
-@pytest.mark.parametrize("text", ["", "   ", "TL:1/50", "KT-02", "A", "+3.600", "nhà 3 gian"])
+@pytest.mark.parametrize(
+    "text",
+    ["", "   ", "TL:1/50", "KT-02", "A", "+3.600", "nhà 3 gian", "LEVEL 2", "MAIN LEVEL", "BASEMENT", "ATTIC", "UPPER"],
+)
 def test_parse_title_returns_none_without_a_drawing_word(text: str) -> None:
-    """Chữ không nêu loại bản vẽ (tỉ lệ, mã tờ, cốt, rỗng) -> None."""
+    """Chữ không nêu loại bản vẽ (tỉ lệ, mã tờ, cốt, rỗng) -> None.
+
+    NHA-03: `LEVEL 2`, `BASEMENT`, `ATTIC` đứng một mình cũng là nhãn cốt trên mặt cắt và tên phòng trong mặt bằng,
+    nên không được thành tên hình.
+    """
     assert parse_title(text) is None
 
 

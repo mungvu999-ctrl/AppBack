@@ -173,7 +173,7 @@ def fold(text: str) -> str:
 
 
 # ---------------------------------------------------------------- loại hình, biến thể, tầng
-_SECTION = re.compile(r"MAT CAT|\bSECTION\b|CAT DOC|CAT NGANG")
+_SECTION = re.compile(r"MAT CAT|\bSECTIONS?\b|CAT DOC|CAT NGANG")
 _ELEVATION = re.compile(r"MAT DUNG|MAT TIEN|MAT BEN|ELEVATION|\bFACADE\b")
 _THREE_D = re.compile(r"ISOMETRIC|AXONOMETRIC|PERSPECTIVE|PHOI CANH")
 _VN_PLAN_WORD = re.compile(r"MAT BANG|BINH DO|\bTANG\b|\bLAU\b|\bTRET\b|\bTUM\b|SAN THUONG|\bMAI\b|KHU DAT")
@@ -186,7 +186,7 @@ _TUM = re.compile(r"\bTUM\b")
 _ATTIC = re.compile(r"\bAP MAI\b|ATTIC")
 _TERRACE = re.compile(r"SAN THUONG|TERRACE")
 _MEZZANINE = re.compile(r"\bLUNG\b|MEZZ")
-_GROUND = re.compile(r"\bTRET\b|\bGRO\w{1,6}\s+FLOOR|\bGROUND\b")
+_GROUND = re.compile(r"\bTRET\b|\bGRO\w{1,6}\s+FLOOR|\bGROUND\b|\bMAIN\s+(?:FLOOR|LEVEL)\b")
 _STOREY_WORDS: tuple[tuple[StoreyWord, re.Pattern[str]], ...] = (
     ("basement", _BASEMENT),
     ("tum", _TUM),
@@ -338,7 +338,7 @@ _VOCAB_TEXT = (
     " ROOF SITE LOCATION THUA TONG THE HAM BASEMENT CELLAR UNDERGROUND AP ATTIC TERRACE LUNG MEZZ GROUND SECTION"
     " ELEVATION FACADE ISOMETRIC AXONOMETRIC PERSPECTIVE PHOI CANH MONG FOUNDATION FONDATION TRAN CEILING KET CAU"
     " STRUCTURE STRUCTURAL ELECTRICAL ELECTRIC DIEN NUOC PLUMBING LAT NOI THAT FURNITURE TRUC FIRST SECOND THIRD"
-    " FOURTH FIFTH SIXTH"
+    " FOURTH FIFTH SIXTH MAIN LEVEL"
 )
 _VOCAB = frozenset(_VOCAB_TEXT.split())
 _VOWEL_DROPS = (

@@ -74,6 +74,27 @@ export VERIFY_BRANCH
 # hơn origin (01/11: 30 commit), nhánh tách từ origin/main khi đó thấy 47 tệp "đổi" thay vì 7 và `--fast` chạy quá nửa
 # bộ test. `merge-base HEAD A B` lấy gốc chung với bản gộp giả của A và B, tức gốc mới hơn trong hai nhánh.
 merge_base="$(git merge-base HEAD main origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || git rev-parse HEAD)"
+# PERF-13: nhánh xếp chồng (cắt từ một lát chưa vào `main`) không trả lại giá của các lát trước nó ở cổng nhanh — một
+# migration hay hợp đồng của lát trước từng kéo cả bộ test cho MỌI lát sau. Gốc so sánh của `--fast` tiến tới đầu nhánh
+# `origin/*` gần nhất đã nằm trọn trong HEAD (nhánh đã đẩy là nhánh đã qua cổng của chính nó), trừ nhánh cùng tên: đẩy
+# rồi vẫn kiểm phần của mình. Cổng đầy đủ và CI vẫn so với `main`.
+# shortcut: phần của chính mình đã đẩy dưới TÊN KHÁC bị coi là lát trước (chỉ kiểm phần chưa đẩy); cần thì loại thêm @{u}.
+if [[ "$VERIFY_TASK" == verify && " $* " == *" --fast "* ]]; then
+  own_ref="refs/remotes/origin/$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  mapfile -t pushed < <(git for-each-ref --merged HEAD --format='%(refname)' refs/remotes/origin | grep -vxF "$own_ref")
+  if (( ${#pushed[@]} )); then
+    # Nhánh đã gộp thêm `main` hay một nhánh khác có nhiều gốc gần nhất ngang hàng: lấy gốc cho ít tệp đổi nhất.
+    stacked_base="$merge_base" fewest=-1
+    for base in $(git merge-base --all HEAD "$merge_base" "${pushed[@]}" 2>/dev/null); do
+      count="$(git diff --name-only "$base" | wc -l)"
+      if (( fewest < 0 || count < fewest )); then fewest=$count stacked_base=$base; fi
+    done
+    if [[ "$stacked_base" != "$merge_base" ]]; then
+      echo "cổng nhanh: so với lát trước đã đẩy $(git log -1 --format='%h (%D)' "$stacked_base"), không phải main" >&2
+      merge_base="$stacked_base"
+    fi
+  fi
+fi
 VERIFY_CHANGED="$(
   { git diff --name-only "$merge_base" 2>/dev/null; git ls-files --others --exclude-standard; } \
     | sort -u

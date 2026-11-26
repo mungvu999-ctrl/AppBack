@@ -18,7 +18,7 @@ RUN go build -tags kqueue -trimpath -ldflags "$(go run buildscripts/gen-ldflags.
 FROM registry.access.redhat.com/ubi9/ubi-minimal@sha256:dfa0eb04abc59221544e74862432496add1f491f915c9b531880f91affc0e12c AS certs
 RUN microdnf install ca-certificates --nodocs --assumeyes
 
-FROM registry.access.redhat.com/ubi9/ubi-micro@sha256:5be877a2a280ae36eb9ab80ca4efb28bbf77c57abbba38137cdc37a03b8465e6
+FROM registry.access.redhat.com/ubi9/ubi-micro@sha256:dbd325b96bcd432dd42816d31412bdf1dc0fb973b79ed310344bc23c76c068db
 LABEL org.opencontainers.image.source="https://github.com/mungvu999-ctrl/AppBack" \
       org.opencontainers.image.licenses="AGPL-3.0-only" \
       org.opencontainers.image.version="RELEASE.2025-08-13T08-35-41Z"

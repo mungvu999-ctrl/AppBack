@@ -5,7 +5,7 @@ Một lượt quét định kỳ (`jobs.assemble_drawing_sets`). Worker nhập m
 
 1. **Chọn việc** (`_due`, một câu SQL): hình có đích tầng của bộ `confirmed` chưa xoá mà bản đóng băng
    (`building.confirmed`, N60 ghi) có mái cho hình đó; lượt chạy mới nhất của tầng đã ở trạng thái cuối; không có bộ
-   `confirmed` nào mới hơn cũng nhắm tầng đó; và bộ ba dấu vân (id lượt chạy, `revision` tài liệu tầng, chiều cao
+   `confirmed` mới hơn nào cũng mang mái cho tầng đó; bộ ba dấu vân (id lượt chạy, `revision` tài liệu tầng, chiều cao
    tầng) khác bộ ba đã lưu ở `building.assembly`. Không đổi thì tầng không được đụng tới, kể cả đọc lớp.
 2. **Ráp từng tầng** (`_assemble_floor`), mỗi tầng một giao dịch: khoá dòng bộ → tầng → tài liệu tầng (thứ tự của
    N60 và BE-00 §7), dựng mái từ đường bao phòng hiện tại, áp luật M-11/M-16 (`settle`) dưới khoá, ghi qua
@@ -51,6 +51,7 @@ from packages.domain.drawing_set.assembly import (
     FloorAssembly,
     Refusal,
     eave_above_floor_mm,
+    open_air_room,
     roof_id,
     settle,
 )
@@ -72,7 +73,7 @@ FROZEN_VERSION: Final = 1
 
 _ACTOR_NAME: Final = "hệ thống AI"  # tên hiển thị của pipeline (`apps.worker`; `apps.api` không được nhập worker)
 _FLOOR_MODES: Final = ("floor", "newFloor")
-_UNROOFED: Final = frozenset({"loggia"})  # phòng không có mái che; mô hình chưa có sân thượng/ban công riêng
+_UNROOFED: Final = frozenset({"loggia"})  # phòng không có mái che; sân thượng/ban công nhận theo tên (`open_air_room`)
 _FORMS: Final = frozenset({"flat", "shed", "gable", "hip"})
 _SINGLE_FACE: Final = frozenset({"flat", "shed"})  # `roof_nodes` chỉ dựng hai dạng này trên một chữ nhật
 _BAD_ENVELOPE: Final = frozenset({"OPEN_ENVELOPE", "WALL_FRAGMENTS"})  # M-15: phòng của lượt này không tin được
@@ -118,11 +119,25 @@ def _stored(key: str) -> Any:
     return func.jsonb_extract_path_text(DrawingSetRow.building, "assembly", DrawingSetViewRow.id, key)
 
 
+def _frozen_roof(view_id: Any) -> Any:
+    """JSONB tối thiểu mà `building` của một bộ phải chứa để bản đóng băng có mái cho hình `view_id`.
+
+    Kèm `schemaVersion`: bản đóng băng `frozen_proposal` không đọc được thì không khớp, thay vì bị khoá mỗi phút.
+    """
+    roofs = func.jsonb_build_array(func.jsonb_build_object("levelRef", view_id))
+    frozen = func.jsonb_build_object(
+        "schemaVersion", FROZEN_VERSION, "proposal", func.jsonb_build_object("roofs", roofs)
+    )
+    return func.jsonb_build_object("confirmed", frozen)
+
+
 def _newer_set_on_floor() -> ColumnElement[bool]:
-    """Có bộ `confirmed` tạo sau bộ đang xét cũng nhắm tầng này (câu con tương quan với bộ và tầng của `_due`).
+    """Có bộ `confirmed` tạo sau bộ đang xét cũng **mang mái** cho tầng này (câu con tương quan với `_due`).
 
     Chỉ bộ mới nhất được ráp một tầng: hai bộ mang `RoofSpec` khác nhau sẽ thay mái của nhau mãi, vì mỗi lượt ghi làm
-    lệch `revision` trong bộ ba của bộ kia. Id bộ là ULID nên so id là so thời điểm tạo.
+    lệch `revision` trong bộ ba của bộ kia. Id bộ là ULID nên so id là so thời điểm tạo. Bộ mới hơn mà bản đóng băng
+    không có mái cho hình của nó trên tầng này thì không che ai: nó không bao giờ vào lô, nên nếu che thì mái AI của bộ
+    cũ nằm lại mãi, tường đổi cũng không được dựng lại.
     """
     other_set, other_view, other_upload = aliased(DrawingSetRow), aliased(DrawingSetViewRow), aliased(UploadRow)
     return (
@@ -136,6 +151,7 @@ def _newer_set_on_floor() -> ColumnElement[bool]:
             other_set.deleted_at.is_(None),
             other_view.excluded.is_(False),
             other_view.target_mode.in_(_FLOOR_MODES),
+            other_set.building.contains(_frozen_roof(other_view.id)),
         )
         .exists()
     )
@@ -146,7 +162,7 @@ async def _due(db: AsyncSession, batch: int) -> list[_Due]:
 
     Lượt chạy mới nhất tính theo **tầng** chứ không theo lượt tải của bộ: tầng được tải lại bản vẽ khác vẫn có mái
     bám theo tường mới. Điều kiện "bản đóng băng có mái cho hình này" là phép chứa JSONB, nên tầng không mang mái
-    không bao giờ vào lô. Tầng mà một bộ mới hơn đã nhắm thì thuộc về bộ đó (`_newer_set_on_floor`).
+    không bao giờ vào lô. Tầng mà một bộ mới hơn cũng mang mái thì thuộc về bộ đó (`_newer_set_on_floor`).
     """
     run = (
         select(PipelineRunRow.id, PipelineRunRow.status)
@@ -155,12 +171,6 @@ async def _due(db: AsyncSession, batch: int) -> list[_Due]:
         .limit(1)
         .lateral("run")
     )
-    roof_of_view = func.jsonb_build_array(func.jsonb_build_object("levelRef", DrawingSetViewRow.id))
-    # Kèm `schemaVersion`: bản đóng băng `frozen_proposal` không đọc được thì không vào lô, thay vì bị khoá mỗi phút.
-    frozen = func.jsonb_build_object(
-        "schemaVersion", FROZEN_VERSION, "proposal", func.jsonb_build_object("roofs", roof_of_view)
-    )
-    has_roof = func.jsonb_build_object("confirmed", frozen)
     stmt = (
         select(DrawingSetRow.id, DrawingSetViewRow.id, FloorRow.pk)
         .select_from(DrawingSetRow)
@@ -174,7 +184,7 @@ async def _due(db: AsyncSession, batch: int) -> list[_Due]:
             DrawingSetRow.status == "confirmed",
             DrawingSetRow.deleted_at.is_(None),
             Project.deleted_at.is_(None),
-            DrawingSetRow.building.contains(has_roof),
+            DrawingSetRow.building.contains(_frozen_roof(DrawingSetViewRow.id)),
             DrawingSetViewRow.excluded.is_(False),
             DrawingSetViewRow.target_mode.in_(_FLOOR_MODES),
             FloorRow.deleted_at.is_(None),
@@ -246,7 +256,8 @@ def build_roof(
     if not thicknesses:
         return "NO_WALLS", ()
     thickness = statistics.median_low(thicknesses)
-    rooms = [[(point.x, point.y) for point in room.outline] for room in layer.rooms if room.usage not in _UNROOFED]
+    roofed = [room for room in layer.rooms if room.usage not in _UNROOFED and not open_air_room(room.name)]
+    rooms = [[(point.x, point.y) for point in room.outline] for room in roofed]
     outline = roof_outline(rooms, thickness / 2)
     if isinstance(outline, str):
         return ("NO_WALLS" if outline == "no_rooms" else "ROOF_SHAPE_COMPLEX"), ()

@@ -78,6 +78,7 @@ phần đường ghi). Người dùng duyệt GATE 1 ngày 2026-11-25, kèm cho 
 - NO-584 — vẫn mở (xem trên). Chủ: lát sửa `solve_house` (chưa có mã lát). P2.
 - NO-585 — vẫn mở: FE chưa có schema cho route đọc. Chủ: NHA-06c. P2.
 - NO-592 — FE chưa gửi `building` ở N59 (`ReplaceViewsSchema` của FE đang `.strict()` với `{views, name}`), nên các
-  điều kiện chặn của N60 chưa có hiệu lực với người dùng thật cho tới NHA-06c. Chủ: NHA-06c. P1. Mở.
+  điều kiện chặn của N60 chưa có hiệu lực với người dùng thật cho tới NHA-06c. Chủ: NHA-06c. P1. Mở: AppFront PR 114
+  (NHA-06c) đã thêm `building` vào `ReplaceViewsSchema`, chưa gộp ngày 2026-11-26; đóng khi PR 114 vào `master`.
 - NO-593 — Chưa có `LEVEL_SOURCE_CONFLICT` với tầng có sẵn, mã câu hỏi mới, và `LevelSource` một định nghĩa. Chủ:
   NHA-06c. P2. Mở.

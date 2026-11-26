@@ -9,6 +9,7 @@ from packages.domain.drawing_set.assembly import (
     FloorAssembly,
     eave_above_floor_mm,
     fingerprint,
+    open_air_room,
     roof_id,
     settle,
 )
@@ -59,6 +60,27 @@ def test_roof_id_is_deterministic_per_floor_and_matches_the_id_rule() -> None:
     assert all(is_spatial_id("roof", roof_id(pk)) and len(roof_id(pk)) == 19 for pk in (0, 1, 7, 2**62))
 
 
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Sân thượng", True),
+        ("BAN CÔNG 2", True),
+        ("roof terrace", True),
+        ("Balcony", True),
+        ("PATIO", True),
+        ("Balcony 2", True),
+        ("Phòng ngủ có ban công", False),  # chỉ nhắc tới ban công: vẫn là phòng trong nhà
+        ("Balcony door lobby", False),
+        ("Phòng ngủ", False),
+        ("Sân", False),
+        ("", False),
+    ],
+)
+def test_open_air_room_reads_the_folded_name(name: str, expected: bool) -> None:
+    """Sân thượng/ban công nhận theo tên đã bỏ dấu và viết hoa; "sân" một mình không tính (thiết kế §2.C Câu 5)."""
+    assert open_air_room(name) is expected
+
+
 def test_fingerprint_ignores_key_order_and_follows_the_geometry() -> None:
     """Thứ tự khoá không đổi dấu vân; một số đo đổi thì dấu vân đổi."""
     assert fingerprint([{"a": 1, "b": 2.5}]) == fingerprint([{"b": 2.5, "a": 1}])
@@ -84,6 +106,19 @@ def test_floor_assembly_round_trips_as_camel_case_jsonb() -> None:
         (_measured(6900, "reviewer"), LevelSpec(level_ref="V1", elevation_mm=_measured(3600), height_mm=None), 3300),
         (_measured(6900, "reviewer"), LevelSpec(level_ref="V1", elevation_mm=None, height_mm=None), 3200),
         (_measured(6900, "reviewer"), None, 3200),
+        # Merge-review PR 121 (P1): người duyệt chỉ nhập CHIỀU CAO tầng thì diềm thừa kế nguồn `reviewer` của chiều
+        # cao (`building._wall_top`) nhưng vẫn là diềm suy ra: mái đi theo đỉnh tường hiện tại, không ghim ở số đã nhập.
+        (
+            _measured(6900, "reviewer"),
+            LevelSpec(level_ref="V1", elevation_mm=_measured(3600), height_mm=_measured(3300, "reviewer")),
+            3200,
+        ),
+        # Người duyệt nhập cả chiều cao lẫn một cốt diềm khác đỉnh tường: giữ đúng cốt diềm họ nhập.
+        (
+            _measured(7100, "reviewer"),
+            LevelSpec(level_ref="V1", elevation_mm=_measured(3600), height_mm=_measured(3300, "reviewer")),
+            3500,
+        ),
     ],
 )
 def test_eave_follows_the_current_wall_top_unless_the_reviewer_typed_it(

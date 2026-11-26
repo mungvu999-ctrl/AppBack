@@ -85,13 +85,20 @@ def _measured(value: float | str, source: str = "plan") -> Measured:
     return Measured.model_validate({"value": value, "confidence": 0.8, "source": source})
 
 
-def _room(level_id: str, outline: Sequence[tuple[int, int]], *, usage: str = "bedroom", suffix: str = "1") -> Room:
+def _room(
+    level_id: str,
+    outline: Sequence[tuple[int, int]],
+    *,
+    usage: str = "bedroom",
+    suffix: str = "1",
+    name: str = "Phòng",
+) -> Room:
     """Một phòng AI chưa duyệt theo đường bao cho trước."""
     return Room.model_validate(
         {
             "id": f"R-TESTROOM0{suffix}",
             "levelId": level_id,
-            "name": "Phòng",
+            "name": name,
             "usage": usage,
             "outline": [{"x": x, "y": y} for x, y in outline],
             "areaM2": 0.0,
@@ -475,6 +482,37 @@ async def test_assemble_only_the_newest_confirmed_set_roofs_a_shared_floor(
     assert stored[view.id]["code"] == "BUILT"
 
 
+async def test_assemble_a_newer_set_without_a_roof_does_not_take_the_floor(
+    db_sessionmaker: Maker, fake_clock: FakeClock
+) -> None:
+    """Merge-review PR 121: bộ mới hơn cũng nhắm tầng nhưng không mang mái cho tầng đó (xác nhận không có `building`)
+    không che bộ cũ: tường đổi thì mái AI của bộ cũ vẫn được dựng lại theo tường, không nằm lại mãi."""
+    house = await _house(db_sessionmaker, fake_clock)
+    (floor,) = house.floors
+    await assemble_sets(db_sessionmaker, fake_clock)
+    async with db_sessionmaker() as db:
+        newer = await make_drawing_set(db, project=house.project, status="confirmed")
+        file = await make_set_file(db, drawing_set=newer, status="complete")
+        upload = await make_upload(db, project=house.project, floor=floor.row, status="complete")
+        await make_set_view(
+            db,
+            file=file,
+            kind="plan",
+            kind_confidence=1.0,
+            target_mode="floor",
+            target_floor_pk=floor.row.pk,
+            upload_id=upload.id,
+        )
+        await db.commit()
+        assert newer.id > house.set_id
+
+    await _human_write(db_sessionmaker, house, floor, fake_clock, rooms=(_room(floor.row.level_id, WIDER),))
+    assert await assemble_sets(db_sessionmaker, fake_clock) == Counter({"BUILT": 1})
+    (roof,) = (await _document(db_sessionmaker, floor)).layer.roofs
+    assert roof.nodes[1]["width"] == 9.7
+    assert await assemble_sets(db_sessionmaker, fake_clock) == Counter()
+
+
 async def test_assemble_two_sweeps_at_once_write_one_roof(db_sessionmaker: Maker, fake_clock: FakeClock) -> None:
     """Hai lượt quét chồng nhau (beat gửi lặp): lượt sau chờ khoá dòng bộ rồi thấy mái đã có — một mái, một lần ghi."""
     house = await _house(db_sessionmaker, fake_clock)
@@ -564,6 +602,26 @@ def test_build_roof_covers_an_l_shape_with_two_gable_faces() -> None:
     assert isinstance(roof, Roof)
     assert [node["type"] for node in roof.nodes] == ["roof", "roof-segment", "roof-segment"]
     assert hits == ()
+
+
+@pytest.mark.parametrize(
+    ("name", "width_m"),
+    [
+        ("Sân thượng", 8.2),
+        ("BAN CÔNG 2", 8.2),
+        ("Roof terrace", 8.2),
+        ("Balcony", 8.2),
+        ("Patio", 8.2),
+        ("Phòng ngủ", 12.2),
+        ("Sân", 12.2),  # thiết kế chỉ nêu năm tên trên; "sân" một mình còn là sân trong có mái
+    ],
+)
+def test_build_roof_leaves_terraces_and_balconies_unroofed(name: str, width_m: float) -> None:
+    """Thiết kế §2.C Câu 5 bước 1: phòng tên sân thượng/ban công không có mái che dù `usage` không phải loggia."""
+    beside = _room(LEVEL, ((8000, 0), (12000, 0), (12000, 6000), (8000, 6000)), name=name, suffix="2")
+    roof, _ = _built(_layer(LEVEL, _room(LEVEL, RECT), beside), _Plan())
+    assert isinstance(roof, Roof)
+    assert roof.nodes[1]["width"] == width_m
 
 
 @pytest.mark.parametrize(

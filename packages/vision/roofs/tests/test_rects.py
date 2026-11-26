@@ -238,6 +238,16 @@ def test_staircase_outline_is_too_complex() -> None:
     assert roof_rects([(0, 0), *steps, (0, 8000)]) == "complex"
 
 
+def test_outline_with_too_many_vertices_is_too_complex() -> None:
+    """Merge-review PR 121: quá 500 đỉnh thì từ chối ngay, trước phép tìm trục chính (bậc hai theo số đỉnh).
+
+    Đỉnh thừa nằm thẳng hàng trên cạnh đáy của chữ nhật: đủ 500 đỉnh vẫn ra một mặt, 501 đỉnh thì `complex`.
+    """
+    along = [(10000 * i / 497, 0.0) for i in range(498)]
+    assert roof_rects([*along, (10000, 6000), (0, 6000)]) == ONE_RECT
+    assert roof_rects([*along, (10000, 3000), (10000, 6000), (0, 6000)]) == "complex"
+
+
 def test_more_faces_than_one_roof_holds_is_too_complex(monkeypatch: pytest.MonkeyPatch) -> None:
     """Số chữ nhật vượt trần mặt mái của một `Roof` (32) → từ chối; hạ trần để kiểm bằng chữ L."""
     monkeypatch.setattr(module, "_MAX_RECTS", 1)

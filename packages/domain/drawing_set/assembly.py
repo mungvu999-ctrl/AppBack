@@ -8,6 +8,7 @@ trạng thái đang ghi. Dựng hình (đường bao, chữ nhật) không nằm
 
 import hashlib
 import json
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
@@ -16,6 +17,7 @@ from pydantic import JsonValue
 
 from packages.domain.drawing_set.building import LevelSpec, RoofSpec
 from packages.domain.drawing_set.rules import RuleHit
+from packages.domain.drawing_set.titles import fold
 from packages.domain.spatial.model import DomainModel, Roof
 
 type AssemblyCode = Literal["BUILT", "NO_WALLS", "ROOF_SHAPE_COMPLEX", "ROOF_KEPT", "ROOF_STALE", "USER_REMOVED"]
@@ -27,6 +29,9 @@ type Refusal = Literal["NO_WALLS", "ROOF_SHAPE_COMPLEX"]
 _BASE36: Final = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 _ID_CHARS: Final = 16
 _ID_BYTES: Final = 10  # 80 bit < 36^16, nên 16 ký tự base36 luôn chứa đủ
+# Thiết kế §2.C Câu 5 bước 1. Chỉ khớp danh từ chính của tên: tiếng Việt đứng đầu ("Ban công 2"), tiếng Anh đứng cuối
+# ("Roof terrace"); "Phòng ngủ có ban công" vẫn là phòng trong nhà.
+_OPEN_AIR: Final = re.compile(r"^\s*(?:SAN THUONG|BAN CONG)\b|\b(?:TERRACE|BALCONY|PATIO)(?:\s*\d+)?\s*$")
 
 
 class FloorAssembly(DomainModel):
@@ -73,6 +78,15 @@ def roof_id(floor_pk: int) -> str:
     return "RF-" + "".join(reversed(chars))
 
 
+def open_air_room(name: str) -> bool:
+    """Phòng mang tên sân thượng/ban công: không có mái che dù `usage` không phải `loggia` (so trên tên đã gấp chữ).
+
+    Tên chỉ nhắc tới ban công ("Phòng ngủ có ban công", "Balcony door lobby") không tính: bỏ nhầm một phòng trong nhà
+    làm mái co lại, nặng hơn lợp thừa một ban công.
+    """
+    return _OPEN_AIR.search(fold(name)) is not None
+
+
 def fingerprint(nodes: Sequence[dict[str, JsonValue]]) -> str:
     """Dấu vân của một mái: băm JSON chuẩn của các node. Đường bao, chiều cao tầng hay thông số mái đổi thì nó đổi."""
     canonical = json.dumps(list(nodes), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -84,11 +98,17 @@ def eave_above_floor_mm(spec: RoofSpec, level: LevelSpec | None, floor_height_mm
 
     Diềm mặc định nằm ở đỉnh tường, tức chiều cao **hiện tại** của tầng: người dùng sửa chiều cao tầng thì mái đi theo
     tường (M-16). Chỉ khi người duyệt tự nhập cốt diềm mới lấy khoảng cách từ cốt tầng đã duyệt tới cốt đó.
+
+    Nguồn `reviewer` chưa đủ để nói "tự nhập": `building._wall_top` cho diềm thừa kế nguồn của chiều cao, nên người
+    duyệt chỉ nhập chiều cao tầng thì diềm cũng mang `reviewer`. Diềm trùng đỉnh tường đã duyệt (cốt + chiều cao đang
+    hiệu lực) là diềm suy ra, vẫn đi theo tường hiện tại.
     """
     eave = spec.eave_elevation_mm
     if eave is None or eave.source != "reviewer" or level is None or level.elevation_mm is None:
         return floor_height_mm
-    return int(eave.value) - int(level.elevation_mm.value)
+    above = int(eave.value) - int(level.elevation_mm.value)
+    derived = level.height_mm is not None and above == int(level.height_mm.value)
+    return floor_height_mm if derived else above
 
 
 def settle(roofs: Sequence[Roof], own_id: str, built: Roof | Refusal, previous: FloorAssembly | None) -> Settled:

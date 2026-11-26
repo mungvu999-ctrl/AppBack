@@ -24,6 +24,7 @@ _CLOSE_MM: Final = 150.0  # khép khe còn lại giữa hai phòng khi tường 
 _SIMPLIFY_MM: Final = 10.0
 _NEAR_RECT: Final = 0.96  # diện tích / khung bao; đúng ngưỡng công cụ mái của Pascal (`roof-footprint.ts:81`)
 _SNAP_MM: Final = 100.0  # hai đường lưới gần hơn mức này là một: toạ độ phòng lệch vài mm không đẻ thêm mặt mái
+_MAX_VERTICES: Final = 500  # `_main_axis_deg` bậc hai theo số đỉnh (4 nghìn đỉnh: 2,4 s); phòng thật có vài chục
 _MAX_LINES: Final = 8  # mỗi trục; chữ U cần 4. Quá mức này là hình răng cưa, không ghép chữ nhật nổi
 _MAX_RECTS: Final = ROOF_NODES_MAX - 1
 _MAX_MISFIT: Final = 0.02  # phần phủ thiếu, và phần phủ thừa, so với diện tích đường bao
@@ -119,8 +120,11 @@ def roof_rects(outline_mm: Sequence[XY]) -> RoofRects | RoofRefusal:
     Gần chữ nhật (>= 0,96 khung bao) → một mặt phủ cả khung. Còn lại → nắn cạnh về lưới hai trục rồi lấy các chữ nhật
     cực đại; từ chối `poor_fit` khi chúng phủ thiếu hoặc thừa quá 2 % diện tích đường bao (hình xiên, cong) hoặc không
     liền một khối (M-08), `complex`
-    khi lưới quá dày hoặc cần quá số mặt một mái chứa được.
+    khi đường bao quá `_MAX_VERTICES` đỉnh (kiểm trước mọi phép tính: tác vụ ráp gọi hàm này trong lúc giữ khoá), lưới
+    quá dày hoặc cần quá số mặt một mái chứa được.
     """
+    if len(outline_mm) > _MAX_VERTICES:
+        return "complex"
     polygon = shapely.Polygon(outline_mm) if len(outline_mm) >= 3 else shapely.Polygon()
     if polygon.is_empty or not polygon.is_valid:
         return "poor_fit"

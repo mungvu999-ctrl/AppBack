@@ -59,14 +59,17 @@ K-33 / NHA-00 / NHA-01 / NHA-04. Phần test AppFront của lát này làm sau, 
 ## Nợ và việc chưa làm
 
 - NO-577 — `roof_nodes`, `roof_rects`, `roof_outline` chưa có nơi dùng trong mã sản phẩm (lệch R-10 theo thiết kế §5:
-  lát tách riêng để NHA-07a nhỏ lại). Nếu NHA-07a đổi hướng thì xoá. Chủ: NHA-07a. P3. Mở.
+  lát tách riêng để NHA-07a nhỏ lại). Nếu NHA-07a đổi hướng thì xoá. Chủ: NHA-07a. P3. **Đóng** (2026-11-26): NHA-07a
+  dùng cả ba ở `apps/api/drawing_sets/assembly.py::build_roof`.
 - NO-578 — Phép kiểm chạy node BE phát qua Pascal thật nằm ở nhánh AppFront `test/nha-02-roof-golden`
   (`src/pascal-page/__tests__/roofGolden.test.ts`: nạp fixture vàng bằng `setScene`, đọc ngược 0 lệnh với cờ chi tiết
   bật/tắt, đối chiếu `getActiveRoofHeight` và `getRoofPlanBounds`). Cả sáu ca đạt tại máy ngày 2026-11-25; nợ đóng
   khi nhánh ấy gộp. Fixture ở AppFront là bản chép tay: BE đổi cách phát thì phải chép lại. Chủ: NHA-02 phần
-  AppFront. P1. Mở.
+  AppFront. P1. Mở: nhánh ấy nằm trong AppFront PR 113 (`fix/no-579-roof-aligned-roundtrip`), chưa gộp ngày
+  2026-11-26; đóng khi PR 113 vào `master`.
 - NO-579 — Tầng được căn hiển thị (dời hoặc xoay, `AppFront/src/lib/pascal/floorAlignment.ts`) làm toạ độ và góc
   quay của node mái lệch một đơn vị số thực cuối khi đọc ngược (`(x + t) - t`, `(r - π/2) + π/2`), nên mái AI trên
   tầng ấy bị coi là đã sửa ngay lần mở đầu. Lỗi sẵn có của AppFront với mọi mái, không do node BE. Thấy ở ca
   `rect_gable_turned`; các ca toạ độ tròn không lệch. Chủ: AppFront (`floorAlignment.ts` / phép so mái lúc đọc
-  ngược). Phải sửa trước NHA-07a. P1. Mở.
+  ngược). Phải sửa trước NHA-07a. P1. Mở: phần sửa ở AppFront PR 113, chưa gộp ngày 2026-11-26; đóng khi PR 113 vào
+  `master`. PR 121 (NHA-07a) không gộp trước PR đó.

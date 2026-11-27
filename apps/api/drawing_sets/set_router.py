@@ -126,14 +126,15 @@ async def drawing_sets_list_sets(
 async def drawing_sets_read_building(
     project_id: str, set_id: str, db: DbSession, storage: Storage, settings: Settings
 ) -> SetBuildingOut:
-    """NHA-06a — đề xuất ngôi nhà của bộ (tầng, mái, mâu thuẫn, vi phạm) tính ngay lúc đọc, không ghi gì.
+    """NHA-06a/b — đề xuất ngôi nhà của bộ (tầng, mái, mâu thuẫn, vi phạm) kèm quyết định đã lưu; không ghi gì.
 
     Công tắc tắt → 200 `{"enabled": false}` (mẫu N52: "tắt" là trạng thái thường, service không được gọi). Tách khỏi
     N57 vì N57 được thăm dò mỗi 2 s, còn route này đọc lại kết quả của mọi trang từ kho.
     """
     if not settings.drawing_set_enabled:
         return BUILDING_DISABLED
-    return set_building_out(await building_read.read_building(db, storage, project_id=project_id, set_id=set_id))
+    found = await building_read.read_building(db, storage, project_id=project_id, set_id=set_id)
+    return set_building_out(None) if found is None else set_building_out(*found)
 
 
 @router.put(f"{_BASE}/{{set_id}}/views")

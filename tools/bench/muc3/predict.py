@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from apps.api.drawing_sets.analysis import _to_domain
-from apps.api.drawing_sets.building_read import _propose, _ViewSource
+from apps.api.drawing_sets.building_read import BuildingInputs, _propose, _ViewSource
 from packages.domain.drawing_set.building import BuildingProposal
 from packages.domain.drawing_set.proposal import FloorProposal
 from packages.domain.drawing_set.set_analysis import PageReading, ViewGuess, solve_set
@@ -111,14 +111,15 @@ def _floors(floors: Mapping[int, FloorProposal], ids: Mapping[int, str]) -> list
 def _proposal(sheets: Sequence[Sheet], guesses: Sequence[ViewGuess]) -> BuildingProposal:
     """Đề xuất ngôi nhà của route đọc `building` (`building_read._propose`), với hình máy đề xuất coi như đã duyệt.
 
-    Thước tự nhận mọi đề xuất của máy: loại, khung và độ tin của `ViewGuess` thế chỗ dòng `drawing_set_views`.
+    Thước tự nhận mọi đề xuất của máy: loại, khung và độ tin của `ViewGuess` thế chỗ dòng `drawing_set_views`, và
+    không có quyết định nào của người duyệt.
     """
     stems = [stem for stem, _, _ in sheets]
-    sources = [
+    sources = tuple(
         _ViewSource(str(i), (stems[g.page], 0), dict(zip(_CROP_KEYS, g.crop, strict=True)), g.kind, g.kind_confidence)
         for i, g in enumerate(guesses)
-    ]
-    return _propose(sources, {(stem, 0): reading for stem, reading, _ in sheets})
+    )
+    return _propose(BuildingInputs(sources, None), {(stem, 0): reading for stem, reading, _ in sheets})
 
 
 def roof_draft(proposal: BuildingProposal) -> Json:

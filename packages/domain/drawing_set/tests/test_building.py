@@ -331,6 +331,8 @@ def test_tum_gets_its_own_roof_and_a_slab_over_the_storey_below() -> None:
         ("f1", "flat", Measured(value=6600, confidence=0.75, source="plan", view_ids=("f1",))),
     ]
     assert hits(proposal, "M-06") == [(("t0", "f1"), ("tum",))]
+    # NHA-06b: mỗi mái sửa riêng được, nên dạng giả định của từng mái hỏi riêng (trước đó chỉ hỏi mái trên cùng).
+    assert [refs for refs, values in hits(proposal, "T-07") if values[0] == "roofForm"] == [("t0",), ("f1",)]
 
 
 def test_sloped_evidence_with_a_tum_builds_no_roof() -> None:

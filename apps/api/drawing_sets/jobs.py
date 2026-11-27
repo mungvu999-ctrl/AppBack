@@ -13,6 +13,8 @@ Worker nhập module này (`discover_jobs`), nên chỉ nhập `packages.*` và 
 3. `drawing_set.publish`: phân loại, đề xuất tầng, ghi hình `ai` (`analysis.py`), bộ sang `review`.
 
 Máy chỉ đề xuất (loại, tên, tầng, câu hỏi); không hình nào có đích — người duyệt chọn ở N59 (K-32a §1).
+
+Thêm lịch `drawing_set.assemble` (NHA-07a): mỗi phút ráp mái AI cho tầng của bộ đã xác nhận; lõi ở `assembly.py`.
 """
 
 import asyncio
@@ -25,12 +27,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.admin_ml_registry.registry import active_versions
 from apps.api.drawing_sets.analysis import publish_set
+from apps.api.drawing_sets.assembly import ASSEMBLE_EVERY, ASSEMBLE_TASK, assemble_sets
 from apps.api.drawing_sets.errors import ANALYSIS_FAILED
 from packages.core.clock import Clock, SystemClock
 from packages.db.engine import session_scope, worker_sessionmaker
 from packages.db.hooks import on_after_commit
 from packages.db.models.drawing_sets import DrawingSetFileRow, DrawingSetRow
-from packages.messaging import PermanentError, define_task, runner, send_task
+from packages.messaging import PermanentError, define_task, periodic, runner, send_task
 from packages.messaging.payloads.drawing_sets import (
     DRAWING_SET_ANALYZE_TASK,
     DRAWING_SET_PUBLISH_TASK,
@@ -253,3 +256,11 @@ async def publish_drawing_set(payload: DrawingSetPublishPayload) -> None:
     """Hàm task mỏng: dựng tài nguyên thật rồi gọi `publish`."""
     clock = SystemClock()
     await publish(worker_sessionmaker(), _open_storage(clock), payload.set_id, clock)
+
+
+@periodic(ASSEMBLE_TASK, every=ASSEMBLE_EVERY)
+async def assemble_drawing_sets() -> None:
+    """Hàm lịch `drawing_set.assemble`: dựng tài nguyên thật rồi gọi lõi; chỉ ghi log khi có tầng được xét."""
+    done = await assemble_sets(worker_sessionmaker(), SystemClock())
+    if done:
+        _log.info("drawing_sets_assembled", extra={"floors": dict(done)})

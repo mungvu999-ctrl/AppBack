@@ -13,7 +13,7 @@ hình. Chưa nối API hay DB; kết quả không lưu ở đâu.
 import itertools
 import math
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import Final, Literal, Self, cast
 
 from pydantic import Field, model_validator
@@ -27,11 +27,13 @@ from packages.domain.drawing_set.rules import (
     HEIGHT_OK_MM,
     TUM_LABELS,
     RuleHit,
+    m02_eave,
     m03_pitch,
     m05_form,
     m06_rooftop,
     m07_flat_drain,
     m09_min_pitch,
+    m17_consistent,
     m18_roof_plan,
     m19_ambiguous,
     t01_stack,
@@ -135,11 +137,21 @@ class RoofSpec(DomainModel):
     material: Measured | None = None
 
 
+class LevelSpec(DomainModel):
+    """Cốt và chiều cao **đang hiệu lực** của một hình mặt bằng (NHA-06b): số người duyệt nhập, không thì nguồn người
+    duyệt đã chọn cho mâu thuẫn, không thì giá trị máy. Rỗng khi không nguồn nào có."""
+
+    level_ref: str
+    elevation_mm: Measured | None
+    height_mm: Measured | None
+
+
 class BuildingProposal(DomainModel):
     """Đề xuất cho cả nhà: hệ đơn vị, tầng (nguyên kiểu của `solve_house`), mái, mâu thuẫn và vi phạm luật ghép."""
 
     unit_system: Measured
     floors: tuple[FloorProposal, ...]
+    levels: tuple[LevelSpec, ...]
     roofs: tuple[RoofSpec, ...]
     conflicts: tuple[Conflict, ...]
     violations: tuple[RuleHit, ...]
@@ -302,21 +314,68 @@ def _roof_storeys(
     return covered, [floor.floor_id for floor in terraces]
 
 
+_GUESSED_SOURCES: Final = ("convention", "default")  # nguồn không đọc từ bản vẽ (cùng tập với luật T-07)
+
+
+def _reviewed(value: float | str | None, ref: str) -> Measured | None:
+    """Giá trị người duyệt nhập cho hình `ref` (độ tin 1, nguồn `reviewer`); `None` khi họ không nhập."""
+    return None if value is None else Measured(value=value, confidence=1.0, source="reviewer", view_ids=(ref,))
+
+
+def _machine(value: int | None, confidence: float | None, source: str | None, ref: str) -> Measured | None:
+    """Giá trị máy đề xuất cho hình `ref` (cốt hoặc chiều cao của `FloorProposal`); `None` khi máy không đề xuất."""
+    if value is None:
+        return None
+    return Measured(
+        value=value, confidence=confidence or 0.0, source=cast("Source", source or "default"), view_ids=(ref,)
+    )
+
+
+def _wall_top(level: LevelSpec | None) -> Measured | None:
+    """Đỉnh tường của tầng = cốt + chiều cao đang hiệu lực, thừa kế nguồn và độ tin của chiều cao; thiếu thì `None`."""
+    if level is None or level.elevation_mm is None or level.height_mm is None:
+        return None
+    height = level.height_mm
+    top = int(level.elevation_mm.value) + int(height.value)
+    return Measured(value=top, confidence=height.confidence, source=height.source, view_ids=(level.level_ref,))
+
+
+def _roof_asks(spec: RoofSpec, reading: RoofReading, top: Measured | None) -> list[RuleHit | None]:
+    """Luật của riêng một mái, kiểm trên giá trị đang hiệu lực (kể cả số người duyệt nhập): M-07, M-09, M-17, M-02."""
+    view, form, pitch = spec.level_ref, str(spec.form.value), float(spec.pitch_deg.value)
+    eave = None if spec.eave_elevation_mm is None else int(spec.eave_elevation_mm.value)
+    ridge = None if spec.ridge_elevation_mm is None else int(spec.ridge_elevation_mm.value)
+    material = None if spec.material is None else str(spec.material.value)
+    return [
+        m07_flat_drain(view, form, drains=reading.drains),
+        None if form == "flat" else m09_min_pitch(view, pitch, material),
+        m17_consistent(view, form, pitch, eave, ridge),
+        None if eave is None or top is None else m02_eave(view, eave, int(top.value)),
+    ]
+
+
 def _roofs(
     floors: Sequence[FloorProposal],
     storeys: Mapping[int, tuple[str, int, int]],
     reading: RoofReading,
+    levels: Mapping[str, LevelSpec],
     *,
     imperial: bool,
     picked: Mapping[str, Source],
+    edits: Mapping[str, Mapping[str, float | str]],
+    skipped: Collection[str],
 ) -> tuple[list[RoofSpec], list[Conflict], list[RuleHit]]:
     """Mái đề xuất (thiết kế §2.C Câu 3 và Câu 6), mâu thuẫn độ dốc và vi phạm nhóm M kiểm lúc đề xuất.
 
     Tầng cao nhất có mái. Tầng cao nhất là tum/áp mái thì nó có mái riêng và tầng ngay dưới nhận một tấm phủ (M-06).
     Khi đó chữ mà ghi mái dốc: áp mái nhận mái dốc ấy và không có tấm phủ; tum thì không đề xuất mái nào (mái dốc sẽ
-    xuyên qua tum) và M-06 ghi rõ `sloped`. Diềm nằm ở đỉnh tường của tầng, thừa kế nguồn và độ tin của chiều cao
-    tầng. Dạng hay độ dốc là giả định thì hỏi: M-18 khi bộ có hình mặt bằng mái, ngược lại T-07.
-    shortcut: mọi mái của đợt đầu dùng chung dạng, độ dốc và vật liệu; mái nhiều cấp là NHA-11.
+    xuyên qua tum) và M-06 ghi rõ `sloped`. Diềm nằm ở đỉnh tường của tầng (`_wall_top`). Dạng hay độ dốc là giả định
+    thì hỏi: M-18 khi bộ có hình mặt bằng mái, ngược lại T-07.
+
+    `edits`: hình → trường `RoofSpec` người duyệt đã nhập (thay giá trị máy, nguồn `reviewer`; nhập độ dốc thì mâu
+    thuẫn độ dốc của mái đó hết). `skipped`: hình mà người duyệt chọn "không dựng mái" — không có mái, không hỏi gì.
+    shortcut: mọi mái của đợt đầu dùng chung dạng, độ dốc và vật liệu của máy; mái nhiều cấp là NHA-11. Người duyệt đổi
+    dạng thì độ đua quy ước không tự đổi theo: họ sửa độ đua riêng.
     """
     covered, terraces = _roof_storeys(floors, storeys)
     if not covered:
@@ -326,6 +385,9 @@ def _roofs(
     rooftop = label in TUM_LABELS
     read, conflict, hits = _pitch(ref, reading, picked.get(f"pitchDeg:{ref}"))
     form, pitch = _form_and_pitch(read, reading, terraces, tum=rooftop, imperial=imperial)
+    unclear = next((r.slope.text for r in reading.pitches if r.slope.ambiguous and r.source == pitch.source), None)
+    if "pitch_deg" in edits.get(ref, {}):
+        conflict, hits, unclear = None, [], None
     flat = form.value == "flat"
     pierced = label == "tum" and not flat
     targets = [] if pierced else covered[:2] if rooftop and flat else covered[:1]
@@ -338,42 +400,33 @@ def _roofs(
     )
     overhang = Measured(value=0 if flat else _OVERHANG_MM[imperial], confidence=_CONVENTION, source="convention")
     turns = Measured(value=0, confidence=_GUESS, source="convention")
-    levels = {view: level_mm + height_mm for view, level_mm, height_mm in storeys.values()}
 
     roofs: list[RoofSpec] = []
-    asks: list[RuleHit | None] = [tum, *hits]
-    for floor in targets:
-        view = floor.floor_id
-        eave = (
-            None
-            if view not in levels
-            else Measured(
-                value=levels[view],
-                confidence=floor.height_confidence or 0.0,
-                source=cast("Source", floor.height_source or "default"),
-                view_ids=(view,),
-            )
+    asks: list[RuleHit | None] = [tum, *hits, m19_ambiguous(ref, unclear)]
+    for view in (floor.floor_id for floor in targets if floor.floor_id not in skipped):
+        top = _wall_top(levels.get(view))
+        machine = RoofSpec(
+            level_ref=view,
+            form=form,
+            pitch_deg=pitch,
+            quarter_turns=turns,
+            eave_elevation_mm=top,
+            overhang_mm=overhang,
+            material=material,
         )
-        roofs.append(
-            RoofSpec(
-                level_ref=view,
-                form=form,
-                pitch_deg=pitch,
-                quarter_turns=turns,
-                eave_elevation_mm=eave,
-                overhang_mm=overhang,
-                material=material,
-            )
-        )
-        asks.append(m07_flat_drain(view, str(form.value), drains=reading.drains))
-        if not flat and found is not None:
-            asks.append(m09_min_pitch(view, float(pitch.value), found.material))
-    unclear = next((r.slope.text for r in reading.pitches if r.slope.ambiguous and r.source == pitch.source), None)
-    unsure = m18_roof_plan(reading.roof_view_ids, form.source if roofs else None)
-    asks += [m19_ambiguous(ref, unclear), unsure]
-    if unsure is None and roofs:
-        asks.append(t07_assumed(ref, "roofForm", form.source))
-        asks.append(None if flat else t07_assumed(ref, "roofPitchDeg", pitch.source))
+        typed = {field: _reviewed(value, view) for field, value in edits.get(view, {}).items()}
+        roofs.append(machine.model_copy(update=typed))
+        asks += _roof_asks(roofs[-1], reading, top)
+    if targets and not roofs:  # người duyệt bỏ hết mái: không còn gì để hỏi hay để chọn nguồn
+        return [], [], []
+    sources = [spec.form.source for spec in roofs]
+    guessed = next((source for source in sources if source in _GUESSED_SOURCES), None)
+    unsure = m18_roof_plan(reading.roof_view_ids, (guessed or sources[0]) if sources else None)
+    asks.append(unsure)
+    for spec in roofs if unsure is None else ():
+        asks.append(t07_assumed(spec.level_ref, "roofForm", spec.form.source))
+        if spec.form.value != "flat":
+            asks.append(t07_assumed(spec.level_ref, "roofPitchDeg", spec.pitch_deg.source))
     return roofs, [] if conflict is None else [conflict], [hit for hit in asks if hit is not None]
 
 
@@ -384,15 +437,23 @@ def propose_building(
     roofs: Sequence[HouseView] = (),
     order_known: bool = False,
     picks: Mapping[str, Source] | None = None,
+    levels: Mapping[str, tuple[int | None, int | None]] | None = None,
+    roof_edits: Mapping[str, Mapping[str, float | str]] | None = None,
+    skip_roofs: Collection[str] = (),
 ) -> BuildingProposal:
     """Đề xuất cho cả nhà từ các hình mặt bằng (`views`), mặt cắt và mặt bằng mái (`roofs`) người duyệt đã chốt loại.
 
-    `order_known` như `solve_house`. `picks`: khoá mâu thuẫn (`elevationMm:<hình>`, `pitchDeg:<hình>`) → nguồn người
-    duyệt đã chọn. `floors` luôn là giá trị máy đề xuất; giá trị sau lựa chọn lấy bằng `effective(conflict)`, và luật
-    T-01 kiểm trên giá trị đó (chọn cốt khác thì chiều cao tầng dưới không còn khớp: phải thấy ngay). Các hình
-    trong `roofs` và mọi mặt cắt là nguồn chữ của mái; hình máy tự xếp là mái trong `views` thì không (NHA-06a).
-    Vi phạm kiểm ở đây: T-01, T-02, T-03, T-05 (mâu thuẫn chưa chọn), T-06, T-07 và M-03, M-05, M-06, M-07, M-09,
-    M-18, M-19. T-04, M-02 và M-17 cần giá trị người duyệt gán hoặc sửa nên do nơi có dữ liệu đó gọi (NHA-06).
+    `order_known` như `solve_house`. Các hình trong `roofs` và mọi mặt cắt là nguồn chữ của mái; hình máy tự xếp là
+    mái trong `views` thì không (NHA-06a).
+
+    Quyết định của người duyệt (NHA-06b; gói sẵn ở `decisions.decide`): `picks` = khoá mâu thuẫn
+    (`elevationMm:<hình>`, `pitchDeg:<hình>`) → nguồn đã chọn; `levels` = hình → (cốt, chiều cao) họ nhập, `None` là
+    không nhập; `roof_edits` = hình → trường `RoofSpec` họ nhập; `skip_roofs` = hình họ không muốn dựng mái.
+    `floors` luôn là giá trị máy đề xuất. Giá trị đang hiệu lực (số nhập > nguồn đã chọn > máy) nằm ở `levels` và
+    `roofs` của kết quả, và mọi luật kiểm trên giá trị đó: nhập cốt khác thì chiều cao tầng dưới không còn khớp,
+    phải thấy ngay ở T-01. Số đã nhập thì trường đó hết mâu thuẫn và hết câu hỏi "giá trị giả định".
+    Vi phạm kiểm ở đây: T-01, T-02, T-03, T-05 (mâu thuẫn chưa chọn), T-06, T-07 và M-02, M-03, M-05, M-06, M-07,
+    M-09, M-17, M-18, M-19. T-04 (hai hình một đích tầng) do N60 kiểm khi lập kế hoạch đích.
 
     Raises:
         ValueError: hai hình trùng `floor_id` (từ `solve_house`).
@@ -401,29 +462,36 @@ def propose_building(
     sides = [side_levels(section.texts, section.size) for section in sections]
     rungs_mm = sorted({round(level * 1000) for side in sides for level in side})
     texts = {view.floor_id: view.texts for view in views}
-    picked = picks or {}
+    picked, typed = picks or {}, levels or {}
 
     conflicts: list[Conflict] = []
     hits: list[RuleHit] = []
-    storeys: dict[int, tuple[str, int, int]] = {}  # số tầng → hình đại diện, cốt, chiều cao
+    current: dict[str, LevelSpec] = {}
+    storeys: dict[int, tuple[str, int, int]] = {}  # số tầng → hình đại diện, cốt, chiều cao đang hiệu lực
     for floor in floors:
         ref = floor.floor_id
-        for field, source in (("elevationMm", floor.elevation_source), ("heightMm", floor.height_source)):
-            if (assumed := t07_assumed(ref, field, source)) is not None:
+        typed_level, typed_height = typed.get(ref, (None, None))
+        level = _reviewed(typed_level, ref) or _machine(
+            floor.elevation_mm, floor.elevation_confidence, floor.elevation_source, ref
+        )
+        height = _reviewed(typed_height, ref) or _machine(
+            floor.height_mm, floor.height_confidence, floor.height_source, ref
+        )
+        for field, value in (("elevationMm", level), ("heightMm", height)):
+            if (assumed := t07_assumed(ref, field, None if value is None else value.source)) is not None:
                 hits.append(assumed)
-        if floor.elevation_mm is None:
-            continue
-        level_mm = floor.elevation_mm
-        candidates = _level_candidates(floor, level_mm, texts[ref])
-        conflict = level_conflict(ref, candidates, picked.get(f"elevationMm:{ref}"))
-        if conflict is not None:
-            conflicts.append(conflict)
-            level_mm = int(effective(conflict).value)
-            values = [int(candidate.value) for candidate in conflict.candidates]
-            if conflict.chosen_source is None and (clash := t05_sources(ref, values)) is not None:
-                hits.append(clash)
-        if floor.storey_no is not None and floor.height_mm is not None:
-            storeys.setdefault(floor.storey_no, (ref, level_mm, floor.height_mm))
+        if typed_level is None and floor.elevation_mm is not None:
+            candidates = _level_candidates(floor, floor.elevation_mm, texts[ref])
+            conflict = level_conflict(ref, candidates, picked.get(f"elevationMm:{ref}"))
+            if conflict is not None:
+                conflicts.append(conflict)
+                level = effective(conflict)
+                values = [int(candidate.value) for candidate in conflict.candidates]
+                if conflict.chosen_source is None and (clash := t05_sources(ref, values)) is not None:
+                    hits.append(clash)
+        current[ref] = LevelSpec(level_ref=ref, elevation_mm=level, height_mm=height)
+        if floor.storey_no is not None and level is not None and height is not None:
+            storeys.setdefault(floor.storey_no, (ref, int(level.value), int(height.value)))
 
     for number in sorted(storeys):
         ref, _, height_mm = storeys[number]
@@ -444,10 +512,13 @@ def propose_building(
             hits.append(hit)
     reading = read_roof({view.floor_id: view.texts for view in roofs}, sections)
     imperial = unit_system.value == "imperial"
-    specs, roof_conflicts, roof_hits = _roofs(floors, storeys, reading, imperial=imperial, picked=picked)
+    specs, roof_conflicts, roof_hits = _roofs(
+        floors, storeys, reading, current, imperial=imperial, picked=picked, edits=roof_edits or {}, skipped=skip_roofs
+    )
     return BuildingProposal(
         unit_system=unit_system,
         floors=floors,
+        levels=tuple(current.values()),
         roofs=tuple(specs),
         conflicts=(*conflicts, *roof_conflicts),
         violations=(*hits, *roof_hits),

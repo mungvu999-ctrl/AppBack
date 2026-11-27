@@ -32,6 +32,7 @@ from packages.testing.factories.floors import make_floor
 from packages.testing.factories.projects import make_project
 
 HS_04: Final = "r20261123_hs_04"
+NHA_06B: Final = "r20261125_nha_06b"
 PARENT: Final = "r20261121_hs_03"
 TABLES: Final = (DRAWING_SETS, DRAWING_SET_FILES, DRAWING_SET_FILE_CHUNKS, DRAWING_SET_VIEWS)
 SHA: Final = "a" * 64
@@ -73,6 +74,55 @@ def test_hs_04_upgrade_downgrade_and_rerun_over_existing_tables(url: str) -> Non
         assert asyncio.run(_table_count(url)) == len(TABLES)
     finally:
         reset_database_settings_cache()
+
+
+async def _has_building(url: str) -> bool:
+    """Bảng `drawing_sets` trong DB `url` đã có cột `building` (JSONB, cho phép NULL) chưa."""
+    engine = create_async_engine(url)
+    try:
+        async with engine.connect() as connection:
+            result = await connection.execute(
+                text(
+                    "SELECT data_type, is_nullable FROM information_schema.columns "
+                    "WHERE table_name = :table AND column_name = 'building'"
+                ),
+                {"table": DRAWING_SETS},
+            )
+            found = result.one_or_none()
+            assert found in (None, ("jsonb", "YES"))
+            return found is not None
+    finally:
+        await engine.dispose()
+
+
+def test_nha_06b_adds_and_drops_the_building_column(url: str) -> None:
+    """NHA-06b, expand thuần: lên thêm cột `building` JSONB NULL; xuống về HS-04 bỏ cột, bảng còn nguyên."""
+    config = alembic_config()
+    reset_database_settings_cache()
+    try:
+        command.upgrade(config, HS_04)
+        assert not asyncio.run(_has_building(url))
+        command.upgrade(config, NHA_06B)
+        assert asyncio.run(_has_building(url))
+        command.downgrade(config, HS_04)
+        assert not asyncio.run(_has_building(url))
+        assert asyncio.run(_table_count(url)) == len(TABLES)
+    finally:
+        reset_database_settings_cache()
+
+
+async def test_building_is_null_until_written_and_keeps_its_json(db_session: AsyncSession) -> None:
+    """Bộ mới tạo không có `building` (NULL); ghi JSON thì đọc lại đúng, gán `None` là NULL chứ không phải chữ null."""
+    row = await make_drawing_set(db_session, project=await make_project(db_session, owner=await make_user(db_session)))
+    assert row.building is None
+    row.building = {"decisions": {"seen": ["T-07|v1|heightMm|default"]}}
+    await db_session.flush()
+    await db_session.refresh(row)
+    assert row.building == {"decisions": {"seen": ["T-07|v1|heightMm|default"]}}
+    row.building = None
+    await db_session.flush()
+    stored = await db_session.execute(text("SELECT building IS NULL FROM drawing_sets WHERE id = :id"), {"id": row.id})
+    assert stored.scalar_one() is True
 
 
 async def _project(db: AsyncSession) -> Project:

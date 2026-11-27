@@ -129,6 +129,9 @@ từng hình 300 dpi đã dựng lại đúng phông, `render_vn`). Mốc 3 vì 
   lời"; `predict.main` không bắt lỗi của `_propose` (lỗi thì lượt đo dừng, không ghi tệp dở); "cốt chân = diềm cao
   nhất" lệch một phía (ghi ở NO-613).
 - Commit thứ hai của lát chỉ sửa tệp ghi chú này (mục lần nguyên nhân và các khoản nợ): không chạy lại cổng.
+- Gộp `main` sau khi PR 121 và PR 123 vào (2026-11-27): `_propose` nay nhận `BuildingInputs` và `BuildingProposal` có
+  thêm `levels`, nên `predict._proposal` và hàm dựng dữ liệu của test đổi theo (thước truyền "không có quyết định của
+  người duyệt"). Đo lại trên cả hai bộ ảnh: mọi tệp dự đoán trùng với lượt trước, các bảng số ở trên không đổi.
 
 ## Nợ và việc chưa làm
 

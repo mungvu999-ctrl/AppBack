@@ -250,6 +250,8 @@ def readiness_of(
     `scale_accepted` (K4): tỉ lệ `human` chấp nhận số máy vẫn báo `scaleUnresolved` khi ảnh chụp không `determined`.
     `criticalChecks` hỏng dạng → vẫn `geometrySuspect` (không có `checks` để kèm), không bao giờ im lặng "ready".
     `notices` (NO-488): kiểm `critical:false` kèm id, chỉ thêm vào dây — không đổi `state`/`reasons`/`checks`.
+    `roofUnreviewed` (NHA-07b, luật M-10): tầng có mái `source="ai"` chưa duyệt, kể cả khi mọi thứ khác đã duyệt; là
+    dữ kiện của tầng nên báo cả khi chưa có lượt, và luôn đứng cuối `reasons`. Mái người vẽ không tính.
     """
     reasons: list[ReadinessReason] = []
     summary = None if run is None else run.quality_summary
@@ -274,6 +276,8 @@ def readiness_of(
             for family, reason in _FALLBACK_REASONS
             if family in run.pinned and _is_fallback(family, run.pinned[family])
         )
+    if any(roof.source == "ai" and not roof.reviewed for roof in layer.roofs):
+        reasons.append("roofUnreviewed")
     if run is None:
         return ReadinessOut(state="notEvaluated", reasons=tuple(reasons))
     return ReadinessOut(

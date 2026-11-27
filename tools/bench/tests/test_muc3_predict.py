@@ -125,7 +125,9 @@ def _roof(form: str, eave_mm: int | None, *, confidence: float = 0.8, ridge_mm: 
 
 def _building(*roofs: RoofSpec) -> BuildingProposal:
     """Đề xuất ngôi nhà chỉ mang các mái cho trước."""
-    return BuildingProposal(unit_system=_measured("metric"), floors=(), roofs=roofs, conflicts=(), violations=())
+    return BuildingProposal(
+        unit_system=_measured("metric"), floors=(), levels=(), roofs=roofs, conflicts=(), violations=()
+    )
 
 
 @pytest.mark.parametrize(

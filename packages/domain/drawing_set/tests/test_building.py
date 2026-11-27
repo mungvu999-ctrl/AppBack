@@ -312,11 +312,17 @@ def test_roof_plan_slope_gives_a_sourced_pitch_and_an_unsure_form() -> None:
 
 
 def test_two_percent_drainage_slope_is_a_flat_roof() -> None:
-    """`i=2%` là dốc thoát nước: dạng `flat` đọc từ hình mái, trị số chỉ ghi lại; có sê nô thì hết gợi ý M-07."""
+    """`i=2%` là dốc thoát nước: dạng `flat` suy từ hình mái, trị số chỉ ghi lại; có sê nô thì hết gợi ý M-07.
+
+    Trị số đọc rõ (0,8) nhưng dạng chỉ ở mức đoán (0,6): một sàn thoát nước không loại trừ phần mái dốc khác.
+    """
     proposal = _roofed("i=2%")
     (roof,) = proposal.roofs
-    assert _measured(roof.form) == ("flat", "roofPlan", 0.8, ("r0",))
-    assert (roof.pitch_deg.value, roof.overhang_mm.value) == (1.1, 0)
+    assert _measured(roof.form) == ("flat", "roofPlan", 0.6, ("r0",))
+    assert _measured(roof.pitch_deg) == (1.1, "roofPlan", 0.8, ("r0",))
+    assert roof.overhang_mm.value == 0
+    unclear = _roofed("0,2:5").roofs[0].form  # 4 %, dạng `a:b` nhập nhằng (0,5): mức đoán là trần, không phải sàn
+    assert _measured(unclear) == ("flat", "roofPlan", 0.5, ("r0",))
     assert not hits(proposal, "M-18")
     assert hits(proposal, "M-07") == [(("f1",), ())]
     assert not hits(_roofed("i=2%", "SÊ NÔ"), "M-07")

@@ -275,13 +275,15 @@ def _form_and_pitch(
 ) -> tuple[Measured, Measured]:
     """Dạng và độ dốc của mái theo thứ tự suy luận của thiết kế §2.C Câu 6.
 
-    Độ dốc đọc được: dưới 5 % là mái bằng (nguồn của chính trị số đó), từ 5 % là mái dốc mà dạng chưa đọc được nên
-    lấy hai mái theo quy ước. Không có trị số: hình sân thượng → bằng; tum → bằng mặc định; có chữ vật liệu → dốc
-    theo quy ước của vật liệu; bộ feet-inch → hai mái, 30°; còn lại mái bằng mặc định.
+    Độ dốc đọc được: dưới 5 % là mái bằng (nguồn của chính trị số đó, độ tin của dạng không quá mức đoán), từ 5 %
+    là mái dốc mà dạng chưa đọc được nên lấy hai mái theo quy ước. Không có trị số: hình sân thượng → bằng; tum →
+    bằng mặc định; có chữ vật liệu → dốc theo quy ước của vật liệu; bộ feet-inch → hai mái, 30°; còn lại mái bằng
+    mặc định.
     """
     if read is not None:
         if float(read.value) < FLAT_MAX_DEG:
-            return read.model_copy(update={"value": "flat"}), read
+            # Dốc thoát nước chỉ chứng minh có một sàn mái bằng, không loại trừ phần mái dốc khác của nhà (NO-612).
+            return read.model_copy(update={"value": "flat", "confidence": min(read.confidence, _GUESS)}), read
         return _assumed("gable", "convention"), read
     if terraces:
         seen = Measured(value="flat", confidence=_GUESS, source="plan", view_ids=tuple(terraces[:1]))

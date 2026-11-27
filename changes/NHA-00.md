@@ -49,7 +49,7 @@ từng byte.
 ## Nợ và việc chưa làm
 
 - NO-569 — `score_roof.py` (84 dòng, ngoài repo) chưa chuyển: sản phẩm chưa sinh mái nên chưa có gì để chấm. Gốc: mái
-  thuộc lát NHA-05b/NHA-07a. Chủ: NHA-10. P3. Mở.
+  thuộc lát NHA-05b/NHA-07a. Chủ: NHA-10. P3. **Đóng** ở NHA-10a (PR 125): bộ chấm nay là `tools/bench/muc3/roof.py`.
 - NO-570 — Thước không chấm cốt tầng và chiều cao tầng trên cùng (chỉ cặp `(from, to)` ± 50 mm), không in khoảng tin
   cậy Wilson, và "lỗi im lặng" của nó là "sai ở độ chắc >= 0,9" chứ không phải "sai mà không kèm câu hỏi" của K-32a.
   Gốc: giữ nguyên bộ chấm K-33 để số so được. Chủ: `tools/bench/muc3` (K-33/NHA-10). P2 (nâng từ P3 theo merge-review

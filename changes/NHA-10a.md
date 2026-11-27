@@ -67,6 +67,48 @@ Chẩn đoán trên **tập dev** (10 bộ, không nhìn tập test):
   so với 14,5), 1 bộ coi sàn chân mái +8,25 là một tầng rồi cộng thêm chiều cao tầng (DS-396: 11,25, trùng cốt
   **đỉnh** của đáp án).
 
+## Lần nguyên nhân: ảnh tờ của thước, đo lại trên tờ dựng đúng phông (chỉ tập dev)
+
+Người dùng duyệt hai bước này ngày 2026-11-27. Không sửa mã; script lần và kết quả thô ở ngoài repo
+(`F:/runs/dwglab/muc3-nha00/roof_trace.py`, `roof_trace-dev.txt`, `measure-v3dev.txt`).
+
+Trên 10 bộ dev, kết quả đọc trang của `sheets/` gần như không có chữ nào về mái: không dòng độ dốc nào dùng được, 2
+dòng chữ rác nhắc vật liệu. Lý do nằm ở ảnh: `sheets/` ghép mọi hình của bộ vào một tờ từ bản dựng 150 dpi dùng phông
+thay thế (chữ VNI / TCVN3 ra chữ rác: "MAET BAENG MAUI"), cạnh dài chặn 7000 px nên DS-292 bị co còn 12 %, DS-266 còn
+31 % — đúng hai bộ không giải ra tầng nào. Tổng số dòng chữ đọc được: 2 177, so với 12 386 của chuỗi nghiên cứu (đọc
+từng hình 300 dpi đã dựng lại đúng phông, `render_vn`). Mốc 3 vì vậy hơn đường sản phẩm trước hết ở **ảnh đầu vào**.
+
+Đo lại bằng cùng mã, cùng 10 bộ, trên `sheets_v3` (trang khổ A3/A2, một hai hình mỗi trang, đúng phông; 112 trang,
+đệm `readings-v3dev`, `BENCH_MUC3_ROOT` trỏ vào một gốc tạm có `sheets` = `sheets_v3`):
+
+| Chỉ số (dev, 10 bộ) | `sheets/` (tờ ghép cũ) | `sheets_v3` |
+|---|---|---|
+| Loại mái | 2/8/10 | 3/10/10 (mốc luôn mái bằng: 3/10) |
+| Cốt chân mái | 0/4/9 | 6/8/9 [35–88 %] |
+| Cốt đỉnh mái | 0/0/10 | 0/0/10 |
+| Loại mái sai trong câu chắc >= 0,7 | 0/0 | 2/3 |
+| Chiều cao tầng (mặt bằng + mặt cắt) | 2/20 | 16/20 |
+| Số tầng | 10/27 | 15/27 |
+| Loại hình | 38/128 | 56/128 |
+| Tách hình: tìm lại / chính xác | 89/128 · 89/102 | 68/128 · 68/117 |
+| Loại hình sai trong câu chắc >= 0,9 | 0/1 | 3/9 (đều lẫn mặt cắt ↔ mặt đứng) |
+
+Đọc bảng này thế nào:
+
+- Cốt chân mái và chiều cao tầng sai trên tờ cũ **chủ yếu do ảnh**, không do luật: cùng mã, đổi ảnh thì 0/9 → 6/9 và
+  2/20 → 16/20. Hai bộ còn sai cốt chân: DS-396 (sàn chân mái +8,25 bị coi là một tầng, ra 11,25) và DS-267 (15,6 so
+  với 15,3).
+- Loại mái **không khá lên** dù đã có chữ: vẫn ngang mốc "luôn mái bằng". Trên `sheets_v3` có 3–30 dòng nói về mái
+  mỗi bộ ("MÁI LỢP TOLE", "LỢP NGÓI", "SÀN MÁI", "XÀ GỒ"), nhưng từ khoá vật liệu của `roof_reading` khớp **0 dòng**
+  ở cả 10 bộ; 6/10 đáp án là hỗn hợp, loại mà mã không thể ra. Đây mới là phần của luật (NO-612).
+- Hai câu "sai mà chắc" (DS-254, DS-261: `flat` 0,8) là bộ hỗn hợp có hình mặt bằng mái ghi độ dốc 2 %: máy đọc đúng
+  phần bằng, sai vì một bộ chỉ có một dạng mái. Trên `sheets_v3` 9/10 bộ có hình mặt bằng mái được xếp loại chắc
+  (tờ cũ: 3/10), nên khâu xếp loại hình mái không phải chỗ nghẽn.
+- Tách hình tụt trên `sheets_v3` (tìm lại 69,5 % → 53,1 %, chính xác 87,3 % → 58,1 %): luật tách hình được chỉnh trên
+  tờ ghép (K-32a), chưa từng đo trên trang kiểu này (NO-617).
+- `sheets_v3` cũng không phải PDF thật: mỗi trang một hai hình, sạch. 9/10 bộ dev đã lộ. Không dùng bảng này để
+  chốt ngưỡng; nó chỉ trả lời câu "sai do ảnh hay do luật".
+
 ## Giới hạn của phép đo
 
 - Loại thô không tách 2 mái / 4 mái / 1 mái; không có đáp án độ dốc, cốt diềm, đường bao: bốn chỉ số còn lại của
@@ -86,21 +128,30 @@ Chẩn đoán trên **tập dev** (10 bộ, không nhìn tập test):
   (`missing`); ghi chú nêu rõ mốc 3 không ngang hàng. LOW để nguyên, có chủ ý: cốt không phải số tính là "không trả
   lời"; `predict.main` không bắt lỗi của `_propose` (lỗi thì lượt đo dừng, không ghi tệp dở); "cốt chân = diềm cao
   nhất" lệch một phía (ghi ở NO-613).
+- Commit thứ hai của lát chỉ sửa tệp ghi chú này (mục lần nguyên nhân và các khoản nợ): không chạy lại cổng.
 
 ## Nợ và việc chưa làm
 
 - NO-569 (`changes/NHA-00.md`) **đóng**: `score_roof.py` đã chuyển vào `tools/bench/muc3/roof.py`.
 - NO-612 — Đề xuất mái của đường sản phẩm chưa thắng mốc "luôn đoán mái bằng" và trên dev luôn trả `flat`. Một phần
   là do cấu trúc, đã lần: `building._roofs` cho mọi `RoofSpec` của một bộ cùng một `form` (`building.py:360`), nên
-  đường sản phẩm **không thể** ra loại `mixed` — 12/30 bộ có đáp án (dev 6/10) là hỗn hợp. Phần còn lại là giả thuyết,
-  chưa lần hết: chữ mái không tới được `read_roof` (mặt bằng mái phải có loại `roof` chắc mới thành nguồn; trên tờ
-  ghép phần lớn hình không được xếp loại chắc — cùng gốc với NO-596). Chủ: lát riêng; chỉ chỉnh trên dev. P2. Mở.
-- NO-613 — Cốt chân mái của đề xuất không đúng ở bộ dev nào (0/9: 5 không trả lời, 4 sai) vì nó là cốt tầng trên cùng
-  + chiều cao tầng, mà cốt và số tầng của các bộ này sai hoặc thiếu trước đó. Sửa ở khâu tầng, không ở mái. Ghi chú
-  về thước: khi bộ có hai mái, `roof_draft` lấy diềm cao nhất (mái tum); đáp án không có cốt tum thì diềm thấp hơn
-  mới là câu trả lời đúng — chưa đo trường hợp này. Chủ: cùng lát với NO-596. P2. Mở.
+  đường sản phẩm **không thể** ra loại `mixed` — 12/30 bộ có đáp án (dev 6/10) là hỗn hợp. Phần thứ hai, đã lần trên
+  `sheets_v3`: từ khoá vật liệu của `roof_reading` khớp 0 dòng ở 10 bộ dev dù mỗi bộ có 3–30 dòng nói về mái — thiếu
+  "TOLE", "XÀ GỒ", "VÌ KÈO", thiếu dấu hiệu mái bằng ("SÀN MÁI"), và không chịu được lỗi OCR ("MAL LQP NGOI"). Giả
+  thuyết ghi trước đây (chữ mái không tới `read_roof` vì hình không được xếp loại chắc) **không phải nguyên nhân
+  chính**. Chủ: lát riêng (từ khoá trước, mái nhiều dạng là NHA-11); chỉ chỉnh trên dev. P2. Mở.
+- NO-613 — Cốt chân mái sai trên tờ ghép cũ (0/9) chủ yếu do ảnh: trên `sheets_v3` cùng mã ra 6/9. Còn lại thuộc
+  luật: DS-396 coi sàn chân mái là một tầng rồi cộng thêm chiều cao tầng; DS-267 lệch 0,3 m. Ghi chú về thước: khi bộ
+  có hai mái, `roof_draft` lấy diềm cao nhất (mái tum); đáp án không có cốt tum thì diềm thấp hơn mới là câu trả lời
+  đúng — chưa đo trường hợp này. Chủ: lát của khâu tầng. P3. Mở.
 - NO-614 — Cốt đỉnh mái không có nguồn máy nào (`ridge_elevation_mm` chỉ người duyệt nhập). Thước đếm 0 câu trả lời.
   Cần đọc cốt đỉnh từ mặt cắt / mặt đứng, hoặc tính từ độ dốc và đường bao sau khi dựng hình (tầng 2 của §2.G). Chủ:
   NHA-10b hoặc lát riêng. P3. Mở.
 - NO-615 — Nhóm sạch có đáp án mái chỉ còn 3 bộ; cần duyệt nhãn 22 bộ `DN3-` (thiết kế §6 câu 2) trước khi chốt
   ngưỡng nào cho mái. Chủ: chủ dự án (người gắn nhãn). P2. Mở.
+- NO-616 — Ảnh tờ `sheets/` của thước Mức 3 (tờ ghép 150 dpi, phông thay thế, chặn 7000 px) làm mất phần lớn chữ;
+  mọi số NHA-00…NHA-10a về tầng, cốt, chiều cao và mái đo trên nó đều thấp hơn thực vì ảnh, không tách được khỏi lỗi
+  của luật. `sheets_v3` (đúng phông, kiểu trang) mới có 21/51 bộ: thiếu 9 bộ `DS-` của test và mọi bộ quốc tế. Cần
+  dựng đủ rồi đổi mốc của thước; `readings.py` chưa có `--sheets` (lượt này dùng gốc tạm). Chủ: lát thước. P2. Mở.
+- NO-617 — Trên trang kiểu `sheets_v3`, tách hình tìm lại 68/128 và chính xác 68/117 (tờ ghép: 89/128 và 89/102), và
+  3/9 loại hình chắc >= 0,9 bị sai (lẫn mặt cắt ↔ mặt đứng). Chưa lần nguyên nhân. Chủ: lát tách hình. P2. Mở.

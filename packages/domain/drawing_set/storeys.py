@@ -205,27 +205,32 @@ def _has(views: Sequence[PlanView], pattern: str) -> bool:
 
 def _decide(views: Sequence[PlanView]) -> str:
     """Quy ước do tên hình nêu: "trệt" và "tầng/lầu 1" trên HAI hình khác nhau -> "tret_plus_tang1" (một tên
-    nêu cả hai, "TẦNG 1 (TRỆT)", là tầng trệt và không bật quy ước: soát mã F1); first floor không có
-    ground -> "us_english"."""
+    nêu cả hai, "TẦNG 1 (TRỆT)", là tầng trệt và không bật quy ước: soát mã F1); first floor hoặc main
+    floor/level (trệt kiểu Mỹ/Canada, `titles._GROUND`) mà không có ground -> "us_english"."""
     marks = [(bool(re.search(_GROUND_WORD, n)), bool(re.search(_FIRST_WORD, n))) for n in map(_norm, views)]
     if any(g and not f for g, f in marks) and any(f and not g for g, f in marks):
         return "tret_plus_tang1"
-    if _has(views, r"\bFIRST\s+FLOOR") and not any(g for g, _ in marks):
+    if _has(views, r"\bFIRST\s+FLOOR|\bMAIN\s+(?:FLOOR|LEVEL)\b") and not any(g for g, _ in marks):
         return "us_english"
     return "unchanged"
 
 
 def _storeys(views: Sequence[PlanView], conv: str) -> dict[str, int]:
-    """{mã: số tầng theo tên dưới quy ước `conv`} cho mặt bằng có số."""
+    """{mã: số tầng theo tên dưới quy ước `conv`} cho mặt bằng có số.
+
+    Cách đếm Mỹ chỉ lùi tầng mà `_written_floor` đã cộng một vì thứ tự tiếng Anh (`floor_ordinal`): tên hai ngôn ngữ
+    `TẦNG 2 / SECOND FLOOR PLAN` lấy số từ phần tiếng Việt nên giữ nguyên.
+    """
     out: dict[str, int] = {}
     for v in views:
         t = _written_floor(v)
         if t is None:
             continue
         n = _norm(v)
+        ordinal = v.title is not None and v.title.numbering == "floor_ordinal"
         if conv == "tret_plus_tang1" and re.search(r"\bTANG\s*0?\d", n) and not re.search(_GROUND_WORD, n):
             t += 1
-        elif conv == "us_english" and _ENG.search(n):
+        elif conv == "us_english" and ordinal and _ENG.search(n):
             t -= 1
         out[v.view_id] = t
     return out

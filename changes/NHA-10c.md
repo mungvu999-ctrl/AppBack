@@ -1,7 +1,8 @@
 # NHA-10c — "mái bằng" suy từ độ dốc thoát nước không còn được coi là chắc
 
 Thiết kế: `docs/thiet-ke-bo-ho-so.md` §2.C Câu 6. Người dùng duyệt GATE 1 ngày 2026-11-27 ("Duyệt, bắt đầu"). Nhánh
-xếp chồng lên `feature/nha-10a-roof-bench` (PR 125) vì thước đo mái chưa có trong `main`; chỉ gộp sau PR 125.
+xếp chồng lên `feature/nha-10a-roof-bench` (PR 125) vì thước đo mái chưa có trong `main`. PR 125 đã vào `main`
+(`6f733b86`) ngày 2026-11-27: nhánh gộp `main` (không xung đột, khác `main` đúng ba tệp của lát) và PR 126 nhắm `main`.
 
 - `packages/domain/drawing_set/building.py` (`_form_and_pitch`): khi độ dốc đọc được dưới 5 %, dạng `flat` lấy độ tin
   `min(độ tin của trị số, 0,6)` thay cho độ tin của trị số (0,8). Trị số độ dốc giữ nguyên nguồn và độ tin. Lý do: một
@@ -56,3 +57,18 @@ Lát này không làm máy đúng thêm bộ nào; nó chỉ bỏ hai câu trả
   nguồn `roofPlan` và **không** có câu hỏi nào cho người duyệt (T-07 chỉ hỏi nguồn mặc định / quy ước, M-18 chỉ hỏi
   dạng quy ước). Hạ độ tin không tự sinh câu hỏi. Cần một luật hỏi khi bộ có dấu hiệu mái dốc ở nơi khác, hoặc để
   NHA-11 giải bằng mái nhiều dạng. Chủ: NHA-11. P2. Mở.
+
+Ba dòng dưới ghi lại finding 1, 2, 5 của lượt merge-review PR 125
+(`docs/reviews/2026-11-27-feature-nha-10a-roof-bench.md`); không thuộc mã của lát này. NO-619 và NO-620 đã dùng ở
+PR 127 (NHA-10d) nên bỏ qua. Cùng lượt: dòng gốc NO-569 ở `changes/NHA-00.md` đã ghi "Đóng".
+
+- NO-621 — Thước mái gọi thẳng hai tên riêng của module sản phẩm (`_propose`, `_ViewSource` của
+  `apps/api/drawing_sets/building_read.py`) từ `tools/bench/muc3/predict.py`. Ghép nối này đã gãy một lần: PR 121 đổi
+  chữ ký, CI của PR 125 đỏ. Cần một hàm công khai "đề xuất từ kết quả đọc có sẵn" cho thước gọi. Chủ: `drawing_sets`.
+  P3. Mở.
+- NO-622 — `roof_draft` của thước lấy `level_confidence` chỉ từ diềm, `judge` dùng số đó cho cả cốt đỉnh: có đỉnh mà
+  không có diềm thì độ chắc của đỉnh thành 0, câu "sai mà chắc" về cốt đỉnh không bao giờ được đếm. Chưa lộ vì đường
+  sản phẩm chưa trả cốt đỉnh. Làm cùng NO-614: thêm độ chắc riêng cho cốt đỉnh. Chủ: lát của NO-614. P3. Mở.
+- NO-623 — Hai giới hạn của thước mái để nguyên có chủ ý (`changes/NHA-10a.md`, mục phạm vi kiểm): cốt không phải số
+  tính là "không trả lời"; `predict.main` không bắt lỗi của `_propose` (lỗi thì lượt đo dừng, không ghi tệp dở). Lý
+  do: thước là công cụ đo chạy tay, dừng hẳn dễ thấy hơn một bảng số thiếu. Chủ: lát thước. P3. Chấp nhận.

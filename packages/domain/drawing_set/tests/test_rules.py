@@ -7,6 +7,7 @@ from packages.domain.drawing_set.rules import (
     RuleHit,
     m02_eave,
     m03_pitch,
+    m04_ridge,
     m05_form,
     m06_rooftop,
     m07_flat_drain,
@@ -156,10 +157,10 @@ def test_t07_warns_for_assumed_values(source: str) -> None:
 
 
 def test_rule_table_lists_the_proposal_time_m_rules() -> None:
-    """Chín luật M kiểm lúc đề xuất có trong bảng; M-17 chặn xác nhận, M-07 và M-09 chỉ gợi ý."""
-    codes = ["M-02", "M-03", "M-05", "M-06", "M-07", "M-09", "M-17", "M-18", "M-19"]
+    """Chín luật M kiểm lúc đề xuất và M-04 kiểm lúc ráp có trong bảng; M-17 chặn xác nhận, M-07 và M-09 chỉ gợi ý."""
+    codes = ["M-02", "M-03", "M-04", "M-05", "M-06", "M-07", "M-09", "M-17", "M-18", "M-19"]
     assert sorted(code for code in RULES if code.startswith("M-")) == codes
-    assert (RULES["M-02"].tolerance, RULES["M-03"].tolerance) == (100, 3)
+    assert (RULES["M-02"].tolerance, RULES["M-03"].tolerance, RULES["M-04"].tolerance) == (100, 3, 300)
     assert {code: RULES[code].level for code in ("M-07", "M-09", "M-17")} == {
         "M-07": "hint",
         "M-09": "hint",
@@ -188,6 +189,18 @@ def test_m03_passes_within_three_degrees(degs: tuple[float, ...]) -> None:
 def test_m03_boundary_survives_float_drift() -> None:
     """4,4 trừ 1,4 ra 3,0000000000000004 trong số thực: vẫn là lệch đúng 3°, không vi phạm."""
     assert m03_pitch("V2", (1.4, 4.4)) is None
+
+
+@pytest.mark.parametrize("ridge_mm", [4490, 4790, 5090])
+def test_m04_passes_when_the_ridge_matches_the_pitch(ridge_mm: int) -> None:
+    """Cốt đỉnh đọc được cách cốt đỉnh tính từ độ dốc không quá 300 mm (cả hai phía)."""
+    assert m04_ridge("V2", ridge_mm, 4790) is None
+
+
+def test_m04_warns_with_both_ridges() -> None:
+    """Lệch 301 mm: cảnh báo kèm cốt đọc rồi cốt tính."""
+    hit = RuleHit(code="M-04", level="warning", floor_refs=("V2",), values=(5091, 4790))
+    assert m04_ridge("V2", 5091, 4790) == hit
 
 
 def test_m03_warns_when_sources_disagree() -> None:

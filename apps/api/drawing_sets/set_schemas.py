@@ -10,9 +10,17 @@ from typing import Annotated, Final, Literal
 from pydantic import Field
 
 from apps.api.core.wire import WireDatetime, WireModel, WireRequest
+from apps.api.drawing_sets.building_schemas import BuildingSource
 from apps.api.drawing_sets.schemas import FloorKind, QuestionCode, StoreyLabel
 from apps.api.drawings.schemas import CropRect, FileName
-from apps.api.floors.schemas import FloorIdField, FloorName
+from apps.api.floors.schemas import (
+    ELEVATION_MAX,
+    ELEVATION_MIN,
+    HEIGHT_MAX,
+    HEIGHT_MIN,
+    FloorIdField,
+    FloorName,
+)
 
 FILES_MAX: Final = 20
 """Trần số tệp một bộ (K-32a quyết định 1)."""
@@ -96,14 +104,72 @@ class ViewEditIn(WireRequest):
     target: ViewTargetIn | None = None
 
 
+SEEN_MAX: Final = 500
+"""Trần số cảnh báo "đã xem" trong một bản duyệt (60 hình, mỗi hình vài cảnh báo)."""
+ROOF_MM_MAX: Final = 5_000
+"""Trần độ đua và chiều cao parapet người duyệt nhập (mm)."""
+PITCH_DEG_MAX: Final = 85.0
+"""Độ dốc mái phải dưới 85° (từ đó là tường, luật M-17)."""
+
+PRINTABLE: Final = r"^[^\x00-\x1f\x7f]+$"
+"""Khoá người dùng gửi không mang ký tự điều khiển (JSONB của Postgres từ chối `\\u0000`)."""
+
+type _Ref = Annotated[str, Field(min_length=1, max_length=64, pattern=PRINTABLE)]
+type _ElevationMm = Annotated[int, Field(strict=True, ge=ELEVATION_MIN, le=ELEVATION_MAX)]
+type _RoofMm = Annotated[int, Field(strict=True, ge=0, le=ROOF_MM_MAX)]
+
+
+class LevelDecisionIn(WireRequest):
+    """Cốt và chiều cao người duyệt nhập cho tầng của hình `levelRef` (dải như #10); trường vắng = không nhập."""
+
+    level_ref: _Ref
+    elevation_mm: _ElevationMm | None = None
+    height_mm: Annotated[int, Field(strict=True, ge=HEIGHT_MIN, le=HEIGHT_MAX)] | None = None
+
+
+class RoofDecisionIn(WireRequest):
+    """Mái của tầng có hình `levelRef`: các trường người duyệt nhập, hoặc `skip` = "không dựng mái, tôi tự vẽ"."""
+
+    level_ref: _Ref
+    skip: bool = False
+    form: Literal["flat", "shed", "gable", "hip"] | None = None
+    pitch_deg: Annotated[float, Field(ge=0, lt=PITCH_DEG_MAX)] | None = None
+    quarter_turns: Annotated[int, Field(strict=True, ge=0, le=3)] | None = None
+    eave_elevation_mm: _ElevationMm | None = None
+    ridge_elevation_mm: _ElevationMm | None = None
+    overhang_mm: _RoofMm | None = None
+    parapet_mm: _RoofMm | None = None
+    material: Literal["tile", "metal", "shingle"] | None = None
+
+
+class BuildingDecisionsIn(WireRequest):
+    """Quyết định của người duyệt trên đề xuất ngôi nhà (NHA-06b), thay **cả** bản đã lưu.
+
+    `picks`: khoá mâu thuẫn (`elevationMm:<hình>`, `pitchDeg:<hình>`) → nguồn đã chọn. `seen`: khoá của các cảnh báo
+    đã bấm "Đã xem", lấy nguyên văn từ `violations[].key` của route đọc `building`.
+    """
+
+    levels: list[LevelDecisionIn] = Field(default_factory=list, max_length=VIEWS_MAX)
+    roofs: list[RoofDecisionIn] = Field(default_factory=list, max_length=VIEWS_MAX)
+    picks: dict[Annotated[str, Field(min_length=1, max_length=96, pattern=PRINTABLE)], BuildingSource] = Field(
+        default_factory=dict, max_length=2 * VIEWS_MAX
+    )
+    seen: list[Annotated[str, Field(min_length=1, max_length=256, pattern=PRINTABLE)]] = Field(
+        default_factory=list, max_length=SEEN_MAX
+    )
+
+
 class ViewsBodyIn(WireRequest):
     """`body` của N59: **cả** danh sách hình (thay thế), tối đa `VIEWS_MAX`; `name` tuỳ chọn đổi tên bộ (K-65).
 
     `name` vắng = giữ tên hiện có (không có cách xoá tên); có thì luật như N54 (trim + NFC, 1-120 ký tự).
+    `building` vắng = giữ quyết định đã lưu (client chưa biết khoá này không được làm mất chúng); có thì thay cả bản,
+    `{}` là xoá hết.
     """
 
     name: FloorName | None = None
     views: list[ViewEditIn] = Field(max_length=VIEWS_MAX)
+    building: BuildingDecisionsIn | None = None
 
 
 class ReplaceViewsBody(WireRequest):

@@ -4,7 +4,8 @@ Nhóm T (tầng) kiểm lúc đề xuất, khi mới có chữ và cốt. Hàm k
 viết câu tiếng Việt theo mã. Mức `error` chặn xác nhận; `warning` chặn cho tới khi người duyệt chọn nguồn hoặc bấm
 "Đã xem"; `hint` chỉ hiển thị. Dung sai là số đề xuất của thiết kế, chưa hiệu chỉnh bằng số đo.
 
-Nhóm M (mái, NHA-05b) chỉ gồm các luật kiểm lúc đề xuất; các luật M kiểm lúc ráp và lúc đọc thuộc NHA-07a/08.
+Nhóm M (mái, NHA-05b) gồm các luật kiểm lúc đề xuất, cộng M-04 kiểm lúc ráp (NHA-07a, cần kích thước mái đã dựng).
+Các luật M lúc ráp còn lại không có hàm ở đây: M-08 nằm trong `roof_rects`, M-11/M-16 trong `assembly.settle`.
 """
 
 import itertools
@@ -56,6 +57,7 @@ RULES: Final[Mapping[str, Rule]] = {
         Rule("T-07", "warning"),
         Rule("M-02", "warning", 100),
         Rule("M-03", "warning", 3),  # độ
+        Rule("M-04", "warning", 300),
         Rule("M-05", "warning"),
         Rule("M-06", "warning"),
         Rule("M-07", "hint"),
@@ -138,6 +140,12 @@ def m03_pitch(ref: str, degs: Sequence[float]) -> RuleHit | None:
     tolerance = RULES["M-03"].tolerance or 0
     spread = round(max(degs, default=0) - min(degs, default=0), 1)  # 4,4 trừ 1,4 ra 3,0000000000000004
     return None if spread <= tolerance else _hit("M-03", (ref,), degs)
+
+
+def m04_ridge(ref: str, ridge_mm: int, computed_mm: int) -> RuleHit | None:
+    """M-04 (kiểm lúc ráp): cốt đỉnh đọc được khớp cốt đỉnh tính từ độ dốc (± 300 mm). Vi phạm kèm cốt đọc, cốt tính."""
+    tolerance = RULES["M-04"].tolerance or 0
+    return None if abs(ridge_mm - computed_mm) <= tolerance else _hit("M-04", (ref,), (ridge_mm, computed_mm))
 
 
 def m05_form(ref: str, forms: Sequence[str]) -> RuleHit | None:

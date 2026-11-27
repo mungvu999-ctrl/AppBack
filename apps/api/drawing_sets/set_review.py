@@ -21,13 +21,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.core.auth import Principal
 from apps.api.drawing_sets.errors import DRAWING_SET_CONFIRMED, DRAWING_SET_NOT_READY
 from apps.api.drawing_sets.set_read import load_set, set_wire
-from apps.api.drawing_sets.set_schemas import DrawingSetOut, FloorTargetIn, NewFloorTargetIn, ViewEditIn, ViewsBodyIn
+from apps.api.drawing_sets.set_schemas import (
+    BuildingDecisionsIn,
+    DrawingSetOut,
+    FloorTargetIn,
+    NewFloorTargetIn,
+    ViewEditIn,
+    ViewsBodyIn,
+)
 from packages.core.clock import Clock
 from packages.core.error_codes import VALIDATION
 from packages.core.errors import VersionConflictError
 from packages.core.ids import new_id
 from packages.db.models.drawing_sets import DrawingSetFileRow, DrawingSetRow, DrawingSetViewRow
 from packages.db.models.floors import FloorRow
+from packages.domain.drawing_set.decisions import Decisions
 from packages.storage.port import ObjectStorage
 
 ORD_SHIFT: Final = 100_000
@@ -110,6 +118,22 @@ def _check_edit(index: int, edit: ViewEditIn, context: _Context, seen: set[str])
         raise VALIDATION.error(field=f"{field}.pageIndex")
     if isinstance(edit.target, FloorTargetIn) and edit.target.floor_id not in context.floors:
         raise VALIDATION.error(field=f"{field}.target")
+
+
+def _check_building(building: BuildingDecisionsIn, edits: Sequence[ViewEditIn]) -> None:
+    """Mỗi quyết định trỏ tới một hình mặt bằng đang dùng trong **chính bản duyệt này**, mỗi hình một quyết định.
+
+    Sai → 422 `field` `body.building.<levels|roofs>.<i>.levelRef`. Hình người vẽ thêm chưa có id nên chưa nhận
+    quyết định ở lượt lưu đầu tiên của nó.
+    """
+    plans = {edit.id for edit in edits if edit.id is not None and edit.kind == "plan" and not edit.excluded}
+    levels, roofs = [item.level_ref for item in building.levels], [item.level_ref for item in building.roofs]
+    for group, refs in (("levels", levels), ("roofs", roofs)):
+        seen: set[str] = set()
+        for index, ref in enumerate(refs):
+            if ref not in plans or ref in seen:
+                raise VALIDATION.error(field=f"body.building.{group}.{index}.levelRef")
+            seen.add(ref)
 
 
 def _target_columns(edit: ViewEditIn, floors: Mapping[str, int]) -> dict[str, Any]:
@@ -204,7 +228,10 @@ async def replace_views(
 ) -> DrawingSetOut:
     """N59 — lưu bản duyệt nếu `base_version` còn khớp; lượt lặp của chính người ghi → 200 không đổi gì (C09b).
 
-    Lỗi: 404 bộ; 409 `DRAWING_SET_CONFIRMED`/`DRAWING_SET_NOT_READY`; 422 `VALIDATION` `field` `body.views.<i>.<khoá>`;
+    Quyết định của người duyệt (`body.building`, NHA-06b) lưu vào `building.decisions` trong cùng `revision`.
+
+    Lỗi: 404 bộ; 409 `DRAWING_SET_CONFIRMED`/`DRAWING_SET_NOT_READY`; 422 `VALIDATION` `field` `body.views.<i>.<khoá>`
+    hay `body.building.<nhóm>.<i>.levelRef`;
     409 `VERSION_CONFLICT` (`remoteChanges: []`) khi base cũ. Không ghi nhật ký (revision là dấu vết).
     """
     drawing_set = await load_set(db, project_id=project_id, set_id=set_id)
@@ -213,6 +240,8 @@ async def replace_views(
     seen: set[str] = set()
     for index, edit in enumerate(body.views):
         _check_edit(index, edit, context, seen)
+    if body.building is not None:
+        _check_building(body.building, body.views)
     digest = body_digest(body)
     claimed = await _claim_revision(db, set_id, base_version, principal.user_id, digest)
     if claimed is None:
@@ -227,5 +256,8 @@ async def replace_views(
         raise VersionConflictError(current_version=current.revision, remote_changes=[])
     if body.name is not None:
         claimed.name = body.name
+    if body.building is not None:
+        decisions = Decisions.model_validate(body.building.model_dump())
+        claimed.building = (claimed.building or {}) | {"decisions": decisions.model_dump(mode="json", by_alias=True)}
     await _rewrite_views(db, claimed, body.views, context, clock)
     return await set_wire(db, storage, claimed)

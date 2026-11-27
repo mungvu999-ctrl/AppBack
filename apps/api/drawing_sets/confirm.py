@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.access.activity import record_activity
 from apps.api.access.kinds import ActivityKind
+from apps.api.drawing_sets.building_read import FROZEN_VERSION, BuildingInputs, load_inputs, propose
 from apps.api.drawing_sets.errors import (
     DRAWING_SET_NO_PLAN,
     DRAWING_SET_NOT_READY,
@@ -36,7 +37,7 @@ from apps.api.drawings.schemas import CropRect
 from apps.api.drawings.uploads import KIND_MIME, file_extension
 from apps.api.floors.errors import FLOOR_ID_TAKEN
 from apps.api.floors.lookup import get_floor, new_level_id
-from apps.api.floors.schemas import ELEVATION_MAX, FloorCreateIn
+from apps.api.floors.schemas import ELEVATION_MAX, ELEVATION_MIN, HEIGHT_MAX, HEIGHT_MIN, FloorCreateIn
 from apps.api.floors.service import create_floor
 from apps.api.projects.access import ProjectAccess
 from packages.core.clock import Clock
@@ -45,6 +46,8 @@ from packages.core.ids import new_id
 from packages.db.models.drawing_sets import DrawingSetFileRow, DrawingSetRow, DrawingSetViewRow
 from packages.db.models.drawings import UploadRow
 from packages.db.models.floors import FloorRow
+from packages.domain.drawing_set.building import BuildingProposal
+from packages.domain.drawing_set.decisions import blockers
 from packages.domain.permissions import can
 from packages.storage.keys import upload_original
 from packages.storage.port import ObjectStorage
@@ -54,6 +57,14 @@ PLANS_MAX: Final = 20
 NEW_FLOOR_HEIGHT_MM: Final = 3000
 """Chiều cao mặc định của tầng mới: đề xuất cho cả nhà (N52) sửa lại sau khi pipeline có chữ."""
 _FLOOR_MODES: Final = frozenset({"floor", "newFloor"})
+_BLOCK_FIELDS: Final = {
+    "decision": "building.decisions",
+    "conflict": "building.conflicts",
+    "error": "building.violations",
+    "warning": "building.warnings",
+}
+"""Loại lý do chặn của `decisions.blockers` → `field` của 422."""
+type _Levels = Mapping[str, tuple[int | None, int | None]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,22 +229,59 @@ async def _stack_start(db: AsyncSession, project_id: str) -> tuple[int, int]:
     return int(count), int(top)
 
 
+async def _settled(storage: ObjectStorage, project_id: str, set_id: str, inputs: BuildingInputs) -> BuildingProposal:
+    """Đề xuất ngôi nhà kèm quyết định của người duyệt, đã qua mọi điều kiện chặn của N60 (thiết kế §2.E).
+
+    Còn quyết định trỏ tới hình không còn, mâu thuẫn chưa chọn nguồn, vi phạm mức lỗi hay cảnh báo chưa xem → 422
+    `VALIDATION` với `field` `building.decisions|conflicts|violations|warnings` (lý do đầu tiên theo thứ tự đó).
+    """
+    proposal = await propose(storage, project_id, set_id, inputs)
+    blocked = blockers(proposal, inputs.decisions)
+    if blocked:
+        raise VALIDATION.error(field=_BLOCK_FIELDS[blocked[0].split(":", 1)[0]])
+    return proposal
+
+
+def _reviewed_levels(frozen: BuildingProposal | None) -> _Levels:
+    """Hình → (cốt, chiều cao) đang hiệu lực của bản đóng băng; số ngoài dải #10 nhận thì coi như không có (tầng
+    đó xếp chồng như trước), vì giá trị máy đề xuất không bị kẹp dải như số người duyệt nhập."""
+    if frozen is None:
+        return {}
+    found: dict[str, tuple[int | None, int | None]] = {}
+    for level in frozen.levels:
+        elevation = None if level.elevation_mm is None else int(level.elevation_mm.value)
+        height = None if level.height_mm is None else int(level.height_mm.value)
+        found[level.level_ref] = (
+            elevation if elevation is not None and ELEVATION_MIN <= elevation <= ELEVATION_MAX else None,
+            height if height is not None and HEIGHT_MIN <= height <= HEIGHT_MAX else None,
+        )
+    return found
+
+
 async def _create_floors(
-    db: AsyncSession, access: ProjectAccess, placements: Sequence[_Placement], clock: Clock
+    db: AsyncSession, access: ProjectAccess, placements: Sequence[_Placement], clock: Clock, levels: _Levels
 ) -> None:
     """Tạo tầng mới (mặt bằng theo số tầng rồi `ord`, mặt cắt sau cùng) qua #10 — vòng lặp có trần `PLANS_MAX` + 60
-    hình (R-20: `create_floor` khoá, đếm, ghi nhật ký theo từng tầng, không gom được)."""
+    hình (R-20: `create_floor` khoá, đếm, ghi nhật ký theo từng tầng, không gom được).
+
+    Cốt và chiều cao của tầng mặt bằng lấy từ `levels` (giá trị đang hiệu lực của bản đóng băng, NHA-06b: số
+    người duyệt nhập, nguồn họ chọn, hoặc giá trị máy mà họ không sửa); hình không có thì xếp chồng nối tiếp đỉnh
+    tầng trước với chiều cao `NEW_FLOOR_HEIGHT_MM` như trước. Cốt là cốt tuyệt đối của bản vẽ: chưa so với tầng
+    có sẵn của dự án (NO-593)."""
     order, elevation = await _stack_start(db, access.project_id)
     fresh = [placement for placement in placements if placement.mode in {"newFloor", "section"}]
     fresh.sort(key=lambda p: (p.mode == "section", p.storey_no is None, p.storey_no or 0, p.ord))
     for placement in fresh:
         is_section = placement.mode == "section"
+        level, height = (None, None) if is_section else levels.get(placement.view_id, (None, None))
+        height_mm = NEW_FLOOR_HEIGHT_MM if height is None else height
+        elevation_mm = min(elevation, ELEVATION_MAX) if level is None else level
         body = FloorCreateIn(
             id=placement.level_id,
             name=str(placement.name),
             order=order,
-            elevation_mm=0 if is_section else min(elevation, ELEVATION_MAX),
-            height_mm=NEW_FLOOR_HEIGHT_MM,
+            elevation_mm=0 if is_section else elevation_mm,
+            height_mm=height_mm,
         )
         await create_floor(db, access.project_id, body, access.principal, clock, app=None)
         order += 1
@@ -242,7 +290,7 @@ async def _create_floors(
             if row is not None:
                 row.is_section, row.hidden_in_3d = True, True
         else:
-            elevation += NEW_FLOOR_HEIGHT_MM
+            elevation = elevation_mm + height_mm
 
 
 def _crop_corners(crop: Mapping[str, float]) -> list[list[float]] | None:
@@ -292,13 +340,15 @@ async def _create_uploads(
 
 async def _phase_one(
     db: AsyncSession, access: ProjectAccess, set_id: str, revision: int, clock: Clock
-) -> DrawingSetRow | list[_Placement]:
-    """Chặng 1: bộ đã `confirmed` → trả chính dòng bộ (idempotent); không thì kiểm và trả kế hoạch."""
+) -> DrawingSetRow | tuple[list[_Placement], BuildingInputs | None]:
+    """Chặng 1: bộ đã `confirmed` → trả chính dòng bộ (idempotent); không thì kiểm và trả kế hoạch, kèm đầu vào của
+    đề xuất ngôi nhà khi bộ đã có quyết định của người duyệt (`building` khác NULL)."""
     drawing_set = await load_set(db, project_id=access.project_id, set_id=set_id)
     if drawing_set.status == "confirmed":
         return drawing_set
     _check_ready(drawing_set, revision)
-    return await _plan(db, drawing_set, {}, clock)
+    planned = await _plan(db, drawing_set, {}, clock)
+    return planned, None if drawing_set.building is None else await load_inputs(db, drawing_set)
 
 
 async def confirm_set(
@@ -306,26 +356,37 @@ async def confirm_set(
 ) -> DrawingSetOut:
     """N60 — xác nhận bản duyệt `revision`: tầng, lượt tải, pipeline; bộ sang `confirmed` (một giao dịch ghi).
 
+    Bộ đã có quyết định của người duyệt (NHA-06b): đề xuất ngôi nhà phải "yên" (`_settled`) trước khi chép tệp; rồi
+    tầng mới mang cốt và chiều cao đã duyệt, và bản đề xuất được đóng băng vào `building.confirmed`. `revision` không
+    đổi giữa hai chặng nghĩa là hình và quyết định không đổi, nên bản tính ở giữa vẫn đúng. Bộ chưa từng nhận quyết
+    định (`building` NULL) xác nhận như trước.
+
     Lỗi: 403 (thiếu `layer.edit`), 404, 409 `DRAWING_SET_NOT_READY`/`…_REVISION_STALE`/`FLOOR_HAS_DRAWING`/
-    `FLOOR_ID_TAKEN`, 422 `DRAWING_SET_NO_PLAN`/`VALIDATION`, `FLOOR_LIMIT_REACHED` của #10, 5xx của kho.
+    `FLOOR_ID_TAKEN`, 422 `DRAWING_SET_NO_PLAN`/`VALIDATION` (kể cả `field` `building.*`), `FLOOR_LIMIT_REACHED` của
+    #10, 5xx của kho.
     """
     _check_access(access)
     first = await _phase_one(db, access, set_id, revision, clock)
     if isinstance(first, DrawingSetRow):
         return await set_wire(db, storage, first)
+    planned, inputs = first
     await db.rollback()
-    await _copy_originals(storage, access.project_id, first)
+    frozen = None if inputs is None else await _settled(storage, access.project_id, set_id, inputs)
+    await _copy_originals(storage, access.project_id, planned)
 
     drawing_set = await load_set(db, project_id=access.project_id, set_id=set_id, for_update=True)
     if drawing_set.status == "confirmed":
         return await set_wire(db, storage, drawing_set)
     _check_ready(drawing_set, revision)
-    ids = {placement.view_id: (placement.upload_id, placement.level_id) for placement in first}
+    ids = {placement.view_id: (placement.upload_id, placement.level_id) for placement in planned}
     placements = await _plan(db, drawing_set, ids, clock)
     if {placement.view_id for placement in placements} != set(ids):
         raise DRAWING_SET_REVISION_STALE.error()
-    await _create_floors(db, access, placements, clock)
+    await _create_floors(db, access, placements, clock, _reviewed_levels(frozen))
     await _create_uploads(db, access, placements, clock)
+    if frozen is not None:
+        confirmed = {"schemaVersion": FROZEN_VERSION, "proposal": frozen.model_dump(mode="json", by_alias=True)}
+        drawing_set.building = (drawing_set.building or {}) | {"confirmed": confirmed}
     drawing_set.status, drawing_set.confirmed_at, drawing_set.confirmed_by = (
         "confirmed",
         clock.now(),

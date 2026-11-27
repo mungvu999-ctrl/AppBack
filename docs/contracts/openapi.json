@@ -530,6 +530,97 @@
         "title": "BuildDatasetVersionIn",
         "type": "object"
       },
+      "BuildingDecisionsIn": {
+        "additionalProperties": false,
+        "description": "Quyết định của người duyệt trên đề xuất ngôi nhà (NHA-06b), thay **cả** bản đã lưu.\n\n`picks`: khoá mâu thuẫn (`elevationMm:<hình>`, `pitchDeg:<hình>`) → nguồn đã chọn. `seen`: khoá của các cảnh báo\nđã bấm \"Đã xem\", lấy nguyên văn từ `violations[].key` của route đọc `building`.",
+        "properties": {
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/LevelDecisionIn"
+            },
+            "maxItems": 60,
+            "title": "Levels",
+            "type": "array"
+          },
+          "picks": {
+            "maxProperties": 120,
+            "patternProperties": {
+              "^[^\\x00-\\x1f\\x7f]+$": {
+                "$ref": "#/components/schemas/BuildingSource"
+              }
+            },
+            "propertyNames": {
+              "maxLength": 96,
+              "minLength": 1
+            },
+            "title": "Picks",
+            "type": "object"
+          },
+          "roofs": {
+            "items": {
+              "$ref": "#/components/schemas/RoofDecisionIn"
+            },
+            "maxItems": 60,
+            "title": "Roofs",
+            "type": "array"
+          },
+          "seen": {
+            "items": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Seen",
+            "type": "array"
+          }
+        },
+        "title": "BuildingDecisionsIn",
+        "type": "object"
+      },
+      "BuildingDecisionsOut": {
+        "additionalProperties": false,
+        "description": "Quyết định đã lưu của người duyệt, đúng hình dạng thân `building` của N59 để FE gửi lại nguyên.",
+        "properties": {
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/LevelDecisionOut"
+            },
+            "title": "Levels",
+            "type": "array"
+          },
+          "picks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BuildingSource"
+            },
+            "title": "Picks",
+            "type": "object"
+          },
+          "roofs": {
+            "items": {
+              "$ref": "#/components/schemas/RoofDecisionOut"
+            },
+            "title": "Roofs",
+            "type": "array"
+          },
+          "seen": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Seen",
+            "type": "array"
+          }
+        },
+        "required": [
+          "levels",
+          "roofs",
+          "picks",
+          "seen"
+        ],
+        "title": "BuildingDecisionsOut",
+        "type": "object"
+      },
       "BuildingOut": {
         "additionalProperties": false,
         "description": "`BuildingSchema` — `datumElevationMm` **có dấu** (tầng hầm nằm dưới mốc `+0.000`).",
@@ -607,7 +698,7 @@
       },
       "BuildingProposalOut": {
         "additionalProperties": false,
-        "description": "Đề xuất của máy cho cả nhà: hệ đơn vị, tầng theo thứ tự hình mặt bằng, mái, mâu thuẫn, vi phạm.",
+        "description": "Đề xuất cho cả nhà, đã tính kèm quyết định của người duyệt: hệ đơn vị, tầng (giá trị máy), giá trị đang hiệu\nlực của từng tầng, mái, mâu thuẫn, vi phạm.",
         "properties": {
           "conflicts": {
             "items": {
@@ -621,6 +712,13 @@
               "$ref": "#/components/schemas/FloorProposalOut"
             },
             "title": "Floors",
+            "type": "array"
+          },
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/LevelSpecOut"
+            },
+            "title": "Levels",
             "type": "array"
           },
           "roofs": {
@@ -644,6 +742,7 @@
         "required": [
           "unitSystem",
           "floors",
+          "levels",
           "roofs",
           "conflicts",
           "violations"
@@ -4479,6 +4578,80 @@
         "gt": 0,
         "le": 999999
       },
+      "LevelDecisionIn": {
+        "additionalProperties": false,
+        "description": "Cốt và chiều cao người duyệt nhập cho tầng của hình `levelRef` (dải như #10); trường vắng = không nhập.",
+        "properties": {
+          "elevationMm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/_ElevationMm"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "heightMm": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 2000.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heightmm"
+          },
+          "levelRef": {
+            "$ref": "#/components/schemas/_Ref"
+          }
+        },
+        "required": [
+          "levelRef"
+        ],
+        "title": "LevelDecisionIn",
+        "type": "object"
+      },
+      "LevelDecisionOut": {
+        "additionalProperties": false,
+        "description": "Số người duyệt đã nhập cho tầng của hình `levelRef` (trường không nhập thì vắng).",
+        "properties": {
+          "elevationMm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elevationmm"
+          },
+          "heightMm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heightmm"
+          },
+          "levelRef": {
+            "title": "Levelref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "levelRef"
+        ],
+        "title": "LevelDecisionOut",
+        "type": "object"
+      },
       "LevelOut": {
         "additionalProperties": false,
         "description": "`LevelSchema` — một tầng; `id` là `Floor.id` của #12/#33, không phải một mã thứ hai.\n\nTầng chưa hiệu chỉnh vắng `scaleMillimetresPerPixel`; tỉ lệ \"tạm\" vẫn gửi nhưng N16 kèm\n`scaleStatus: 'unresolved'` (HOP-DONG-MOI §4.2).",
@@ -4580,6 +4753,41 @@
           "default"
         ],
         "type": "string"
+      },
+      "LevelSpecOut": {
+        "additionalProperties": false,
+        "description": "Cốt và chiều cao đang hiệu lực của hình mặt bằng `levelRef` (số người duyệt nhập > nguồn đã chọn > máy).",
+        "properties": {
+          "elevationMm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MeasuredOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "heightMm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MeasuredOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "levelRef": {
+            "title": "Levelref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "levelRef"
+        ],
+        "title": "LevelSpecOut",
+        "type": "object"
       },
       "LibraryGroup": {
         "enum": [
@@ -6868,7 +7076,8 @@
                 "fallbackWallModel",
                 "fallbackObjectModel",
                 "fallbackTextModel",
-                "geometrySuspect"
+                "geometrySuspect",
+                "roofUnreviewed"
               ],
               "type": "string"
             },
@@ -7119,6 +7328,232 @@
           "nodes"
         ],
         "title": "Roof",
+        "type": "object"
+      },
+      "RoofDecisionIn": {
+        "additionalProperties": false,
+        "description": "Mái của tầng có hình `levelRef`: các trường người duyệt nhập, hoặc `skip` = \"không dựng mái, tôi tự vẽ\".",
+        "properties": {
+          "eaveElevationMm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/_ElevationMm"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "form": {
+            "anyOf": [
+              {
+                "enum": [
+                  "flat",
+                  "shed",
+                  "gable",
+                  "hip"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form"
+          },
+          "levelRef": {
+            "$ref": "#/components/schemas/_Ref"
+          },
+          "material": {
+            "anyOf": [
+              {
+                "enum": [
+                  "tile",
+                  "metal",
+                  "shingle"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material"
+          },
+          "overhangMm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/_RoofMm"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parapetMm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/_RoofMm"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pitchDeg": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 85.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pitchdeg"
+          },
+          "quarterTurns": {
+            "anyOf": [
+              {
+                "maximum": 3.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quarterturns"
+          },
+          "ridgeElevationMm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/_ElevationMm"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "skip": {
+            "default": false,
+            "title": "Skip",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "levelRef"
+        ],
+        "title": "RoofDecisionIn",
+        "type": "object"
+      },
+      "RoofDecisionOut": {
+        "additionalProperties": false,
+        "description": "Số người duyệt đã nhập cho mái của tầng `levelRef`; `skip` = \"không dựng mái\".",
+        "properties": {
+          "eaveElevationMm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eaveelevationmm"
+          },
+          "form": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form"
+          },
+          "levelRef": {
+            "title": "Levelref",
+            "type": "string"
+          },
+          "material": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material"
+          },
+          "overhangMm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overhangmm"
+          },
+          "parapetMm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parapetmm"
+          },
+          "pitchDeg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pitchdeg"
+          },
+          "quarterTurns": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quarterturns"
+          },
+          "ridgeElevationMm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ridgeelevationmm"
+          },
+          "skip": {
+            "title": "Skip",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "levelRef",
+          "skip"
+        ],
+        "title": "RoofDecisionOut",
         "type": "object"
       },
       "RoofOut": {
@@ -7804,7 +8239,7 @@
       },
       "RuleHitOut": {
         "additionalProperties": false,
-        "description": "Một vi phạm luật ghép: mã (`T-01`…, `M-02`…), mức, các hình liên quan và số liệu để FE viết câu.",
+        "description": "Một vi phạm luật ghép: mã (`T-01`…, `M-02`…), mức, các hình liên quan và số liệu để FE viết câu.\n\n`key` là khoá để đánh dấu \"Đã xem\": FE gửi lại nguyên văn trong `building.seen` của N59, không tự ghép.",
         "properties": {
           "code": {
             "title": "Code",
@@ -7816,6 +8251,10 @@
             },
             "title": "Floorrefs",
             "type": "array"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
           },
           "level": {
             "$ref": "#/components/schemas/RuleLevel"
@@ -7839,6 +8278,7 @@
           }
         },
         "required": [
+          "key",
           "code",
           "level",
           "floorRefs",
@@ -8062,8 +8502,18 @@
       },
       "SetBuildingOut": {
         "additionalProperties": false,
-        "description": "`GET …/drawing-sets/{setId}/building`: công tắc và đề xuất.\n\n`proposal` vắng khi công tắc tắt (`enabled: false`, mẫu N52) hoặc bộ chưa qua phân tích.",
+        "description": "`GET …/drawing-sets/{setId}/building`: công tắc, đề xuất và quyết định đã lưu.\n\n`proposal` vắng khi công tắc tắt (`enabled: false`, mẫu N52) hoặc bộ chưa qua phân tích. `decisions` vắng khi\nchưa ai gửi quyết định (N60 khi đó xác nhận như trước NHA-06b).",
         "properties": {
+          "decisions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BuildingDecisionsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
@@ -9488,8 +9938,18 @@
       },
       "ViewsBodyIn": {
         "additionalProperties": false,
-        "description": "`body` của N59: **cả** danh sách hình (thay thế), tối đa `VIEWS_MAX`; `name` tuỳ chọn đổi tên bộ (K-65).\n\n`name` vắng = giữ tên hiện có (không có cách xoá tên); có thì luật như N54 (trim + NFC, 1-120 ký tự).",
+        "description": "`body` của N59: **cả** danh sách hình (thay thế), tối đa `VIEWS_MAX`; `name` tuỳ chọn đổi tên bộ (K-65).\n\n`name` vắng = giữ tên hiện có (không có cách xoá tên); có thì luật như N54 (trim + NFC, 1-120 ký tự).\n`building` vắng = giữ quyết định đã lưu (client chưa biết khoá này không được làm mất chúng); có thì thay cả bản,\n`{}` là xoá hết.",
         "properties": {
+          "building": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BuildingDecisionsIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "name": {
             "anyOf": [
               {
@@ -9921,6 +10381,22 @@
         ],
         "title": "WallTemplate",
         "type": "object"
+      },
+      "_ElevationMm": {
+        "maximum": 300000.0,
+        "minimum": -30000.0,
+        "type": "integer"
+      },
+      "_Ref": {
+        "maxLength": 64,
+        "minLength": 1,
+        "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+        "type": "string"
+      },
+      "_RoofMm": {
+        "maximum": 5000.0,
+        "minimum": 0.0,
+        "type": "integer"
       }
     }
   },
@@ -12223,7 +12699,7 @@
     },
     "/api/projects/{project_id}/drawing-sets/{set_id}/building": {
       "get": {
-        "description": "NHA-06a — đề xuất ngôi nhà của bộ (tầng, mái, mâu thuẫn, vi phạm) tính ngay lúc đọc, không ghi gì.\n\nCông tắc tắt → 200 `{\"enabled\": false}` (mẫu N52: \"tắt\" là trạng thái thường, service không được gọi). Tách khỏi\nN57 vì N57 được thăm dò mỗi 2 s, còn route này đọc lại kết quả của mọi trang từ kho.",
+        "description": "NHA-06a/b — đề xuất ngôi nhà của bộ (tầng, mái, mâu thuẫn, vi phạm) kèm quyết định đã lưu; không ghi gì.\n\nCông tắc tắt → 200 `{\"enabled\": false}` (mẫu N52: \"tắt\" là trạng thái thường, service không được gọi). Tách khỏi\nN57 vì N57 được thăm dò mỗi 2 s, còn route này đọc lại kết quả của mọi trang từ kho.",
         "operationId": "drawing_sets_read_building_api_projects__project_id__drawing_sets__set_id__building_get",
         "parameters": [
           {

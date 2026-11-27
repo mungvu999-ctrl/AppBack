@@ -120,10 +120,52 @@ const BuildingConflictStrictSchema = z
 
 const RuleHitStrictSchema = z
   .object({
+    key: z.string().min(1).max(256),
     code: z.string().regex(/^[TM]-\d{2}$/),
     level: z.enum(['error', 'warning', 'hint']),
     floorRefs: z.array(z.string().min(1)),
     values: z.array(z.union([z.number(), z.string().min(1)])),
+  })
+  .strict();
+
+// NHA-06b: giá trị đang hiệu lực của từng tầng, và quyết định đã lưu của người duyệt (đúng dạng thân `building` N59).
+const LevelSpecStrictSchema = z
+  .object({
+    levelRef: z.string().min(1),
+    elevationMm: MeasuredStrictSchema.optional(),
+    heightMm: MeasuredStrictSchema.optional(),
+  })
+  .strict();
+
+const LevelDecisionStrictSchema = z
+  .object({
+    levelRef: z.string().min(1),
+    elevationMm: z.number().int().optional(),
+    heightMm: z.number().int().optional(),
+  })
+  .strict();
+
+const RoofDecisionStrictSchema = z
+  .object({
+    levelRef: z.string().min(1),
+    skip: z.boolean(),
+    form: z.enum(['flat', 'shed', 'gable', 'hip']).optional(),
+    pitchDeg: z.number().optional(),
+    quarterTurns: z.number().int().optional(),
+    eaveElevationMm: z.number().int().optional(),
+    ridgeElevationMm: z.number().int().optional(),
+    overhangMm: z.number().int().optional(),
+    parapetMm: z.number().int().optional(),
+    material: z.enum(['tile', 'metal', 'shingle']).optional(),
+  })
+  .strict();
+
+const BuildingDecisionsStrictSchema = z
+  .object({
+    levels: z.array(LevelDecisionStrictSchema),
+    roofs: z.array(RoofDecisionStrictSchema),
+    picks: z.record(z.string().min(1), z.enum(BUILDING_SOURCES)),
+    seen: z.array(z.string().min(1)),
   })
   .strict();
 
@@ -134,15 +176,17 @@ export const SetBuildingStrictSchema = z
       .object({
         unitSystem: MeasuredStrictSchema,
         floors: z.array(HouseFloorProposalStrictSchema),
+        levels: z.array(LevelSpecStrictSchema),
         roofs: z.array(RoofSpecStrictSchema),
         conflicts: z.array(BuildingConflictStrictSchema),
         violations: z.array(RuleHitStrictSchema),
       })
       .strict()
       .optional(),
+    decisions: BuildingDecisionsStrictSchema.optional(),
   })
   .strict()
-  .refine((b) => b.enabled || b.proposal === undefined, {
-    message: 'công tắc tắt thì không có proposal',
+  .refine((b) => b.enabled || (b.proposal === undefined && b.decisions === undefined), {
+    message: 'công tắc tắt thì không có proposal và decisions',
     path: ['proposal'],
   });

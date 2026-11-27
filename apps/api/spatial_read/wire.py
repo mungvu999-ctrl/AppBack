@@ -281,6 +281,7 @@ ReadinessReason = Literal[
     "fallbackObjectModel",
     "fallbackTextModel",
     "geometrySuspect",
+    "roofUnreviewed",
 ]
 ScaleBasis = Literal["chain", "paired", "note", "door", "wallThickness", "default", "human"]
 """Tỉ lệ đến từ đâu (BENCH3D-09): sáu gốc của pipeline (`layer.json` `scaleBasis`) cộng `human` (người hiệu chỉnh)."""

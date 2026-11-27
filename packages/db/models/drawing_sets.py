@@ -68,6 +68,9 @@ class DrawingSetRow(Base, TimestampMixin, SoftDeleteMixin):
     """`sub` của lượt N59 gần nhất; cùng `last_body_sha256` phân biệt lượt gửi lặp (C09b) với xung đột thật."""
     last_body_sha256: Mapped[str | None] = mapped_column(Text, default=None)
     created_by: Mapped[str] = mapped_column(Text)
+    building: Mapped[Any] = mapped_column(JSONB(none_as_null=True), nullable=True, default=None)
+    """Đề xuất ngôi nhà (NHA-06b): `decisions` do N59 ghi khi bộ còn `review`, `confirmed` do N60 đóng băng một lần.
+    NULL = chưa ai gửi quyết định; khi đó N60 xác nhận như trước NHA-06b."""
 
     __table_args__ = (
         CheckConstraint(one_of("status", SET_STATUSES), name="status"),

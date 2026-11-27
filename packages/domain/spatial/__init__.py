@@ -35,6 +35,7 @@ from packages.domain.spatial.model import (
     Wall,
 )
 from packages.domain.spatial.provenance import clear_reviewed, mark_edited, mark_edited_dimensions
+from packages.domain.spatial.roof_build import RoofForm, RoofRect, RoofRects, ridge_height_mm, roof_nodes
 from packages.domain.spatial.samples import sample_building, sample_layer, sample_roof
 
 __all__ = [
@@ -55,6 +56,9 @@ __all__ = [
     "Opening",
     "Point",
     "Roof",
+    "RoofForm",
+    "RoofRect",
+    "RoofRects",
     "Room",
     "ScaleAcceptance",
     "Segment",
@@ -77,6 +81,8 @@ __all__ = [
     "mark_edited",
     "mark_edited_dimensions",
     "polygon_area_m2",
+    "ridge_height_mm",
+    "roof_nodes",
     "sample_building",
     "sample_layer",
     "sample_roof",

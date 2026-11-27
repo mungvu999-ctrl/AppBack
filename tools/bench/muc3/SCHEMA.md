@@ -19,6 +19,7 @@ Confidence convention (0..1): **>= 0.9** two independent sources agree, **0.7-0.
 | `stack` | `a`, `b` (view ids, lower floor first); `shift_mm` `[dx,dy]` of b relative to a, or null; `cues` (names, e.g. `truc`, `thang`); `confidence` |
 | `stair_cores` | `floors` (list of floor_no the core runs through); `centre_mm` `[x,y]` in the lowest floor's frame; `confidence` |
 | `sheet_views` | optional. `{"<sheet file stem>": [{"box":[x0,y0,x1,y1], "kind", "confidence"}]}` for the sheet-splitting task |
+| `roof` | optional, one object (not a list), scored by `python -m tools.bench.muc3.roof`: `type` (`flat`/`pitched`/`mixed`/`unknown`); `confidence`; `base_level_m`, `top_level_m` (float or null); `level_confidence`. `{}` = no roof proposed. A file with these fields at the top level (old `pred_roof/`) is read the same way |
 
 Matching rules used by the scorer: views by `id`; storey heights by `(from,to)`; stack pairs by the floor
 numbers of `a`/`b` (looked up in `floors[].view_id` then `views[].floor_no`); sheet boxes greedily one-to-one at IoU >= 0.5.

@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Any, Final
 
 from apps.api.drawing_sets.analysis import _to_domain
+from apps.api.drawing_sets.building_read import BuildingInputs, _propose, _ViewSource
+from packages.domain.drawing_set.building import BuildingProposal
 from packages.domain.drawing_set.proposal import FloorProposal
 from packages.domain.drawing_set.set_analysis import PageReading, ViewGuess, solve_set
 from packages.ml_contracts.drawing_sets import reading_from_json
@@ -40,6 +42,8 @@ EXPOSED: Final = frozenset(
 )
 """Bộ đã lộ (`changes/K-32a.md`, mục "Nâng độ đúng tách hình"): luật được chỉnh theo hoặc số đã bị nhìn."""
 PARTS: Final = ("test", "dev")
+_CROP_KEYS: Final = ("x_ratio", "y_ratio", "width_ratio", "height_ratio")
+"""Khoá của `drawing_set_views.crop`, theo thứ tự của `ViewGuess.crop`."""
 
 type Sheet = tuple[str, PageReading, Json]
 """Một tờ: tên tệp (không đuôi), kết quả đọc, nhãn tờ (`size` khổ gốc + `views` có `id` và `box`)."""
@@ -104,6 +108,44 @@ def _floors(floors: Mapping[int, FloorProposal], ids: Mapping[int, str]) -> list
     ]
 
 
+def _proposal(sheets: Sequence[Sheet], guesses: Sequence[ViewGuess]) -> BuildingProposal:
+    """Đề xuất ngôi nhà của route đọc `building` (`building_read._propose`), với hình máy đề xuất coi như đã duyệt.
+
+    Thước tự nhận mọi đề xuất của máy: loại, khung và độ tin của `ViewGuess` thế chỗ dòng `drawing_set_views`, và
+    không có quyết định nào của người duyệt.
+    """
+    stems = [stem for stem, _, _ in sheets]
+    sources = tuple(
+        _ViewSource(str(i), (stems[g.page], 0), dict(zip(_CROP_KEYS, g.crop, strict=True)), g.kind, g.kind_confidence)
+        for i, g in enumerate(guesses)
+    )
+    return _propose(BuildingInputs(sources, None), {(stem, 0): reading for stem, reading, _ in sheets})
+
+
+def roof_draft(proposal: BuildingProposal) -> Json:
+    """Bản nháp mái của bộ theo dạng `roof.py` chấm (khoá `roof` ở `SCHEMA.md`); không có mái thì rỗng.
+
+    Đáp án mái chỉ có loại thô, nên `flat` là `flat`, ba dạng dốc là `pitched`, bộ lẫn cả hai là `mixed`. Cốt chân
+    lấy diềm cao nhất (đáp án nhận cả chân mái lẫn chân mái tum). Cốt đỉnh chỉ có khi `ridge_elevation_mm` có: đường
+    sản phẩm hiện chưa đọc đỉnh mái, nên trường này thường rỗng. `confidence` là mái kém chắc nhất.
+    """
+    specs = proposal.roofs
+    if not specs:
+        return {}
+    types = {"flat" if spec.form.value == "flat" else "pitched" for spec in specs}
+    eaves = [spec.eave_elevation_mm for spec in specs if spec.eave_elevation_mm is not None]
+    ridges = [spec.ridge_elevation_mm for spec in specs if spec.ridge_elevation_mm is not None]
+    base = max(eaves, key=lambda level: float(level.value), default=None)
+    top = max(ridges, key=lambda level: float(level.value), default=None)
+    return {
+        "type": "mixed" if len(types) > 1 else next(iter(types)),
+        "confidence": min(spec.form.confidence for spec in specs),
+        "base_level_m": None if base is None else float(base.value) / 1000,
+        "top_level_m": None if top is None else float(top.value) / 1000,
+        "level_confidence": None if base is None else base.confidence,
+    }
+
+
 def predict_set(sheets: Sequence[Sheet]) -> Json:
     """Dự đoán của một bộ: mọi tờ vào `solve_set` một lần (tầng giải chung cả bộ), rồi đặt tên hình theo nhãn tờ."""
     guesses, floors = solve_set([reading for _, reading, _ in sheets])
@@ -135,6 +177,7 @@ def predict_set(sheets: Sequence[Sheet]) -> Json:
         "floors": _floors(floors, ids),
         "storey_heights": _heights(floors),
         "sheet_views": sheet_views,
+        "roof": roof_draft(_proposal(sheets, guesses)),
     }
 
 

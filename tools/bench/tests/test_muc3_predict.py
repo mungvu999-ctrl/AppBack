@@ -8,12 +8,22 @@ from pathlib import Path
 
 import pytest
 
+from packages.domain.drawing_set.building import BuildingProposal, Measured, RoofSpec
 from packages.domain.drawing_set.proposal import FloorProposal
 from packages.ml_contracts.artifacts import BoxPx, TextPx
 from packages.ml_contracts.drawing_sets import PageReadingDoc, ReadingBox, reading_to_json
 from tools.bench.muc3.__main__ import main as score_main
 from tools.bench.muc3.metrics import Json
-from tools.bench.muc3.predict import EXPOSED, _heights, _kind, load_sheets, main, predict_set, split_by_exposure
+from tools.bench.muc3.predict import (
+    EXPOSED,
+    _heights,
+    _kind,
+    load_sheets,
+    main,
+    predict_set,
+    roof_draft,
+    split_by_exposure,
+)
 from tools.bench.tests.test_muc3_score import _write
 
 PANEL = (2000, 1200)
@@ -93,6 +103,67 @@ def test_unmatched_box_gets_no_view_id(tmp_path: Path) -> None:
     assert len(pred["sheet_views"]["S__s00"]) == 2
     assert pred["views"] == []
     assert [f["view_id"] for f in pred["floors"]] == [None, None]
+
+
+def _measured(value: float | str, confidence: float = 0.8) -> Measured:
+    """Một giá trị đo nguồn `plan`."""
+    return Measured(value=value, confidence=confidence, source="plan")
+
+
+def _roof(form: str, eave_mm: int | None, *, confidence: float = 0.8, ridge_mm: int | None = None) -> RoofSpec:
+    """`RoofSpec` dạng `form`, diềm ở `eave_mm` (độ tin 0,6), đỉnh ở `ridge_mm` nếu có."""
+    return RoofSpec(
+        level_ref="v",
+        form=_measured(form, confidence),
+        pitch_deg=_measured(30.0),
+        quarter_turns=_measured(0),
+        eave_elevation_mm=None if eave_mm is None else _measured(eave_mm, 0.6),
+        overhang_mm=_measured(300),
+        ridge_elevation_mm=None if ridge_mm is None else _measured(ridge_mm),
+    )
+
+
+def _building(*roofs: RoofSpec) -> BuildingProposal:
+    """Đề xuất ngôi nhà chỉ mang các mái cho trước."""
+    return BuildingProposal(unit_system=_measured("metric"), floors=(), roofs=roofs, conflicts=(), violations=())
+
+
+@pytest.mark.parametrize(
+    ("roofs", "expected"),
+    [
+        ((), {}),
+        (
+            (_roof("flat", 6600),),
+            {"type": "flat", "confidence": 0.8, "base_level_m": 6.6, "top_level_m": None, "level_confidence": 0.6},
+        ),
+        (
+            (_roof("hip", None, confidence=0.4),),
+            {"type": "pitched", "confidence": 0.4, "base_level_m": None, "top_level_m": None, "level_confidence": None},
+        ),
+        (
+            (_roof("flat", 6600), _roof("gable", 9900, confidence=0.5, ridge_mm=11400)),
+            {"type": "mixed", "confidence": 0.5, "base_level_m": 9.9, "top_level_m": 11.4, "level_confidence": 0.6},
+        ),
+        (
+            (_roof("shed", 9900), _roof("gable", 6600)),
+            {"type": "pitched", "confidence": 0.8, "base_level_m": 9.9, "top_level_m": None, "level_confidence": 0.6},
+        ),
+    ],
+    ids=["khong-mai", "mai-bang", "mai-doc-khong-cot", "san-thuong-va-tum", "hai-mai-doc"],
+)
+def test_roof_draft_maps_roof_specs_to_the_coarse_reference(roofs: tuple[RoofSpec, ...], expected: Json) -> None:
+    """Đáp án mái chỉ có loại thô: `flat` → bằng, ba dạng còn lại → dốc, lẫn cả hai → hỗn hợp; cốt chân lấy diềm cao
+    nhất (đáp án nhận cả chân mái lẫn tum), độ chắc là mái kém chắc nhất; không có mái thì không trả lời."""
+    assert roof_draft(_building(*roofs)) == expected
+
+
+def test_predict_set_carries_the_roof_of_the_product_proposal(tmp_path: Path) -> None:
+    """Bản nháp mái đi cùng dự đoán của bộ, lấy từ `propose_building` trên chính các hình máy đề xuất."""
+    dirs = _cache(tmp_path, {"S__s00": (TWO, _label("S__f00_plan", "S__f01_plan"))})
+    roof = predict_set(load_sheets(*dirs)["S"])["roof"]
+    assert sorted(roof) == ["base_level_m", "confidence", "level_confidence", "top_level_m", "type"]
+    assert roof["type"] in ("flat", "pitched", "mixed")
+    assert 0 <= roof["confidence"] <= 1
 
 
 def test_heights_pair_consecutive_storeys_and_prefer_the_floor_with_a_height() -> None:

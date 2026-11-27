@@ -47,8 +47,21 @@ So trước/sau một thay đổi luật: giữ nguyên đệm (cùng `MANIFEST.
 không khớp khung đáp án nào (IoU < 0,5) không có mã hình nên không vào `views`: cột "dự đoán thừa" của loại/tầng
 không đếm chúng — tách thừa chỉ hiện ở precision của phần tách hình.
 
+## Đo mái (NHA-10a)
+
+Bước 2 ở trên ghi thêm khoá `roof` vào mỗi tệp dự đoán: bản nháp mái lấy từ `propose_building` của route đọc
+`building`, với mọi hình máy đề xuất coi như đã duyệt. Chấm so với đáp án đọc bằng mắt
+`<gốc>/truth_review/roof_review.json` (30 bộ Việt Nam; loại thô bằng / dốc / hỗn hợp, cốt chân, cốt đỉnh):
+
+`python -X utf8 -m tools.bench.muc3.roof --pred <dự đoán> [--part dev|test] [--split-file <dự đoán>/split_clean.json]`
+
+Mỗi trường in `đúng/trả lời/tổng` kèm khoảng Wilson 95 % của đúng/tổng, số sai trong câu trả lời chắc (>= 0,9 và
+>= 0,7), và hai mốc "trước" trên cùng tập bộ: không có mái, luôn đoán mái bằng. Mốc thứ ba (bộ đoán nghiên cứu cũ):
+trỏ `--pred` vào `<gốc>/pred_roof`. Luật chấm giữ nguyên của `score_roof.py` ngoài repo (dung sai cốt 0,2 m). Đáp án
+không tách 2 mái / 4 mái / 1 mái và không có độ dốc, cốt diềm hay đường bao: các chỉ số đó chờ nhãn chi tiết (NHA-10b).
+
 ## Chưa làm
 
 Lượt chấm nền trên bản giả quét của một bộ kiểm mới chưa từng nhìn (K-33 phần 3, ~20 bộ) chờ chủ dự án quyết;
 `run_set_img.py` (chuỗi **nghiên cứu** sinh dự đoán từ ảnh) vẫn ở `F:/runs/dwglab/muc3/kernel/`, không chuyển vào repo:
-đường sản phẩm đã có `readings.py` + `predict.py`. `score_roof.py` chưa chuyển (sản phẩm chưa sinh mái, NO-569).
+đường sản phẩm đã có `readings.py` + `predict.py`.

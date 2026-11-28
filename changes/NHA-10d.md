@@ -53,6 +53,7 @@ ngày 2026-11-27 ("tự tạo 1 sub agent review, nếu ko thể quyết đượ
 
 - NO-619 — Chưa có lượt chạy trình duyệt nào trên BE thật cho chuỗi bộ hồ sơ → mái (F-14). Với bộ ML giả, chuỗi không
   tới được mái nếu không sửa khung qua API; nên làm cùng lượt chạy trọn tầng 2 bằng ML thật của §2.G, sau khi PR 116
-  vào `master`. Chủ: NHA-10b. P2. Mở.
+  vào `master`. Chủ: NHA-10b. P2. **Mở một phần**: NHA-10e đã chạy bảy bộ thật tới bước ráp (`changes/NHA-10e.md`),
+  không bộ nào có mái nên bước "Duyệt mái" trên BE thật còn chờ NO-624.
 - NO-620 — Màn duyệt bộ hồ sơ của AppFront không có chỗ sửa khung cắt của hình, dù N59 nhận `crop`. Khi máy tách hình
   sai, người duyệt chỉ đổi được loại/tầng hoặc loại bỏ hình. Chủ: lát màn duyệt (AppFront). P3. Mở.
